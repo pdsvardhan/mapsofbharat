@@ -23,10 +23,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const values: Record<string, number> = {};
   let min = Infinity;
   let max = -Infinity;
+  let sum = 0;
   for (const r of rows) {
     values[r.region_code] = r.value;
     if (r.value < min) min = r.value;
     if (r.value > max) max = r.value;
+    sum += r.value;
   }
 
   return NextResponse.json({
@@ -42,6 +44,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     count: rows.length,
     min: rows.length ? min : 0,
     max: rows.length ? max : 0,
+    mean: rows.length ? Math.round((sum / rows.length) * 100) / 100 : 0,
     values,
   });
 }

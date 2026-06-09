@@ -12,7 +12,9 @@ LIC  = "GODL-India"
 
 df = pd.read_excel(PCA, sheet_name="Data", dtype=str)
 d = df[(df["Level"] == "DISTRICT") & (df["TRU"] == "Total")].copy()
-for c in ["No_HH","TOT_P","TOT_M","TOT_F","P_06","M_06","F_06","P_SC","P_ST","P_LIT","M_LIT","F_LIT","TOT_WORK_P"]:
+NUMS = ["No_HH","TOT_P","TOT_M","TOT_F","P_06","M_06","F_06","P_SC","P_ST","P_LIT","M_LIT","F_LIT",
+        "TOT_WORK_P","MAIN_CL_P","MAIN_AL_P","MAIN_HH_P","MAIN_OT_P"]
+for c in NUMS:
     d[c] = pd.to_numeric(d[c], errors="coerce")
 print("PCA district(Total) rows:", len(d))
 
@@ -23,20 +25,28 @@ geo_codes = set()
 geo_by_name = {}
 for p in feats:
     c = str(p.get("dt_code"))
-    if c.isdigit(): geo_codes.add(int(c))
-    geo_by_name[(str(p.get("st_code")).zfill(2), norm(p.get("district")))] = str(int(p["dt_code"])) if str(p.get("dt_code")).isdigit() else None
+    if c.isdigit():
+        geo_codes.add(int(c))
+        geo_by_name[(str(p.get("st_code")).zfill(2), norm(p.get("district")))] = str(int(c))
 
 def resolve(row):
     dc = row["District"]
     if isinstance(dc, str) and dc.isdigit() and int(dc) in geo_codes:
         return str(int(dc))
-    key = (str(row["State"]).zfill(2), norm(row["Name"]))
-    return geo_by_name.get(key)
+    st = str(row["State"]).zfill(2)
+    nm = norm(row["Name"])
+    if (st, nm) in geo_by_name:
+        return geo_by_name[(st, nm)]
+    # fuzzy within same state: containment either direction
+    for (k_st, k_nm), v in geo_by_name.items():
+        if k_st == st and nm and (nm in k_nm or k_nm in nm):
+            return v
+    return None
 
 d["dt_code"] = d.apply(resolve, axis=1)
 matched = int(d["dt_code"].notna().sum())
 print(f"resolved dt_code: {matched} / {len(d)} PCA districts (geojson coded districts: {len(geo_codes)})")
-print("unresolved sample:\n", d[d["dt_code"].isna()][["State","District","Name"]].head(12).to_string())
+print("unresolved sample:\n", d[d["dt_code"].isna()][["State","District","Name"]].head(20).to_string())
 
 def rate(n, dd):
     return None if (pd.isna(n) or pd.isna(dd) or dd == 0) else round(float(n)/float(dd)*100, 1)
@@ -52,6 +62,10 @@ METRICS = [
   ("sc_pct","Scheduled Caste share","demographics","%",1,None,"SC population as % of total."),
   ("st_pct","Scheduled Tribe share","demographics","%",1,None,"ST population as % of total."),
   ("work_participation","Work participation rate","demographics","%",1,None,"Workers as % of total population."),
+  ("cultivators_pct","Cultivators (% of workers)","livelihood","%",1,None,"Cultivators as % of total workers."),
+  ("agri_labourers_pct","Agricultural labourers (% of workers)","livelihood","%",1,None,"Agricultural labourers as % of total workers."),
+  ("household_industry_pct","Household industry (% of workers)","livelihood","%",1,1,"Household-industry workers as % of total workers."),
+  ("other_workers_pct","Other / non-farm workers (% of workers)","livelihood","%",1,1,"Other (non-farm) workers as % of total workers - a proxy for the non-agrarian economy."),
 ]
 
 os.makedirs(os.path.dirname(DB), exist_ok=True)
@@ -68,6 +82,7 @@ CREATE TABLE IF NOT EXISTS metric_values(
 CREATE INDEX IF NOT EXISTS idx_mv ON metric_values(metric_id, region_level, year);
 """)
 con.execute("DELETE FROM metric_values WHERE year=2011 AND region_level='district'")
+con.execute("DELETE FROM metrics")
 for mid,name,cat,unit,dec,hib,desc in METRICS:
     con.execute("INSERT OR REPLACE INTO metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (mid,name,cat,unit,dec,hib,"viridis",desc,SRC,SRCURL,LIC,2011))
@@ -76,6 +91,7 @@ written = 0
 for _, r in d.iterrows():
     code = r["dt_code"]
     if not code: continue
+    tw = r["TOT_WORK_P"]
     vals = {
       "pop_total": None if pd.isna(r["TOT_P"]) else float(r["TOT_P"]),
       "literacy_rate": rate(r["P_LIT"], (r["TOT_P"]-r["P_06"]) if (pd.notna(r["TOT_P"]) and pd.notna(r["P_06"])) else float("nan")),
@@ -85,6 +101,10 @@ for _, r in d.iterrows():
       "sc_pct": rate(r["P_SC"], r["TOT_P"]),
       "st_pct": rate(r["P_ST"], r["TOT_P"]),
       "work_participation": rate(r["TOT_WORK_P"], r["TOT_P"]),
+      "cultivators_pct": rate(r["MAIN_CL_P"], tw),
+      "agri_labourers_pct": rate(r["MAIN_AL_P"], tw),
+      "household_industry_pct": rate(r["MAIN_HH_P"], tw),
+      "other_workers_pct": rate(r["MAIN_OT_P"], tw),
     }
     for mid, v in vals.items():
         if v is None: continue
@@ -93,8 +113,9 @@ for _, r in d.iterrows():
 con.commit()
 print("metric_values written:", written)
 print("districts with data:", con.execute("SELECT COUNT(DISTINCT region_code) FROM metric_values").fetchone()[0])
-for mid,name,*_ in METRICS:
+print("metrics:", con.execute("SELECT COUNT(*) FROM metrics").fetchone()[0])
+for mid,name,cat,*_ in METRICS:
     mn,mx,cnt = con.execute("SELECT MIN(value),MAX(value),COUNT(*) FROM metric_values WHERE metric_id=?", (mid,)).fetchone()
-    print(f"  {mid:24s} n={cnt} min={mn} max={mx}")
+    print(f"  [{cat[:4]}] {mid:24s} n={cnt} min={mn} max={mx}")
 con.close()
 print("DB ->", DB)
