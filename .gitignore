@@ -46,3 +46,5 @@ next-env.d.ts
 pipeline/.venv/
 pipeline/raw/
 *.log
+pipeline/shrug/
+*.bak

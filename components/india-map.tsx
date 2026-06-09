@@ -70,7 +70,7 @@ export default function IndiaMap() {
         fetch("/geo/states.geojson").then((r) => r.json()),
       ]);
       (states.features as any[]).forEach((f) => { statesRef.current[String(f.properties?.st_code)] = f; });
-      map.addSource("districts", { type: "geojson", data: districts, promoteId: "dt_code" });
+      map.addSource("districts", { type: "geojson", data: districts, promoteId: "rid" });
       map.addSource("states", { type: "geojson", data: states });
       map.addLayer({
         id: "district-fill", type: "fill", source: "districts",
