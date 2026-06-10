@@ -9,11 +9,20 @@ for f in d["features"]:
     if c.isdigit():
         seen.add(int(c))
 
+
+def uncoded(p):
+    # post-2011 districts carry no census code: either missing/empty or a
+    # literal 0 placeholder (4 re-cut TN districts shipped as dt_code="0",
+    # which collided them all onto rid 33_0 — iter-15 item 157)
+    c = str(p.get("dt_code", "")).strip()
+    return not c or (c.isdigit() and int(c) == 0)
+
+
 nxt = 9000
 patched = []
 for f in d["features"]:
     p = f["properties"]
-    if not p.get("dt_code"):
+    if uncoded(p):
         while nxt in seen:
             nxt += 1
         p["dt_code"] = str(nxt)
