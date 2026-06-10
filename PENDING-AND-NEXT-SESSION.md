@@ -4,6 +4,21 @@ _Last updated: **2026-06-09**, end of the session that completed the current-day
 
 This is the full categorized backlog. Each item notes **what**, **why**, **approach**, **blocker**, and **priority** (P0 highest).
 
+---
+
+## ✅ Session 2026-06-10 — Stage 3 completion (features + hardening + deploy)
+
+Shipped and verified live (tsc clean · 7/7 pipeline tests · next build OK · independent verifier APPROVE):
+
+- **feat-region-detail** ✅ — per-district profile panel, all metrics + national rank (RANK() window-fn `/api/region/[code]`) + source/year citations.
+- **feat-export-share** ✅ — PNG export (preserveDrawingBuffer + header band) and shareable URL state (`m/mode/st/cmp`) restored on load.
+- **feat-find-my-district** ✅ — geolocation → point-in-polygon → fly-to + profile; permission-gated, location never stored.
+- **Risks resolved (7):** no-tests, no-ci, no-error-tracking, no-backup, no-rate-limit, slow-page-load, data-drift. **a11y (#57) accepted/deferred** (code-level aria shipped; full live audit needs a foreground browser).
+- **Tech debt F:** metric fetch decoupled from map load; `pipeline/README.md` added. (`estimated` flag already absent from app code.)
+- **Stage-3 infra:** `CODING_GUIDELINES.md`, Gitea Actions CI, Playwright smoke + pytest suite, `/api/log` error sink, rate-limit middleware, geo Cache-Control, backup + drift scripts.
+- **Deploy:** container rebound `127.0.0.1:8610:3000` (freed host 8601, **resolved the tg-ingest collision**). NPM proxy host (id 44) + Cloudflare DNS CNAME created → `https://mapsofbharat.vault7a.xyz` live on **LAN**. **Public (tunnel ingress) pending explicit go-ahead** to reload the shared cloudflared.
+
+
 **Legend:** 🔴 blocked on you · 🟡 ready to build · 🟢 polish / nice-to-have · ⏳ deferred (later stage)
 
 ---
@@ -104,5 +119,5 @@ The Ottomate Stage-4 iterate/feedback pipeline (bug inbox → classify → mini-
 
 - **Live (LAN):** `http://192.168.1.10:8601/explore` — container healthy, all 12 demographics metrics, current-day boundaries.
 - **Data:** Census 2011 PCA, reaggregated to current districts via SHRUG sub-districts, keyed by `rid` (`st_code_dtcode`). 8,760 values / 730 districts.
-- **Stage:** between Stage 3 (build/deploy) and Stage 4 (iterate). Demographics vertical is the proven end-to-end slice.
+- **Stage:** Stage 3 COMPLETE as of 2026-06-10 (3 planned features built, 7 risks resolved, CI/tests/guidelines in place, deployed to LAN). Public tunnel ingress is the only open deploy item (needs cloudflared go-ahead). Next: Stage 4 iterate + data verticals (NCRB) / crosswalk clean-up.
 - **Last ADR:** `adr-010-subdistrict-crosswalk`.
