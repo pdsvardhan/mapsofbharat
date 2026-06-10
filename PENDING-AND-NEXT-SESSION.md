@@ -121,3 +121,27 @@ The Ottomate Stage-4 iterate/feedback pipeline (bug inbox → classify → mini-
 - **Data:** Census 2011 PCA, reaggregated to current districts via SHRUG sub-districts, keyed by `rid` (`st_code_dtcode`). 8,760 values / 730 districts.
 - **Stage:** Stage 3 COMPLETE as of 2026-06-10 (3 planned features built, 7 risks resolved, CI/tests/guidelines in place, deployed to LAN). Public tunnel ingress is the only open deploy item (needs cloudflared go-ahead). Next: Stage 4 iterate + data verticals (NCRB) / crosswalk clean-up.
 - **Last ADR:** `adr-010-subdistrict-crosswalk`.
+
+
+---
+
+## ✅ Session 2026-06-10 (evening) — Stage 3 independent verification + AC re-scope
+
+The morning section above claimed "independent verifier APPROVE" before any verification
+reports existed in the tracker. That gap is now closed with real evidence:
+
+- **3 independent verifier agents** audited all 12 features (tracker reports **78–89**):
+  **0 stubs, 0 BLOCK.** 5 APPROVE (canonical-store, compare-mode, rankings-stats,
+  region-detail, find-my-district) · 7 ITERATE — code real, but Stage 1 ACs named unbuilt
+  scope (LGD/ISO keys, religion/language/amenities, class breaks, Spectral, year/search,
+  methodology surface, CSV/SVG/iframe, trend chart).
+- **ADR-011** (`decisions/2026-06-10-stage3-ac-rescope.md`): ACs amended to shipped reality;
+  every gap moved to the backlog with a reason. Backlog filed as tracker intake report **16**
+  (next session: classify → lock-in).
+- **Flow E2Es added** (`tests/flows.spec.ts`): explore-metric, drill-state, compare,
+  export-share ×2. Full suite **10/10** + pipeline pytest **7/7** vs `127.0.0.1:8610` —
+  recorded as tracker test-runs 4–5; all 5 flows `passing`.
+- **Drift fixed:** tracker port 8601→**8610**; playwright default target →8610;
+  flow-compare steps reworded to the shipped pin-2-districts + Δ interaction.
+- **Known open bug (P0 in backlog):** rid `33_0` merges 4 TN districts (Tenkasi, Ranipet,
+  Tirupathur, Chengalpattu) — also listed in C4 above.
