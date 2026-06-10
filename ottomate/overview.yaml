@@ -1,0 +1,91 @@
+slug: mapsofbharat
+display_name: MapsOfBharat
+summary:
+  tagline: Map-first statistics & data visualization for India
+  short_description: "An interactive map of India for official statistics:
+    choropleths that drill from state to district, with compare mode
+    (region/year/metric), rankings, and one-click export. Every metric is
+    sourced from government or top-tier institutions, harmonized to a canonical
+    region key, and fully cited."
+  core_idea: MapsOfBharat is a map-first data-visualization platform for India. A
+    user picks an official statistic (literacy, population density, crime rate,
+    voter turnout, and more) and sees it as an interactive choropleth that
+    drills India -> state -> district, with linked charts, rankings, and
+    side-by-side comparison across regions, years, or metrics. Every series
+    comes from an official government or top-tier source, is harmonized to a
+    canonical region key via an LGD/Census-2011 crosswalk, rendered on the
+    current-day map, and is fully cited and downloadable. Clarity-first for the
+    public; depth (compare, time-series, export, embed) for journalists,
+    researchers, and analysts.
+current_status: building
+lifecycle_phase: building
+scope_size: large
+target_devices: both
+hosting_target: vault7a-docker
+port: 8601
+public_url: https://mapsofbharat.vault7a.xyz
+repository_url: http://localhost:3300/pdsv/mapsofbharat
+problem_statement: "Reliable India statistics are scattered across government
+  portals (Census, NCRB, MoSPI, ECI, ministry dashboards), often locked in PDFs
+  or behind paywalled aggregators, rarely comparable across regions or years,
+  and almost never shown on a map. Non-experts cannot explore them, and even
+  experts spend hours wrangling spreadsheets and reconciling district boundaries
+  that change over time. MapsOfBharat turns official Indian data into a
+  trustworthy, map-first exploration tool: cited, comparable, normalized, and
+  downloadable."
+non_goals:
+  - Primary data comes only from official/government or top-tier institutional
+    sources; no private or paywalled datasets as the source of truth.
+  - No login or paywall to view data; the site is public-first.
+  - Not a raw microdata or CSV-dump repository; we publish harmonized, mapped,
+    cited indicators, not unprocessed files.
+  - No live/real-time dependence on government portals at request time; all data
+    is loaded into our own canonical store via ETL.
+  - No editorialized rankings or political commentary; data is presented
+    neutrally with sources and methodology.
+  - India (Bharat) only; not a global statistics tool.
+success_criteria:
+  - A non-expert can find any district value for a metric and see how it ranks
+    or compares in under 3 clicks.
+  - Every displayed metric shows its official source, year, and a one-line
+    methodology; nothing is uncited.
+  - Maps drill India to state to district, including state-level zoom (the gap
+    in bharatviz).
+  - Two regions, or two years of the same region, can be compared side by side.
+  - Any view is exportable (CSV/PNG/SVG) and shareable via a permalink.
+  - Boundaries are Survey-of-India compliant, and 2011 data renders correctly on
+    current-day districts and states.
+  - The Demographics pilot ships end to end (ingest to DB to map to compare to
+    export), proving the engine scales by adding data.
+preferences:
+  likes:
+    - Gradient/choropleth maps with dark mode (bharatviz-style)
+    - "Interactive drill-down: India to state to district"
+    - Side-by-side comparison of regions, years, or metrics
+    - Clarity-first UX with depth for power users
+    - Exports and shareable/embeddable views
+  dislikes:
+    - Paywalls and login walls (the IndiaStat problem)
+    - Data trapped in PDFs
+    - Static, non-interactive charts
+    - Maps you cannot zoom into a state
+  must_haves:
+    - Official/government or top-tier sources only; no opaque private datasets
+    - Every metric cited with source, year, and methodology
+    - Survey of India compliant boundaries (J&K, Ladakh, Arunachal, Aksai Chin)
+    - Data stored in our own canonical DB, not dependent on source uptime
+    - Current-day map with an as-reported-year toggle
+    - Per-capita / rate normalization
+  avoid:
+    - Private/commercial datasets unless no official source exists
+    - GADM/global boundary files (non-compliant + legal risk)
+    - Misleading maps (no normalization, poor class breaks)
+    - Live source calls as the production data path
+tags:
+  - data-viz
+  - maps
+  - india
+  - statistics
+  - choropleth
+  - official-data
+  - public-facing

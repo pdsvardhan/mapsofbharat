@@ -1,0 +1,218 @@
+features:
+  - id: feat-geo-backbone
+    title: Geography backbone and region crosswalk
+    short_description: LGD/Census-2011/ISO crosswalk + Survey-of-India compliant
+      boundaries; the heart of the pipeline.
+    type: backend
+    status: done
+    priority: P0
+    size: L
+    test_status: not-tested
+    notes: "Current-day crosswalk implemented + validated 2026-06-09 (see ADR
+      adr-010-subdistrict-crosswalk). Sub-district reaggregation: SHRUG pc11
+      sub-district polygons (WGS84) -> representative_point -> point-in-polygon
+      within current districts -> sum raw PCA counts -> recompute rates. Keyed
+      by unique rid = st_code_dtcode everywhere (geojson property, DB
+      region_code, MapLibre promoteId); this fixed 36 duplicate dt_code
+      collisions between re-cut Andhra Pradesh and Maharashtra (e.g. code 519 =
+      Srikakulam + Mumbai). Validation vs official 2011 district PCA: median
+      diff 0.00 pct, 489/594 within 2 pct. Wrote 8760 values across 730
+      districts; total pop 1.19B (1.6 pct under census). Pipeline:
+      pipeline/add_rid.py + pipeline/reaggregate.py."
+    acceptance_criteria:
+      - content: An LGD to Census-2011 to ISO-state crosswalk table is loaded and
+          queryable
+        test_status: not-tested
+        linked_test: null
+      - content: Every state and district polygon resolves to one canonical region_id
+        test_status: not-tested
+        linked_test: null
+      - content: Boundary set passes a Survey-of-India compliance check (J&K, Ladakh,
+          Arunachal, Aksai Chin)
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-canonical-store
+    title: Canonical metric store and schema
+    short_description: Generic region x metric x year x value store + metric metadata.
+    type: backend
+    status: done
+    priority: P0
+    size: M
+    test_status: not-tested
+    acceptance_criteria:
+      - content: Schema region x metric x year x value plus metric metadata is migrated
+        test_status: not-tested
+        linked_test: null
+      - content: A metric can be loaded and queried by region and year
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-ingest-pipeline
+    title: Ingestion pipeline and dataset adapters
+    short_description: "Per-dataset adapters: fetch, clean, map to LGD, normalize, load."
+    type: automated
+    status: done
+    priority: P0
+    size: L
+    test_status: not-tested
+    acceptance_criteria:
+      - content: An adapter runs fetch then clean then map-to-LGD then normalize then
+          load
+        test_status: not-tested
+        linked_test: null
+      - content: Re-running an adapter is idempotent (upsert, no duplicates)
+        test_status: not-tested
+        linked_test: null
+      - content: Each load records source, year, license, and fetched_at
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-demographics-pilot
+    title: Demographics vertical (Census 2011)
+    short_description: "First end-to-end category: Census 2011 at district level on
+      current-day boundaries."
+    type: hybrid
+    status: done
+    priority: P0
+    size: L
+    test_status: not-tested
+    acceptance_criteria:
+      - content: Census 2011 district data (population, literacy, SC/ST, religion,
+          language, amenities) loads on current-day boundaries
+        test_status: not-tested
+        linked_test: null
+      - content: All demographic metrics render in choropleth, compare, and export
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-choropleth-map
+    title: Interactive choropleth with India to state to district drill
+    short_description: "Core map: drill-down + class breaks + colour-blind-safe palettes."
+    type: ui
+    status: done
+    priority: P0
+    size: L
+    test_status: not-tested
+    acceptance_criteria:
+      - content: User views a metric as a state choropleth and clicks a state to drill
+          into its districts
+        test_status: not-tested
+        linked_test: null
+      - content: Class-break method (quantile, equal-interval, Jenks) is selectable
+        test_status: not-tested
+        linked_test: null
+      - content: A colour-blind-safe palette is available alongside Spectral
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-metric-selector
+    title: Metric and year selector with search
+    short_description: Switch metric/year; search-to-fly to a place.
+    type: ui
+    status: done
+    priority: P0
+    size: M
+    test_status: not-tested
+    acceptance_criteria:
+      - content: User can switch metric and year
+        test_status: not-tested
+        linked_test: null
+      - content: Search jumps the map to a named state or district
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-source-trust
+    title: Source citation and methodology surface
+    short_description: "Trust layer: provenance on every metric."
+    type: ui
+    status: done
+    priority: P0
+    size: S
+    test_status: not-tested
+    acceptance_criteria:
+      - content: Every metric shows source, year, methodology, and last-updated
+        test_status: not-tested
+        linked_test: null
+      - content: A methodology and caveats note is one click away
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-compare-mode
+    title: Compare mode (region, year, or metric)
+    short_description: Side-by-side A/B with difference view.
+    type: ui
+    status: done
+    priority: P1
+    size: L
+    test_status: not-tested
+    acceptance_criteria:
+      - content: Two regions, two years, or two metrics render side by side
+        test_status: not-tested
+        linked_test: null
+      - content: A difference or percent-change view is available
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-rankings-stats
+    title: Rankings, percentile, and vs-average
+    short_description: Auto rank/percentile + vs-average diverging view.
+    type: ui
+    status: done
+    priority: P1
+    size: M
+    test_status: not-tested
+    acceptance_criteria:
+      - content: Selecting a region shows its rank and percentile for the metric
+        test_status: not-tested
+        linked_test: null
+      - content: A vs national/state average diverging view can be toggled
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-region-detail
+    title: Region detail panel and trend chart
+    short_description: Click-through panel with multi-year trend.
+    type: ui
+    status: done
+    priority: P1
+    size: M
+    test_status: passing
+    acceptance_criteria:
+      - content: Clicking a region opens a panel with its value, rank, and a multi-year
+          trend where data exists
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-export-share
+    title: Export and shareable/embeddable views
+    short_description: CSV/PNG/SVG + permalink + iframe.
+    type: ui
+    status: done
+    priority: P1
+    size: M
+    test_status: partial
+    acceptance_criteria:
+      - content: Current view exports to CSV, PNG, and SVG
+        test_status: not-tested
+        linked_test: null
+      - content: A permalink encodes metric, region, year, and scale
+        test_status: not-tested
+        linked_test: null
+      - content: An iframe embed snippet is available
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-find-my-district
+    title: Find-my-district (geolocation)
+    short_description: Personal hook for the public.
+    type: ui
+    status: done
+    priority: P2
+    size: S
+    test_status: partial
+    acceptance_criteria:
+      - content: With permission, the map highlights the user district and its stats
+        test_status: not-tested
+        linked_test: null
+    dependencies: []

@@ -1,0 +1,47 @@
+conceptual:
+  project_slug: mapsofbharat
+  has_data_layer: true
+  retention_policy_type: forever
+  retention_reason: Official statistics are historical reference data; keep all
+    versions and boundary vintages for provenance and time-series comparison.
+  freshness_notification_target: glitchtip
+sources:
+  - id: 29
+    project_slug: mapsofbharat
+    name: India administrative boundaries (Survey of India outline + DataMeet/SHRUG
+      state and district polygons)
+    source_type: csv-upload
+    url_or_path: https://github.com/datameet/maps
+    authentication: anonymous
+    ingestion_method: one-time-upload
+    ingestion_frequency: once, versioned
+    refresh_strategy: full-refresh
+    backfill_supported: false
+  - id: 30
+    project_slug: mapsofbharat
+    name: Census of India 2011 district tables (PCA, C-01 religion, C-16 language,
+      HH amenities)
+    source_type: csv-upload
+    url_or_path: https://censusindia.gov.in/nada/index.php/catalog
+    authentication: anonymous
+    ingestion_method: one-time-upload
+    ingestion_frequency: decadal (2011; next 2027)
+    refresh_strategy: full-refresh
+    backfill_supported: false
+  - id: 31
+    project_slug: mapsofbharat
+    name: MoSPI eSankhyiki API (PLFS, CPI, WPI, IIP, NAS, HCES)
+    source_type: external-api
+    url_or_path: https://api.mospi.gov.in
+    authentication: anonymous
+    ingestion_method: scheduled-fetch
+    ingestion_frequency: on release / monthly
+    refresh_strategy: upsert
+    watermark_field: year
+    deduplication_strategy: primary-key
+    backfill_supported: true
+contract:
+  project_slug: mapsofbharat
+  database_engine: sqlite
+  storage_location: in-project-sqlite
+  migration_tooling: drizzle

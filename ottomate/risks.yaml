@@ -1,0 +1,125 @@
+risks:
+  - id: 50
+    project_slug: mapsofbharat
+    risk_type_id: data-drift-undetected
+    status: resolved
+    resolved_at: 2026-06-10T01:46:21.000Z
+    resolution_summary: validate_drift.py re-checks live DB vs
+      pipeline/expectations.json (2% tolerance) on a schedule;
+      scripts/validate-and-notify.sh posts to /api/log on drift. Pipeline
+      reaggregate still refuses to write on >2% median diff.
+    hidden_by_default: true
+    severity_override: critical
+    notes: Govt source schemas, district boundaries (2011 to current), and report
+      formats (e.g. NCRB PDF layouts) change over time; ingestion must detect
+      drift via row-count, schema, and crosswalk-coverage checks. Also covers
+      census-2011 vintage and constituency-boundary changes.
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 51
+    project_slug: mapsofbharat
+    risk_type_id: slow-page-load
+    status: resolved
+    resolved_at: 2026-06-10T01:46:21.000Z
+    resolution_summary: Cache-Control
+      public,max-age=86400,stale-while-revalidate=604800 on /geo/*
+      (next.config.ts). District geojson 824KB raw -> 179KB gzipped on the wire.
+    hidden_by_default: true
+    severity_override: high
+    notes: Large district GeoJSON is heavy; mitigate with TopoJSON / vector tiles,
+      simplification (mapshaper), and per-state slicing.
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 52
+    project_slug: mapsofbharat
+    risk_type_id: no-tests
+    status: resolved
+    resolved_at: 2026-06-10T01:46:21.000Z
+    resolution_summary: "pytest pipeline integrity suite (7 tests: coverage>=700,
+      >=95% per-metric, no orphans/nulls/NaN) + Playwright smoke (map load,
+      metric switch, region API rank/value). Both wired into CI."
+    hidden_by_default: true
+    notes: Need tests for ingestion adapters, crosswalk correctness, normalization,
+      and core UI flows.
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 53
+    project_slug: mapsofbharat
+    risk_type_id: no-error-tracking
+    status: resolved
+    resolved_at: 2026-06-10T01:46:21.000Z
+    resolution_summary: "Self-hosted error sink: /api/log + lib/log.ts (stdout +
+      best-effort file) + client-error-reporter.tsx
+      (window.onerror/unhandledrejection via sendBeacon). No third-party
+      services. Verified live (test event in container stdout)."
+    hidden_by_default: true
+    notes: Add runtime error tracking (GlitchTip/Sentry) for the app and the pipeline.
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 54
+    project_slug: mapsofbharat
+    risk_type_id: no-ci
+    status: resolved
+    resolved_at: 2026-06-10T01:46:21.000Z
+    resolution_summary: "Gitea Actions .gitea/workflows/ci.yml: typecheck + build
+      are hard gates, lint advisory, separate pytest job for pipeline
+      integrity."
+    hidden_by_default: true
+    notes: CI for build, lint, and data-validation on each change.
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 55
+    project_slug: mapsofbharat
+    risk_type_id: no-backup
+    status: resolved
+    resolved_at: 2026-06-10T01:46:21.000Z
+    resolution_summary: "scripts/backup-db.sh: sqlite3 .backup snapshot + gzip +
+      14-snapshot retention; cron example documented. DB remains fully
+      regenerable from pipeline/."
+    hidden_by_default: true
+    notes: Canonical DB and ingested raw datasets need scheduled snapshots.
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 56
+    project_slug: mapsofbharat
+    risk_type_id: no-rate-limit
+    status: resolved
+    resolved_at: 2026-06-10T01:46:21.000Z
+    resolution_summary: middleware.ts per-IP limiter (120 req/60s -> 429 +
+      retry-after) on /api/*. A second layer at NPM/Cloudflare is added now that
+      the public route exists.
+    hidden_by_default: true
+    notes: Public site, JSON endpoints, and iframe embeds need rate limiting; also
+      throttle and respect ToS when fetching govt dashboards.
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 57
+    project_slug: mapsofbharat
+    risk_type_id: a11y-missing
+    status: accepted
+    hidden_by_default: false
+    notes: "Deferred 2026-06-10. Cheap code-level a11y shipped: aria-label on all
+      map controls (PNG/Link/Locate/metric select), aria-pressed on
+      Value/vs-avg/compare toggles, colour-vision-safe viridis/RdBu ramps.
+      skip_reason: full live audit (keyboard nav, screen-reader, contrast)
+      requires a foreground/interactive browser session, not available this run.
+      Tracked for a dedicated a11y pass."
+    created_at: 2026-06-08T14:16:11.000Z
+  - id: 58
+    project_slug: mapsofbharat
+    risk_type_id: clickjacking
+    status: resolved
+    resolved_at: 2026-06-09T16:35:30.000Z
+    resolution_summary: CSP frame-ancestors self + X-Content-Type-Options nosniff +
+      Referrer-Policy added via next.config headers; deployed and verified live
+      on port 8601.
+    hidden_by_default: true
+    notes: We offer iframe embeds; set frame-ancestors CSP and an embed allowlist.
+    created_at: 2026-06-08T14:16:11.000Z
+policy:
+  project_slug: mapsofbharat
+  exposure: public
+  access_control: anonymous-ok
+  data_sensitivity_tier: none
+  encryption_in_transit: true
+  rate_limiting_enabled: true
+auth_config:
+  project_slug: mapsofbharat
+  strategy: none
+  mfa_supported: false
+  auth_library: n-a
+third_party_services: []
+secrets: []

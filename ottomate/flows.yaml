@@ -1,0 +1,118 @@
+flows:
+  - id: flow-explore-metric
+    title: Explore a metric on the map
+    type: ui
+    priority: critical
+    test_status: not-tested
+    trigger: User opens a metric view
+    expected_outcome: User sees the spatial distribution and a chosen region standing
+    pre_conditions: []
+    steps:
+      - actor: user
+        action: Selects a metric and year
+        result: Map request issued
+      - actor: system
+        action: Renders the state-level choropleth with legend
+        result: Spatial distribution visible
+      - actor: user
+        action: Hovers or clicks a region
+        result: Region focused
+      - actor: system
+        action: Shows tooltip/panel with value, rank, and percentile
+        result: User sees the region standing
+    edge_cases: []
+    linked_features: []
+    linked_pages: []
+  - id: flow-drill-state
+    title: Drill into a state to district level
+    type: ui
+    priority: critical
+    test_status: not-tested
+    trigger: User clicks a state
+    expected_outcome: District-level detail for the chosen state
+    pre_conditions: []
+    steps:
+      - actor: user
+        action: Clicks a state
+        result: Drill requested
+      - actor: system
+        action: Zooms to the state and loads its district polygons and data
+        result: District choropleth shown
+      - actor: user
+        action: Clicks the breadcrumb
+        result: Back requested
+      - actor: system
+        action: Zooms back to the India view
+        result: National view restored
+    edge_cases: []
+    linked_features: []
+    linked_pages: []
+  - id: flow-compare
+    title: Compare two regions, years, or metrics
+    type: ui
+    priority: important
+    test_status: not-tested
+    trigger: User opens compare mode
+    expected_outcome: Side-by-side comparison with optional difference
+    pre_conditions: []
+    steps:
+      - actor: user
+        action: Selects comparison type and A and B
+        result: Selections set
+      - actor: system
+        action: Renders two synced maps side by side
+        result: Comparison visible
+      - actor: user
+        action: Toggles difference view
+        result: Difference requested
+      - actor: system
+        action: Renders A-minus-B or percent-change map
+        result: Difference visible
+    edge_cases: []
+    linked_features: []
+    linked_pages: []
+  - id: flow-export-share
+    title: Export or share the current view
+    type: ui
+    priority: important
+    test_status: not-tested
+    trigger: User clicks export or share
+    expected_outcome: A downloadable file or shareable link
+    pre_conditions: []
+    steps:
+      - actor: user
+        action: Chooses a format or share option
+        result: Request issued
+      - actor: system
+        action: Generates CSV/PNG/SVG or a permalink and iframe snippet
+        result: Artifact produced
+      - actor: user
+        action: Downloads or copies it
+        result: User has the artifact
+    edge_cases: []
+    linked_features: []
+    linked_pages: []
+  - id: flow-ingest-dataset
+    title: Ingest or refresh a dataset
+    type: automated
+    priority: important
+    test_status: not-tested
+    trigger: Scheduled job or manual run
+    expected_outcome: Fresh, cited data available to the UI
+    pre_conditions: []
+    steps:
+      - actor: system
+        action: Runs the dataset adapter to fetch the source
+        result: Raw source pulled
+      - actor: system
+        action: Cleans, maps to LGD, and normalizes
+        result: Canonical rows prepared
+      - actor: system
+        action: Upserts into the store and records provenance
+        result: Data and provenance persisted
+      - actor: system
+        action: Runs drift checks (row counts, schema, crosswalk coverage)
+        result: Drift flagged or cleared
+    edge_cases: []
+    linked_features: []
+    linked_pages: []
