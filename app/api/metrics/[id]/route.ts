@@ -4,8 +4,9 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const level = new URL(req.url).searchParams.get("level") === "state" ? "state" : "district";
   const d = db();
   if (!d) return NextResponse.json({ error: "no-data" }, { status: 404 });
 
@@ -16,9 +17,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const rows = d
     .prepare(
-      "SELECT region_code, value FROM metric_values WHERE metric_id = ? AND region_level = 'district' AND value IS NOT NULL"
+      "SELECT region_code, value FROM metric_values WHERE metric_id = ? AND region_level = ? AND value IS NOT NULL"
     )
-    .all(id) as { region_code: string; value: number }[];
+    .all(id, level) as { region_code: string; value: number }[];
 
   const values: Record<string, number> = {};
   let min = Infinity;
@@ -33,6 +34,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   return NextResponse.json({
     id,
+    level,
     name: meta.name,
     unit: meta.unit,
     year: meta.year,

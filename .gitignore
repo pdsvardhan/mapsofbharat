@@ -52,3 +52,5 @@ pipeline/shrug/
 # python
 __pycache__/
 *.pyc
+pipeline/raw-new/
+test-results/

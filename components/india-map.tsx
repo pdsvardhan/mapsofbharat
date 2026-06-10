@@ -59,7 +59,8 @@ function pointInFeature(pt: [number, number], geom: any): boolean {
 }
 
 function readUrl() {
-  if (typeof window === "undefined") return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[] };
+  if (typeof window === "undefined")
+    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "district" as const };
   const p = new URLSearchParams(window.location.search);
   return {
     m: p.get("m") || "",
@@ -67,6 +68,7 @@ function readUrl() {
     st: p.get("st") || "",
     stn: p.get("stn") || "",
     cmp: (p.get("cmp") || "").split(",").filter(Boolean),
+    lvl: (p.get("lvl") === "state" ? "state" : "district") as "district" | "state",
   };
 }
 
@@ -88,6 +90,8 @@ export default function IndiaMap() {
   const [sel, setSel] = useState<string>(init.m || "");
   const [data, setData] = useState<MetricData | null>(null);
   const [mode, setMode] = useState<"value" | "vs_avg">(init.mode);
+  const [level, setLevel] = useState<"district" | "state">(init.lvl);
+  const levelRef = useRef<"district" | "state">(init.lvl);
   const [view, setView] = useState<View>({ level: "national" });
   const [compare, setCompare] = useState(init.cmp.length > 0);
   const [pins, setPins] = useState<Pin[]>([]);
@@ -102,14 +106,16 @@ export default function IndiaMap() {
   useEffect(() => { compareRef.current = compare; }, [compare]);
   useEffect(() => { pinsRef.current = pins; }, [pins]);
   useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => { levelRef.current = level; }, [level]);
 
   const openDetail = useCallback((feat: { id?: string | number; properties?: any }) => {
     const code = String(feat.id ?? feat.properties?.rid ?? "");
     if (!code) return;
+    const isState = !code.includes("_");
     setDetail({
       code,
-      name: String(feat.properties?.district ?? "—"),
-      state: String(feat.properties?.st_nm ?? ""),
+      name: String((isState ? feat.properties?.st_nm : feat.properties?.district) ?? "—"),
+      state: isState ? "" : String(feat.properties?.st_nm ?? ""),
     });
     setDetailData(null);
     fetch(`/api/region/${encodeURIComponent(code)}`)
@@ -155,7 +161,7 @@ export default function IndiaMap() {
       districtsFCRef.current = districts;
       (states.features as any[]).forEach((f) => { statesRef.current[String(f.properties?.st_code)] = f; });
       map.addSource("districts", { type: "geojson", data: districts, promoteId: "rid" });
-      map.addSource("states", { type: "geojson", data: states });
+      map.addSource("states", { type: "geojson", data: states, promoteId: "st_code" });
       map.addLayer({
         id: "district-fill", type: "fill", source: "districts",
         paint: {
@@ -172,7 +178,42 @@ export default function IndiaMap() {
           "line-width": ["case", ["boolean", ["feature-state", "pinned"], false], 2.5, 0.3],
         } as any,
       });
+      map.addLayer({
+        id: "state-fill", type: "fill", source: "states",
+        layout: { visibility: "none" },
+        paint: {
+          "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
+          "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0.88],
+          "fill-color-transition": { duration: 350 },
+          "fill-opacity-transition": { duration: 150 },
+        },
+      } as any);
       map.addLayer({ id: "state-line", type: "line", source: "states", paint: { "line-color": "#4b5d72", "line-width": 1 } });
+
+      let hovSt: string | number | undefined;
+      map.on("mousemove", "state-fill", (e: any) => {
+        if (!e.features?.length) return;
+        map.getCanvas().style.cursor = "pointer";
+        const f = e.features[0];
+        if (hovSt !== undefined) map.setFeatureState({ source: "states", id: hovSt }, { hover: false });
+        hovSt = f.id as string;
+        map.setFeatureState({ source: "states", id: hovSt }, { hover: true });
+        const code = String(f.id);
+        setHover({
+          name: String(f.properties?.st_nm ?? "—"), state: "",
+          value: code in valuesRef.current ? valuesRef.current[code] : null,
+          rank: code in rankRef.current ? rankRef.current[code] : null,
+        });
+      });
+      map.on("mouseleave", "state-fill", () => {
+        map.getCanvas().style.cursor = "";
+        if (hovSt !== undefined) map.setFeatureState({ source: "states", id: hovSt }, { hover: false });
+        hovSt = undefined; setHover(null);
+      });
+      map.on("click", "state-fill", (e: any) => {
+        if (!e.features?.length) return;
+        openDetail({ id: String(e.features[0].id), properties: e.features[0].properties });
+      });
 
       let hov: string | number | undefined;
       map.on("mousemove", "district-fill", (e: any) => {
@@ -221,7 +262,7 @@ export default function IndiaMap() {
 
       // restore drill + compare pins from a shared link
       const r = restoreRef.current;
-      if (r.st) drillToState(r.st.padStart(2, "0"), r.stn || "");
+      if (r.st && r.lvl !== "state") drillToState(r.st.padStart(2, "0"), r.stn || "");
       if (r.cmp.length) {
         const restored: Pin[] = [];
         for (const code of r.cmp.slice(0, 2)) {
@@ -265,7 +306,7 @@ export default function IndiaMap() {
     if (!map || !sel || !ready) return;
     let cancelled = false;
     (async () => {
-      const md: MetricData = await fetch(`/api/metrics/${sel}`).then((r) => r.json());
+      const md: MetricData = await fetch(`/api/metrics/${sel}?level=${level}`).then((r) => r.json());
       if (cancelled || !md.values) return;
       setData(md); valuesRef.current = md.values;
       const sorted = Object.entries(md.values).sort((a, b) => b[1] - a[1]);
@@ -276,7 +317,24 @@ export default function IndiaMap() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, ready]);
+  }, [sel, ready, level]);
+
+  // level switch: sync layer visibility; on a real change reset drill/pins/detail
+  const prevLevelRef = useRef(init.lvl);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const changed = prevLevelRef.current !== level;
+    prevLevelRef.current = level;
+    const showState = level === "state";
+    map.setLayoutProperty("state-fill", "visibility", showState ? "visible" : "none");
+    map.setLayoutProperty("district-fill", "visibility", showState ? "none" : "visible");
+    map.setLayoutProperty("district-line", "visibility", showState ? "none" : "visible");
+    if (!changed) return;
+    clearPins(); setDetail(null); setHover(null);
+    if (viewRef.current.level === "state") backToNational();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [level, ready]);
 
   useEffect(() => { if (data) recolor(data, mode); /* eslint-disable-next-line */ }, [mode]);
 
@@ -286,24 +344,27 @@ export default function IndiaMap() {
     const p = new URLSearchParams();
     if (sel) p.set("m", sel);
     if (mode !== "value") p.set("mode", mode);
+    if (level !== "district") p.set("lvl", level);
     if (view.level === "state" && view.code) { p.set("st", view.code); if (view.name) p.set("stn", view.name); }
     if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
-  }, [sel, mode, view, pins]);
+  }, [sel, mode, level, view, pins]);
 
   function recolor(md: MetricData, m: "value" | "vs_avg") {
     const map = mapRef.current; if (!map) return;
+    const src = levelRef.current === "state" ? "states" : "districts";
     const pinned = new Set(pinsRef.current.map((p) => p.code));
     map.removeFeatureState({ source: "districts" });
-    pinned.forEach((c) => map.setFeatureState({ source: "districts", id: c }, { pinned: true }));
+    map.removeFeatureState({ source: "states" });
+    pinned.forEach((c) => map.setFeatureState({ source: src, id: c }, { pinned: true }));
     const span = md.max - md.min || 1;
     const maxDev = Math.max(...Object.values(md.values).map((v) => Math.abs(v - md.mean))) || 1;
     for (const [code, v] of Object.entries(md.values)) {
       const color = m === "vs_avg"
         ? interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - md.mean) / (2 * maxDev))))
         : interpolateViridis(Math.max(0, Math.min(1, (v - md.min) / span)));
-      map.setFeatureState({ source: "districts", id: code }, { color });
+      map.setFeatureState({ source: src, id: code }, { color });
     }
   }
 
@@ -395,10 +456,17 @@ export default function IndiaMap() {
           })}
         </select>
         <div className="mt-2 flex gap-1 text-xs">
+          <button onClick={() => setLevel("district")} aria-pressed={level === "district"} aria-label="Show district-level map"
+            className={`flex-1 rounded px-2 py-1 ${level === "district" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>Districts</button>
+          <button onClick={() => setLevel("state")} aria-pressed={level === "state"} aria-label="Show state-level map"
+            className={`flex-1 rounded px-2 py-1 ${level === "state" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>States</button>
+        </div>
+        <div className="mt-1 flex gap-1 text-xs">
           <button onClick={() => setMode("value")} aria-pressed={mode === "value"} className={`flex-1 rounded px-2 py-1 ${mode === "value" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>Value</button>
           <button onClick={() => setMode("vs_avg")} aria-pressed={mode === "vs_avg"} className={`flex-1 rounded px-2 py-1 ${mode === "vs_avg" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>vs avg</button>
           <button onClick={() => { setCompare((c) => { const n = !c; if (!n) clearPins(); else setDetail(null); return n; }); }} aria-pressed={compare}
-            className={`flex-1 rounded px-2 py-1 ${compare ? "bg-accent-amber text-background" : "border border-border text-foreground-muted"}`}>compare</button>
+            disabled={level === "state"} title={level === "state" ? "Switch to Districts to compare" : undefined}
+            className={`flex-1 rounded px-2 py-1 disabled:opacity-40 ${compare ? "bg-accent-amber text-background" : "border border-border text-foreground-muted"}`}>compare</button>
         </div>
         <div className="mt-1 flex gap-1 text-xs">
           <button onClick={exportPng} disabled={!data} aria-label="Export current map as PNG"
@@ -418,7 +486,7 @@ export default function IndiaMap() {
               <span>{mode === "vs_avg" ? "below" : fmt(data.min)}</span><span>{data.unit}</span><span>{mode === "vs_avg" ? "above" : fmt(data.max)}</span>
             </div>
             {mode === "vs_avg" && <div className="text-center text-[10px] text-foreground-muted">avg {fmt(data.mean)} {data.unit}</div>}
-            <div className="mt-2 text-[11px] text-foreground-muted">{data.count} districts · Census {data.year}</div>
+            <div className="mt-2 text-[11px] text-foreground-muted">{data.count} {level === "state" ? "states" : "districts"} · Census {data.year}</div>
             <div className="text-[10px] leading-tight text-foreground-muted/70">Source: {data.source} · GODL-India</div>
           </div>
         )}
@@ -485,7 +553,7 @@ export default function IndiaMap() {
 
       {hover && (
         <div className="pointer-events-none absolute bottom-4 left-4 z-10 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-lg">
-          <div className="font-medium">{hover.name}<span className="text-foreground-muted"> · {hover.state}</span></div>
+          <div className="font-medium">{hover.name}{hover.state && <span className="text-foreground-muted"> · {hover.state}</span>}</div>
           {data && (
             <div className="text-foreground-muted">
               {data.name}: <span className="text-foreground">{fmt(hover.value)}</span> {hover.value != null ? data.unit : ""}
