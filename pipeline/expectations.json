@@ -1,0 +1,18 @@
+{
+  "metric_count": 12,
+  "district_coverage": 730,
+  "per_metric_district_count": {
+    "agri_labourers_pct": 730,
+    "child_sex_ratio": 730,
+    "cultivators_pct": 730,
+    "female_literacy_rate": 730,
+    "household_industry_pct": 730,
+    "literacy_rate": 730,
+    "other_workers_pct": 730,
+    "pop_total": 730,
+    "sc_pct": 730,
+    "sex_ratio": 730,
+    "st_pct": 730,
+    "work_participation": 730
+  }
+}

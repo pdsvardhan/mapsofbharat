@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { interpolateViridis, interpolateRdBu } from "d3-scale-chromatic";
@@ -15,6 +15,12 @@ type MetricData = {
 };
 type View = { level: "national" | "state"; code?: string; name?: string };
 type Pin = { code: string; name: string; state: string };
+type Detail = { code: string; name: string; state: string };
+type RegionMetric = {
+  id: string; name: string; category: string; unit: string; year: number;
+  source: string; source_url: string; decimals: number; higher_is_better: number | null;
+  value: number; rank: number; count: number;
+};
 
 function bbox(geom: any): [number, number, number, number] {
   let minX = 180, minY = 90, maxX = -180, maxY = -90;
@@ -29,27 +35,103 @@ function bbox(geom: any): [number, number, number, number] {
   return [minX, minY, maxX, maxY];
 }
 
+// ── point-in-polygon (for find-my-district) ─────────────────────────────
+function pointInRing(pt: [number, number], ring: number[][]): boolean {
+  let inside = false;
+  const x = pt[0], y = pt[1];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    const intersect = (yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+function pointInRingsWithHoles(pt: [number, number], rings: number[][][]): boolean {
+  if (!rings.length || !pointInRing(pt, rings[0])) return false;
+  for (let i = 1; i < rings.length; i++) if (pointInRing(pt, rings[i])) return false;
+  return true;
+}
+function pointInFeature(pt: [number, number], geom: any): boolean {
+  if (!geom) return false;
+  if (geom.type === "Polygon") return pointInRingsWithHoles(pt, geom.coordinates);
+  if (geom.type === "MultiPolygon") return geom.coordinates.some((poly: number[][][]) => pointInRingsWithHoles(pt, poly));
+  return false;
+}
+
+function readUrl() {
+  if (typeof window === "undefined") return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[] };
+  const p = new URLSearchParams(window.location.search);
+  return {
+    m: p.get("m") || "",
+    mode: (p.get("mode") === "vs_avg" ? "vs_avg" : "value") as "value" | "vs_avg",
+    st: p.get("st") || "",
+    stn: p.get("stn") || "",
+    cmp: (p.get("cmp") || "").split(",").filter(Boolean),
+  };
+}
+
 export default function IndiaMap() {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const valuesRef = useRef<Record<string, number>>({});
   const rankRef = useRef<Record<string, number>>({});
   const statesRef = useRef<Record<string, any>>({});
+  const districtsFCRef = useRef<any>(null);
   const loadedRef = useRef(false);
   const compareRef = useRef(false);
   const pinsRef = useRef<Pin[]>([]);
+  const viewRef = useRef<View>({ level: "national" });
+  const restoreRef = useRef(readUrl());
 
+  const init = restoreRef.current;
   const [metrics, setMetrics] = useState<Metric[]>([]);
-  const [sel, setSel] = useState<string>("");
+  const [sel, setSel] = useState<string>(init.m || "");
   const [data, setData] = useState<MetricData | null>(null);
-  const [mode, setMode] = useState<"value" | "vs_avg">("value");
+  const [mode, setMode] = useState<"value" | "vs_avg">(init.mode);
   const [view, setView] = useState<View>({ level: "national" });
-  const [compare, setCompare] = useState(false);
+  const [compare, setCompare] = useState(init.cmp.length > 0);
   const [pins, setPins] = useState<Pin[]>([]);
   const [hover, setHover] = useState<{ name: string; state: string; value: number | null; rank: number | null } | null>(null);
+  const [ready, setReady] = useState(false);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [detailData, setDetailData] = useState<RegionMetric[] | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [geoMsg, setGeoMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => { compareRef.current = compare; }, [compare]);
   useEffect(() => { pinsRef.current = pins; }, [pins]);
+  useEffect(() => { viewRef.current = view; }, [view]);
+
+  const openDetail = useCallback((feat: { id?: string | number; properties?: any }) => {
+    const code = String(feat.id ?? feat.properties?.rid ?? "");
+    if (!code) return;
+    setDetail({
+      code,
+      name: String(feat.properties?.district ?? "—"),
+      state: String(feat.properties?.st_nm ?? ""),
+    });
+    setDetailData(null);
+    fetch(`/api/region/${encodeURIComponent(code)}`)
+      .then((r) => r.json())
+      .then((d) => setDetailData(d.metrics || []))
+      .catch(() => setDetailData([]));
+  }, []);
+
+  // F1: metric list loads on mount, independent of the map render.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/metrics")
+      .then((r) => r.json())
+      .then((m) => {
+        if (cancelled) return;
+        const list: Metric[] = m.metrics || [];
+        setMetrics(list);
+        setSel((cur) => cur || (list.find((x) => x.id === "literacy_rate")?.id ?? list[0]?.id ?? ""));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
@@ -58,7 +140,8 @@ export default function IndiaMap() {
       style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0b0f14" } }] },
       bounds: INDIA_BOUNDS, fitBoundsOptions: { padding: 24 },
       attributionControl: false, maxZoom: 12, minZoom: 3, dragRotate: false,
-    });
+      preserveDrawingBuffer: true,
+    } as maplibregl.MapOptions & { preserveDrawingBuffer?: boolean });
     mapRef.current = map;
     (window as any).__mob_map = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -69,6 +152,7 @@ export default function IndiaMap() {
         fetch("/geo/districts.geojson").then((r) => r.json()),
         fetch("/geo/states.geojson").then((r) => r.json()),
       ]);
+      districtsFCRef.current = districts;
       (states.features as any[]).forEach((f) => { statesRef.current[String(f.properties?.st_code)] = f; });
       map.addSource("districts", { type: "geojson", data: districts, promoteId: "rid" });
       map.addSource("states", { type: "geojson", data: states });
@@ -125,19 +209,34 @@ export default function IndiaMap() {
             map.setFeatureState({ source: "districts", id: code }, { pinned: true });
             setPins(next);
           }
+        } else if (viewRef.current.level === "state") {
+          openDetail({ id: String(f.id), properties: f.properties });
         } else {
           drillToState(String(f.properties?.st_code).padStart(2, "0"), String(f.properties?.st_nm ?? ""));
         }
       });
 
       loadedRef.current = true;
-      const m = await fetch("/api/metrics").then((r) => r.json());
-      const list: Metric[] = m.metrics || [];
-      setMetrics(list);
-      if (list.length) setSel(list.find((x) => x.id === "literacy_rate")?.id ?? list[0].id);
+      setReady(true);
+
+      // restore drill + compare pins from a shared link
+      const r = restoreRef.current;
+      if (r.st) drillToState(r.st.padStart(2, "0"), r.stn || "");
+      if (r.cmp.length) {
+        const restored: Pin[] = [];
+        for (const code of r.cmp.slice(0, 2)) {
+          const feat = (districts.features as any[]).find((ff) => String(ff.properties?.rid) === code);
+          if (feat) {
+            restored.push({ code, name: String(feat.properties?.district ?? "—"), state: String(feat.properties?.st_nm ?? "") });
+            map.setFeatureState({ source: "districts", id: code }, { pinned: true });
+          }
+        }
+        if (restored.length) { setCompare(true); setPins(restored); }
+      }
     });
 
     return () => { map.remove(); mapRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function drillToState(code: string, name: string) {
@@ -153,6 +252,7 @@ export default function IndiaMap() {
     map.setFilter("district-fill", null); map.setFilter("district-line", null); map.setFilter("state-line", null);
     map.fitBounds(INDIA_BOUNDS, { padding: 24, duration: 750, essential: true });
     setView({ level: "national" });
+    setDetail(null);
   }
   function clearPins() {
     const map = mapRef.current;
@@ -162,7 +262,7 @@ export default function IndiaMap() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !sel || !loadedRef.current) return;
+    if (!map || !sel || !ready) return;
     let cancelled = false;
     (async () => {
       const md: MetricData = await fetch(`/api/metrics/${sel}`).then((r) => r.json());
@@ -176,9 +276,21 @@ export default function IndiaMap() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel]);
+  }, [sel, ready]);
 
   useEffect(() => { if (data) recolor(data, mode); /* eslint-disable-next-line */ }, [mode]);
+
+  // keep the URL in sync so the current view is shareable
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const p = new URLSearchParams();
+    if (sel) p.set("m", sel);
+    if (mode !== "value") p.set("mode", mode);
+    if (view.level === "state" && view.code) { p.set("st", view.code); if (view.name) p.set("stn", view.name); }
+    if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
+    const qs = p.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+  }, [sel, mode, view, pins]);
 
   function recolor(md: MetricData, m: "value" | "vs_avg") {
     const map = mapRef.current; if (!map) return;
@@ -195,8 +307,74 @@ export default function IndiaMap() {
     }
   }
 
-  const fmt = (v: number | null | undefined) => (v == null ? "no data" : v.toLocaleString("en-IN", { maximumFractionDigits: data?.decimals ?? 0 }));
-  const pctRank = (rank: number | null) => (rank == null || !data ? "" : `rank ${rank}/${data.count} · top ${Math.max(1, Math.round((rank / data.count) * 100))}%`);
+  const exportPng = useCallback(() => {
+    const map = mapRef.current; if (!map || !data) return;
+    const src = map.getCanvas();
+    const dpr = window.devicePixelRatio || 1;
+    const header = Math.round(56 * dpr);
+    const out = document.createElement("canvas");
+    out.width = src.width;
+    out.height = src.height + header;
+    const ctx = out.getContext("2d"); if (!ctx) return;
+    ctx.fillStyle = "#0b0f14";
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(src, 0, header);
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#e6edf3";
+    ctx.font = `600 ${Math.round(20 * dpr)}px sans-serif`;
+    const title = view.level === "state" && view.name ? `${data.name} · ${view.name}` : data.name;
+    ctx.fillText(`${title} (${data.unit})`, 14 * dpr, header * 0.38);
+    ctx.fillStyle = "#8b98a5";
+    ctx.font = `${Math.round(12 * dpr)}px sans-serif`;
+    ctx.fillText(`Source: ${data.source} · Census ${data.year} · MapsOfBharat`, 14 * dpr, header * 0.74);
+    const a = document.createElement("a");
+    a.href = out.toDataURL("image/png");
+    const suffix = view.level === "state" && view.name ? "-" + view.name.replace(/\s+/g, "_") : "";
+    a.download = `mapsofbharat-${sel}${suffix}.png`;
+    a.click();
+  }, [data, sel, view]);
+
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setGeoMsg("Couldn't copy — copy the address bar manually");
+    }
+  }, []);
+
+  const locate = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) { setGeoMsg("Geolocation not supported"); return; }
+    setLocating(true); setGeoMsg(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const pt: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+        const fc = districtsFCRef.current;
+        const map = mapRef.current;
+        if (!fc || !map) { setGeoMsg("Map not ready yet"); return; }
+        const feat = (fc.features as any[]).find((f) => pointInFeature(pt, f.geometry));
+        if (!feat) { setGeoMsg("You're outside India's mapped districts"); return; }
+        const stc = String(feat.properties?.st_code).padStart(2, "0");
+        drillToState(stc, String(feat.properties?.st_nm ?? ""));
+        map.fitBounds(bbox(feat.geometry) as any, { padding: 80, duration: 900, maxZoom: 9, essential: true });
+        openDetail({ id: String(feat.properties?.rid), properties: feat.properties });
+      },
+      (err) => {
+        setLocating(false);
+        setGeoMsg(err.code === err.PERMISSION_DENIED ? "Location permission denied" : "Couldn't get your location");
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+  }, [openDetail]);
+
+  const fmt = (v: number | null | undefined, decimals?: number) =>
+    v == null ? "no data" : v.toLocaleString("en-IN", { maximumFractionDigits: decimals ?? data?.decimals ?? 0 });
+  const pctRank = (rank: number | null, count?: number) => {
+    const c = count ?? data?.count;
+    return rank == null || !c ? "" : `rank ${rank}/${c} · top ${Math.max(1, Math.round((rank / c) * 100))}%`;
+  };
   const ramp = (m: "value" | "vs_avg") => (m === "vs_avg" ? [interpolateRdBu(0), interpolateRdBu(0.5), interpolateRdBu(1)] : [interpolateViridis(0), interpolateViridis(0.5), interpolateViridis(1)]);
 
   return (
@@ -209,7 +387,7 @@ export default function IndiaMap() {
           <span className="truncate text-foreground-muted">· {view.level === "state" ? view.name : "all districts"}</span>
         </div>
         {view.level === "state" && <button onClick={backToNational} className="mt-2 text-xs text-accent-teal hover:underline">← Back to India</button>}
-        <select value={sel} onChange={(e) => setSel(e.target.value)}
+        <select value={sel} onChange={(e) => setSel(e.target.value)} aria-label="Select metric"
           className="mt-2 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent-teal">
           {["demographics", "livelihood"].map((cat) => {
             const inCat = metrics.filter((m) => m.category === cat);
@@ -217,12 +395,22 @@ export default function IndiaMap() {
           })}
         </select>
         <div className="mt-2 flex gap-1 text-xs">
-          <button onClick={() => setMode("value")} className={`flex-1 rounded px-2 py-1 ${mode === "value" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>Value</button>
-          <button onClick={() => setMode("vs_avg")} className={`flex-1 rounded px-2 py-1 ${mode === "vs_avg" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>vs avg</button>
-          <button onClick={() => { setCompare((c) => { const n = !c; if (!n) clearPins(); return n; }); }}
+          <button onClick={() => setMode("value")} aria-pressed={mode === "value"} className={`flex-1 rounded px-2 py-1 ${mode === "value" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>Value</button>
+          <button onClick={() => setMode("vs_avg")} aria-pressed={mode === "vs_avg"} className={`flex-1 rounded px-2 py-1 ${mode === "vs_avg" ? "bg-accent-teal text-background" : "border border-border text-foreground-muted"}`}>vs avg</button>
+          <button onClick={() => { setCompare((c) => { const n = !c; if (!n) clearPins(); else setDetail(null); return n; }); }} aria-pressed={compare}
             className={`flex-1 rounded px-2 py-1 ${compare ? "bg-accent-amber text-background" : "border border-border text-foreground-muted"}`}>compare</button>
         </div>
+        <div className="mt-1 flex gap-1 text-xs">
+          <button onClick={exportPng} disabled={!data} aria-label="Export current map as PNG"
+            className="flex-1 rounded border border-border px-2 py-1 text-foreground-muted hover:border-accent-teal disabled:opacity-40">PNG</button>
+          <button onClick={copyLink} aria-label="Copy shareable link to this view"
+            className="flex-1 rounded border border-border px-2 py-1 text-foreground-muted hover:border-accent-teal">{copied ? "copied!" : "Link"}</button>
+          <button onClick={locate} disabled={locating} aria-label="Find my district using geolocation"
+            className="flex-1 rounded border border-border px-2 py-1 text-foreground-muted hover:border-accent-teal disabled:opacity-40">{locating ? "…" : "Locate"}</button>
+        </div>
+        {geoMsg && <div className="mt-1 text-[11px] text-accent-amber">{geoMsg}</div>}
         {compare && <div className="mt-1 text-[11px] text-accent-amber">Click 2 districts to compare</div>}
+        {view.level === "state" && !compare && <div className="mt-1 text-[11px] text-foreground-muted">Click a district for its full profile</div>}
         {data && (
           <div className="mt-3">
             <div className="h-2.5 w-full rounded" style={{ background: `linear-gradient(90deg, ${ramp(mode).join(", ")})` }} />
@@ -236,6 +424,37 @@ export default function IndiaMap() {
         )}
         {!metrics.length && <div className="mt-2 text-xs text-accent-amber">No metrics loaded yet.</div>}
       </div>
+
+      {/* region detail panel */}
+      {detail && !compare && (
+        <div className="absolute right-4 top-4 z-10 max-h-[calc(100dvh-2rem)] w-72 overflow-y-auto rounded-lg border border-border bg-card/95 p-3 backdrop-blur">
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-heading)" }}>{detail.name}</div>
+              <div className="text-[11px] text-foreground-muted">{detail.state}</div>
+            </div>
+            <button onClick={() => setDetail(null)} aria-label="Close region detail" className="text-foreground-muted hover:text-foreground">✕</button>
+          </div>
+          {detailData === null && <div className="py-4 text-center text-xs text-foreground-muted">Loading profile…</div>}
+          {detailData?.length === 0 && <div className="py-4 text-center text-xs text-foreground-muted">No metrics for this district.</div>}
+          {detailData && detailData.length > 0 && (
+            <div className="space-y-2">
+              {detailData.map((rm) => (
+                <div key={rm.id} className="rounded-md border border-border-subtle bg-background/40 p-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs text-foreground-muted">{rm.name}</span>
+                    <span className="text-sm font-medium text-foreground">{fmt(rm.value, rm.decimals)} <span className="text-[10px] text-foreground-muted">{rm.unit}</span></span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between text-[10px] text-foreground-muted">
+                    <span>{pctRank(rm.rank, rm.count)}</span>
+                    <a href={rm.source_url} target="_blank" rel="noopener noreferrer" className="hover:text-accent-teal">{rm.source} ·{rm.year}</a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* compare panel */}
       {compare && pins.length > 0 && data && (

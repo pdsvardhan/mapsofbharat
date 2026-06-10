@@ -14,6 +14,14 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
         ],
       },
+      {
+        // Static geometry is large and effectively immutable between data
+        // rebuilds — cache aggressively on the wire (risk slow-page-load / #51).
+        source: "/geo/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
+        ],
+      },
     ];
   },
 };

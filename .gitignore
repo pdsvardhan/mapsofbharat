@@ -48,3 +48,7 @@ pipeline/raw/
 *.log
 pipeline/shrug/
 *.bak
+
+# python
+__pycache__/
+*.pyc
