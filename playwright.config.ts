@@ -1,8 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Smoke tests run against an already-running instance (LAN container or local
-// dev). Set BASE_URL to target a specific deployment.
-const BASE_URL = process.env.BASE_URL || "http://localhost:8601";
+// Smoke + flow tests run against an already-running instance (LAN container or
+// local dev). Set BASE_URL to target a specific deployment.
+// Default matches the container bind moved to 127.0.0.1:8610 on 2026-06-10
+// (host port 8601 was freed for tg-ingest).
+const BASE_URL = process.env.BASE_URL || "http://localhost:8610";
 
 export default defineConfig({
   testDir: "./tests",
