@@ -119,14 +119,20 @@ class RegionMatcher:
 
 
 def upsert_metric(con, mid, name, category, unit, decimals, higher_is_better,
-                  description, source, source_url, license_, year):
+                  description, source, source_url, license_, year, methodology=None):
+    # idempotent migration: trust-layer columns (iter-15 item 161)
+    mcols = {r[1] for r in con.execute("PRAGMA table_info(metrics)")}
+    for c in ("methodology", "last_updated"):
+        if c not in mcols:
+            con.execute(f"ALTER TABLE metrics ADD COLUMN {c} TEXT")
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     con.execute(
         """INSERT OR REPLACE INTO metrics
            (id, name, category, unit, decimals, higher_is_better, default_scale,
-            description, source, source_url, license, year)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            description, source, source_url, license, year, methodology, last_updated)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (mid, name, category, unit, decimals, higher_is_better, "sequential",
-         description, source, source_url, license_, year))
+         description, source, source_url, license_, year, methodology, now))
 
 
 def write_values(con, mid, level, year, values: dict):

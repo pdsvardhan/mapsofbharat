@@ -16,6 +16,10 @@ URL = "http://rchiips.org/nfhs/districtfactsheet_NFHS-5.shtml"
 LICENSE = "Govt. of India publication"
 YEAR = 2021
 FETCHED = "2026-06-10T20:30:00Z"
+METHODOLOGY = ("Survey estimate from NFHS-5 (2019-21) district factsheets (IIPS/MoHFW). "
+               "District names matched to current boundaries (95% match); Delhi sub-districts "
+               "and a few renamed districts could not be mapped 1:1 and are absent. District level only — "
+               "state factsheets are a separate series and unweighted district averages would be wrong.")
 
 # (metric_id, display name, source column, higher_is_better)
 PICKS = [
@@ -82,7 +86,7 @@ def main():
                 vals[rid] = round(float(v), 1)
         upsert_metric(con, mid, name, "health", "%", 1, hib,
                       f"NFHS-5 district factsheet indicator: {col[:160]}",
-                      SOURCE, URL, LICENSE, YEAR)
+                      SOURCE, URL, LICENSE, YEAR, methodology=METHODOLOGY)
         n = write_values(con, mid, "district", YEAR, vals)
         total += n
         print(f"  {mid}: {n} districts")

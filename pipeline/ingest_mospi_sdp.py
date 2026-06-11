@@ -16,6 +16,9 @@ SOURCE = "MoSPI, State-wise Per Capita NSDP at current prices (release 15.03.202
 URL = "https://www.mospi.gov.in/data"
 LICENSE = "GODL-India"
 FETCHED = "2026-06-10T20:30:00Z"
+METHODOLOGY = ("Per-capita Net State Domestic Product at current prices from the MoSPI state series "
+               "(release 15.03.2024); the latest fiscal year with at least 30 states reporting is shown. "
+               "State level only — no official district NSDP series exists.")
 
 
 def main():
@@ -46,7 +49,7 @@ def main():
     upsert_metric(con, mid, "Per-capita NSDP", "economy", "₹/year", 0, 1,
                   f"Per capita Net State Domestic Product at current prices, FY {best_col} "
                   f"(MoSPI). State-level series; no district breakdown exists.",
-                  SOURCE, URL, LICENSE, best_year)
+                  SOURCE, URL, LICENSE, best_year, methodology=METHODOLOGY)
     n = write_values(con, mid, "state", best_year, best_vals)
     log_load(con, "ingest_mospi_sdp.py", SOURCE, best_year, LICENSE, FETCHED, n,
              f"sheet 'PC curr.' col {best_col}; {len(best_vals)} states")

@@ -149,6 +149,11 @@ if covered_note or excluded_districts:
 
 if ok and ok_st:
     con = sqlite3.connect(DB); con.execute("PRAGMA journal_mode=DELETE;")
+    # idempotent migration: trust-layer columns (iter-15 item 161)
+    mcols = {r[1] for r in con.execute("PRAGMA table_info(metrics)")}
+    for c in ("methodology", "last_updated"):
+        if c not in mcols:
+            con.execute(f"ALTER TABLE metrics ADD COLUMN {c} TEXT")
     con.execute("""CREATE TABLE IF NOT EXISTS crosswalk (
         sd_code TEXT NOT NULL, rid TEXT NOT NULL, method TEXT NOT NULL,
         PRIMARY KEY (sd_code, rid))""")
@@ -197,7 +202,14 @@ if ok and ok_st:
         con.execute("INSERT OR REPLACE INTO region_keys VALUES(?,?,?,?,?,?,?)",
                     ("state", code, p["st_nm"], code, None, ISO.get(p["st_nm"]), None))
 
+    CENSUS_METHODOLOGY = ("Census 2011 PCA raw counts reaggregated from sub-districts (SHRUG/DDL) onto "
+                          "current-day district boundaries via a point-in-polygon crosswalk; rates recomputed "
+                          "from raw counts (ADR-010). Validated against official district PCA (median diff 0.00%). "
+                          "States whose sub-district source covers <98% of the official total use the official "
+                          "state PCA directly; districts in states under 90% coverage are withheld.")
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    con.execute("UPDATE metrics SET methodology=?, last_updated=? WHERE category IN ('demographics','livelihood')",
+                (CENSUS_METHODOLOGY, now))
     con.execute("INSERT INTO load_log (adapter, source, year, license, fetched_at, loaded_at, rows_written, notes) VALUES (?,?,?,?,?,?,?,?)",
                 ("reaggregate.py", "Census of India 2011 PCA via SHRUG sub-district + DataMeet boundaries",
                  2011, "GODL-India", "2026-06-08T00:00:00Z", now, n + n_st,

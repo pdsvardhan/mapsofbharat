@@ -19,6 +19,13 @@ URL = "https://data.gov.in/catalog/crime-india-2022"
 LICENSE = "GODL-India"
 YEAR = 2022
 FETCHED = "2026-06-10T20:30:00Z"
+METHODOLOGY = ("Counts from NCRB Crime in India 2022 district tables; rates per 100,000 computed "
+               "against Census-2011 reaggregated population (the only district-level denominator in "
+               "the store — the vintage mismatch slightly inflates rates in fast-growing districts). "
+               "NCRB reports by police district: City/Rural/Commissionerate splits are summed into the "
+               "host revenue district (documented approximations for metro commissionerates); railway "
+               "and non-geographic units are excluded. Districts without a trustworthy denominator "
+               "(SHRUG-undercovered states) are withheld.")
 
 DROP_UNITS = re.compile(
     r"crime branch|c\.?i\.?d|railway|cyber|stf|eow|special cell|"
@@ -133,7 +140,7 @@ def main():
         upsert_metric(con, mid, mname, "crime", "per 100k", 1, 0,
                       f"{desc}, 2022, per 100,000 population (denominator: Census 2011 "
                       f"reaggregated population — rate vintage mismatch is stated, not hidden).",
-                      SOURCE, URL, LICENSE, YEAR)
+                      SOURCE, URL, LICENSE, YEAR, methodology=METHODOLOGY)
         n = write_values(con, mid, "district", YEAR, rates)
         n += write_values(con, mid, "state", YEAR, st_rates)
         total_rows += n
