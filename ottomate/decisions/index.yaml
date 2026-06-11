@@ -107,3 +107,13 @@ decisions:
       - data
       - architecture
     body_path: decisions/2026-06-09-reaggregate-subdistrict-crosswalk.md
+  - id: adr-011-stage3-ac-rescope
+    project_slug: mapsofbharat
+    title: Re-scope Stage 1 acceptance criteria to shipped Stage 3 reality; move
+      gaps to backlog
+    status: accepted
+    date: 2026-06-10T00:00:00.000Z
+    tags:
+      - process
+      - scope
+    body_path: decisions/2026-06-10-stage3-ac-rescope.md

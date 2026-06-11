@@ -145,3 +145,26 @@ reports existed in the tracker. That gap is now closed with real evidence:
   flow-compare steps reworded to the shipped pin-2-districts + Δ interaction.
 - **Known open bug (P0 in backlog):** rid `33_0` merges 4 TN districts (Tenkasi, Ranipet,
   Tirupathur, Chengalpattu) — also listed in C4 above.
+
+
+---
+
+## Session 2026-06-11 — Iteration 15 (Stage 4): P0 bug, state engine, 3 new data verticals
+
+Iteration 15 locked with 13 items (lock_in_audit in tracker). **Verified + deployed (live on :8610, commits cc5c9a0…748bac6 on `iter-15-2026-06-11`):**
+
+- **157 ✅ P0 rid `33_0`** — Tenkasi/Ranipet/Tirupathur/Chengalpattu un-merged (`33_9001..9004`), coverage 730→733 (verifier report 90).
+- **167 ✅ geo keys** — `crosswalk` table (5,969 rows, within/nearest), `region_keys` (735 districts + 36 states, ISO 3166-2; `lgd_code` column nullable pending source) (report 91).
+- **160 ✅ state-level engine** — 432 state rows sum-consistent to the rupee; `?level=` APIs; Districts|States toggle with state hover/detail/rank; `lvl=` permalinks (report 92).
+- **159 ✅ three new verticals** (reports 93, one auto-fix round):
+  - **NCRB Crime in India 2022**: 4 metrics (IPC, murder, crimes-against-women, cyber, per 100k with *stated* Census-2011 denominators), 685 districts + 35 states, matched-count share 90.3–96%. Police-district aggregation incl. commissionerate map + directional/PC splits (Jaipur/Jodhpur/Howrah fixed in 748bac6).
+  - **NFHS-5 (2019-21)**: 9 district indicators (stunting, underweight, anaemia, institutional births, immunization, sanitation, clean fuel, insurance, child marriage), 95% district match. District-only by design.
+  - **MoSPI**: per-capita NSDP (current prices, 2021-22), 32 states, state-only.
+  - **UDISE+ skipped** with auditable skip_reason in load_log (no headless download).
+  - Site now serves **26 metrics across 5 categories**; selector categories dynamic; level auto-switch for single-level metrics.
+
+**Still locked (not built):** 158 UI revamp (awaits per-slot component picks at `/projects/mapsofbharat/components-pick`, 7 slots created; Observatory-v2 master plan saved), 161 methodology surface, 162 load_log API exposure (table exists + populated), 163 CSV export, 164 class breaks, 165 embed, 166 religion/language/amenities (needs ~36 DDW files), 168 Census 2001 (SHRUG pc01 not in holdings), 169 polish trio.
+
+**New bug filed (intake report 18):** Aizawl pop_total 50,777 vs real ~400k; Saitual has no data — Mizoram sub-district crosswalk mis-assignment; inflates Aizawl crime rates ~8x. Fix before trusting Mizoram values.
+
+**Data acquired** (gitignored `pipeline/raw-new/`): 9 NCRB district tables + 2 manifests (the 2023 manifest lists ~275 more downloadable tables), NFHS-5 factsheet CSV, 4 economy workbooks, census C-01 religion (national + AP sample). Acquisition scout died on session limits before writing its log.
