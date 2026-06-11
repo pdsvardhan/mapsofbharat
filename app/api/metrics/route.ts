@@ -11,6 +11,7 @@ export async function GET() {
     .prepare(
       `SELECT m.id, m.name, m.category, m.unit, m.year, m.source, m.source_url,
               m.license, m.higher_is_better, m.decimals, m.default_scale,
+              m.methodology, m.last_updated,
               (SELECT GROUP_CONCAT(DISTINCT v.region_level) FROM metric_values v
                 WHERE v.metric_id = m.id) AS levels
        FROM metrics m ORDER BY m.category, m.name`

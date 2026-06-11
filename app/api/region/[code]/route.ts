@@ -24,7 +24,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
          WHERE region_level = ? AND value IS NOT NULL
        )
        SELECT m.id, m.name, m.category, m.unit, m.year, m.source, m.source_url,
-              m.decimals, m.higher_is_better, r.value, r.cnt,
+              m.decimals, m.higher_is_better, m.methodology, m.last_updated,
+              r.value, r.cnt,
               CASE WHEN m.higher_is_better = 0 THEN r.rank_asc ELSE r.rank_desc END AS rank
        FROM ranked r
        JOIN metrics m ON m.id = r.metric_id
@@ -54,6 +55,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
       source_url: r.source_url,
       decimals: r.decimals,
       higher_is_better: r.higher_is_better,
+      methodology: r.methodology,
+      last_updated: r.last_updated,
       value: r.value,
       rank: r.rank,
       count: r.cnt,

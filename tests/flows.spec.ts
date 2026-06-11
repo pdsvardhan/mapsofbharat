@@ -70,12 +70,12 @@ test.describe("flow-drill-state", () => {
     await clickLngLat(page, BHOPAL);
     const back = page.getByRole("button", { name: /Back to India/i });
     await expect(back).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/· Madhya Pradesh/i).first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Drill trail" })).toContainText("Madhya Pradesh");
 
     // Steps 3+4: breadcrumb back -> national view restored
     await back.click();
     await expect(back).not.toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/· all districts/i)).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Drill trail" })).not.toContainText("Madhya Pradesh");
   });
 });
 
@@ -127,7 +127,7 @@ test.describe("flow-export-share", () => {
     await page.goto(`/explore?m=${encodeURIComponent(metric)}&st=23&stn=Madhya%20Pradesh`);
     await waitForMapReady(page);
     await expect(page.getByRole("button", { name: /Back to India/i })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/· Madhya Pradesh/i).first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Drill trail" })).toContainText("Madhya Pradesh");
     await expect(select).toHaveValue(metric);
   });
 });
