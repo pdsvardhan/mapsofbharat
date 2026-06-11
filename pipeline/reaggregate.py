@@ -81,17 +81,71 @@ print(f"states with data: {len(results_st)} / 36 ; state-sum pop: {total_pop_st:
 off = pd.read_excel(os.path.join(RAW, "2011-IndiaStateDist.xlsx"), sheet_name="Data", dtype=str)
 off = off[(off["Level"] == "DISTRICT") & (off["TRU"] == "Total")]
 diffs = []
+diff_by_rid = {}
 for stc, dc, tp in zip(off["State"], off["District"], pd.to_numeric(off["TOT_P"], errors="coerce")):
     if isinstance(dc, str) and dc.isdigit() and not pd.isna(tp):
         rid = f"{str(stc).split('.')[0].zfill(2)}_{int(dc)}"
         if rid in results and results[rid]["pop_total"]:
-            diffs.append(abs(results[rid]["pop_total"] - float(tp)) / float(tp) * 100)
+            d = abs(results[rid]["pop_total"] - float(tp)) / float(tp) * 100
+            diffs.append(d)
+            diff_by_rid[rid] = d
 med = statistics.median(diffs) if diffs else 99
 print(f"vs official (matched rid, n={len(diffs)}): median={med:.2f}%  mean={statistics.mean(diffs):.2f}%  within2%={sum(1 for d in diffs if d<2)}  worst={ [round(x,1) for x in sorted(diffs,reverse=True)[:4]] }")
 ok = abs(total_pop - 1.210854977e9) / 1.210854977e9 < 0.03 and med < 2
 # state pass internal consistency: state sums must reproduce the district total
 ok_st = total_pop_st is not None and abs(total_pop_st - total_pop) < 1
 print("VALIDATION:", "PASS" if (ok and ok_st) else "FAIL", "(district)", "PASS" if ok_st else "FAIL", "(state-consistency)")
+
+# ── source-coverage gate ────────────────────────────────────────────────
+# SHRUG's sub-district PCA undercovers some states (e.g. Mizoram is missing
+# urban Aizawl: 721k of 1,097k counted). Wrong denominators are worse than no
+# data ("no misleading maps" must-have), so for any state whose reaggregated
+# total is <90% of the official state PCA total: drop its DISTRICT rows and
+# derive its STATE row straight from the official state PCA instead.
+# Split states (census 28 -> 36/37, census 01 -> 01/38) can't be compared 1:1
+# and are skipped — their coverage is separately bounded by the district gate.
+OFF_COLS = {"pc11_pca_tot_p": "TOT_P", "pc11_pca_tot_m": "TOT_M", "pc11_pca_tot_f": "TOT_F",
+            "pc11_pca_p_06": "P_06", "pc11_pca_m_06": "M_06", "pc11_pca_f_06": "F_06",
+            "pc11_pca_p_sc": "P_SC", "pc11_pca_p_st": "P_ST", "pc11_pca_p_lit": "P_LIT",
+            "pc11_pca_f_lit": "F_LIT", "pc11_pca_tot_work_p": "TOT_WORK_P",
+            "pc11_pca_main_cl_p": "MAIN_CL_P", "pc11_pca_main_al_p": "MAIN_AL_P",
+            "pc11_pca_main_hh_p": "MAIN_HH_P", "pc11_pca_main_ot_p": "MAIN_OT_P"}
+off_states = pd.read_excel(os.path.join(RAW, "2011-IndiaStateDist.xlsx"), sheet_name="Data", dtype=str)
+off_states = off_states[(off_states["Level"] == "STATE") & (off_states["TRU"] == "Total")]
+excluded_districts = []
+covered_note = []
+low_cov_states = set()
+for _, srow in off_states.iterrows():
+    scode = str(srow["State"]).split(".")[0].zfill(2)
+    if scode in ("28", "01") or scode not in results_st:
+        continue  # split states or no computed row
+    official_tp = pd.to_numeric(srow["TOT_P"], errors="coerce")
+    computed_tp = results_st[scode]["pop_total"] or 0
+    if pd.isna(official_tp) or official_tp <= 0:
+        continue
+    cov = computed_tp / float(official_tp)
+    if cov < 0.98:
+        # state row from official PCA directly — strictly better denominator
+        raw = pd.Series({k: pd.to_numeric(srow[v], errors="coerce") for k, v in OFF_COLS.items()})
+        results_st[scode] = metrics(raw)
+        covered_note.append(f"state {scode}: cov={cov:.0%}, state row official-direct")
+    if cov < 0.90:
+        low_cov_states.add(scode)
+# District drops use the STATE coverage signal only: per-district diffs vs the
+# official 2011 figures CANNOT separate source undercoverage (bad) from
+# boundary re-cuts (expected and correct — ADR-010). Within-state boundary
+# changes preserve the state total; missing source data does not. So:
+#   cov < 90%  -> withhold every district in the state (we cannot tell which
+#                 sub-districts are missing); state row official-direct above
+#   90-98%     -> keep districts (modest town-level undercounts, caveat in
+#                 load_log); state row official-direct above
+for rid in list(results.keys()):
+    if rid.split("_")[0] in low_cov_states:
+        results.pop(rid); excluded_districts.append(rid)
+if covered_note or excluded_districts:
+    print("SOURCE-COVERAGE GATE:", "; ".join(covered_note))
+    print(f"  withheld {len(excluded_districts)} districts in low-coverage states:",
+          ", ".join(sorted(low_cov_states)))
 
 if ok and ok_st:
     con = sqlite3.connect(DB); con.execute("PRAGMA journal_mode=DELETE;")

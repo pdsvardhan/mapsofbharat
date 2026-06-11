@@ -52,19 +52,29 @@ def test_no_empty_region_codes(con):
 
 
 def test_district_coverage_is_broad(con):
-    # ~730 current districts have data
-    assert _coverage(con) >= 700
+    # union coverage across all verticals; census alone is 688 after the
+    # source-coverage gate withheld 45 districts in 5 SHRUG-undercovered states
+    assert _coverage(con) >= 680
 
 
-def test_each_metric_covers_most_districts(con):
-    cov = _coverage(con)
-    rows = con.execute(
-        "SELECT metric_id, COUNT(*) FROM metric_values "
+def test_each_metric_covers_expected_districts(con):
+    # per-metric coverage varies by vertical (census 688, NCRB ~650, NFHS
+    # 410-671, economy 0 district rows) — compare against the committed
+    # expectations baseline rather than the global union
+    import json
+    exp_path = os.path.join(os.path.dirname(__file__), "expectations.json")
+    if not os.path.exists(exp_path):
+        pytest.skip("expectations.json not present")
+    expected = json.load(open(exp_path))["per_metric_district_count"]
+    rows = dict(con.execute(
+        "SELECT metric_id, COUNT(DISTINCT region_code) FROM metric_values "
         "WHERE region_level='district' AND value IS NOT NULL GROUP BY metric_id"
-    ).fetchall()
+    ).fetchall())
     assert rows, "no district-level values found"
-    for metric_id, n in rows:
-        assert n >= cov * 0.95, f"metric {metric_id} only covers {n}/{cov} districts"
+    for metric_id, want in expected.items():
+        got = rows.get(metric_id, 0)
+        assert abs(got - want) <= max(2, want * 0.02), \
+            f"metric {metric_id}: {got} districts vs expected {want}"
 
 
 def test_values_are_finite(con):
