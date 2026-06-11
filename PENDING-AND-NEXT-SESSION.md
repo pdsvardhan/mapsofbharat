@@ -168,3 +168,21 @@ Iteration 15 locked with 13 items (lock_in_audit in tracker). **Verified + deplo
 **New bug filed (intake report 18):** Aizawl pop_total 50,777 vs real ~400k; Saitual has no data — Mizoram sub-district crosswalk mis-assignment; inflates Aizawl crime rates ~8x. Fix before trusting Mizoram values.
 
 **Data acquired** (gitignored `pipeline/raw-new/`): 9 NCRB district tables + 2 manifests (the 2023 manifest lists ~275 more downloadable tables), NFHS-5 factsheet CSV, 4 economy workbooks, census C-01 religion (national + AP sample). Acquisition scout died on session limits before writing its log.
+
+
+### Addendum (same day, later): 11/13 items verified — revamp + trust layer shipped
+
+- **Verified this round (reports 94–104):** 158 Observatory-v2 UI (Ctrl+K palette with
+  search-to-fly, filter rail, dock, sheet, breadcrumbs) · 161 methodology/last_updated
+  end-to-end + `/methodology` · 162 load_log provenance · 163 cited CSV · 164 class
+  breaks (real Fisher-Jenks) + 4 palettes · 165 `/embed` + CSP split · 169 polish trio
+  (locate highlight, state-cohort vs-avg, SoI pytest). One auto-fix round on 161
+  (reproducibility: pipeline code + schema migration now committed, e39056f).
+- **Report-18 fix (72b8137):** source-coverage gate — SHRUG undercovers urban
+  populations in 5 states (MZ 66%, LD 52%, PY 70%, TR 82%, WB 82%); their 45 district
+  rows are withheld (no data > wrong data), 8 states' rows official-direct. Census
+  coverage now 688 districts; drift baseline regenerated (26 metrics).
+- **Iteration 15 remaining:** 166 (religion/language/amenities — needs ~36 census DDW
+  downloads) + 168 (Census 2001 — SHRUG pc01 not in holdings). Integrate + trace
+  report blocked until both are verified or rejected.
+- Component picks registered on all 7 explore slots (delegated picks, swap at review).

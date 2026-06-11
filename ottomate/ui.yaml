@@ -8,29 +8,36 @@ pages:
     components:
       - name: command-palette
         category: navigation
-        picked: false
+        picked: true
+        asset_library_ref: mc-command-shadcn
         variants: []
       - name: region-detail-sheet
         category: overlay
-        picked: false
+        picked: true
+        asset_library_ref: mc-sheet
         variants: []
       - name: mode-dock
         category: navigation
-        picked: false
+        picked: true
+        asset_library_ref: mc-floating-dock
         variants: []
       - name: rankings-table
         category: display
-        picked: false
+        picked: true
+        asset_library_ref: mc-kibo-table
         variants: []
       - name: drill-breadcrumbs
         category: navigation
-        picked: false
+        picked: true
+        asset_library_ref: mc-breadcrumbs
         variants: []
       - name: filter-rail
         category: input
-        picked: false
+        picked: true
+        asset_library_ref: mc-filter-faceted
         variants: []
       - name: value-range-filter
         category: input
-        picked: false
+        picked: true
+        asset_library_ref: mc-filter-slider
         variants: []
