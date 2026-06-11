@@ -92,6 +92,22 @@ def main():
             # counts may aggregate into a merged polygon (unlike percentages)
             rid = m.match(r["State/UT"], base, extra_aliases={"mumbai suburban": "mumbai"})
             if not rid:
+                # directional police splits ("Jaipur East", "Howrah City Police
+                # North") aggregate into the parent district; strip trailing
+                # directionals and retry so partial counts are never written
+                base2 = base
+                for _ in range(3):
+                    stripped = re.sub(
+                        r"\s+(east|west|north|south|central|metro|metropolitan|"
+                        r"police|city|rural|urban|pc)$",
+                        "", base2, flags=re.I)
+                    if stripped == base2:
+                        break
+                    base2 = stripped
+                    rid = m.match(r["State/UT"], base2)
+                    if rid:
+                        break
+            if not rid:
                 # single-district states/UTs (Delhi, Chandigarh, ...): every police
                 # unit's counts roll up into the one polygon
                 st = m.state_code(r["State/UT"])
@@ -126,6 +142,13 @@ def main():
 
     log_load(con, "ingest_ncrb.py", SOURCE, YEAR, LICENSE, FETCHED, total_rows,
              f"4 metrics; dropped units {len(dropped_units)}; unmatched names {len(unmatched_all)}; fuzzy {len(m.fuzzy_log)}")
+    # drop-with-reason: UDISE+ education was in the locked vertical list but no
+    # district report-card files are acquirable headlessly (portal needs an
+    # interactive session) — recorded so the skip is auditable, not silent
+    log_load(con, "ingest_udise.py (skipped)",
+             "UDISE+ district report cards (MoE)", 2024, "n/a", FETCHED, 0,
+             "skip_reason: no headless-downloadable district dataset found by the "
+             "acquisition scout (2026-06-10); deferred until files are acquired")
     con.commit(); con.close()
     print(f"WROTE {total_rows} values.")
     print("dropped (non-geographic) sample:", sorted(dropped_units)[:10])
