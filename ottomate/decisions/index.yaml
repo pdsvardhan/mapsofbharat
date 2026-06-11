@@ -7,57 +7,67 @@ decisions:
     tags:
       - staging
       - initial
+      - curated
     body_path: decisions/adr-001-mapsofbharat-staging.md
   - id: adr-002-geography-backbone
     project_slug: mapsofbharat
-    title: "Geography backbone: DataMeet/SHRUG 2011 districts plus Survey of India
-      outline; dual key LGD and Census-2011"
+    title: "Geography backbone: 2011 census districts plus Survey of India outline,
+      dual-keyed to LGD and Census codes"
     status: accepted
     date: 2026-06-08T00:00:00.000Z
     tags:
       - geo
       - data
       - legal
+      - curated
+      - cat:system
     body_path: decisions/adr-002-geography-backbone.md
   - id: adr-003-current-day-rendering
     project_slug: mapsofbharat
-    title: Store finest-unit data and render to current-day boundaries via
-      crosswalk; keep an as-reported-2011 toggle
+    title: Store data at the finest unit, render onto current-day boundaries via a
+      crosswalk — with an as-reported-2011 toggle
     status: accepted
     date: 2026-06-08T00:00:00.000Z
     tags:
       - geo
       - data
+      - curated
+      - cat:system
     body_path: decisions/adr-003-current-day-rendering.md
   - id: adr-004-own-canonical-store
     project_slug: mapsofbharat
-    title: Own canonical DB with scheduled ETL; no live source calls at request
-      time; MoSPI MCP for dev exploration only
+    title: Own canonical database with scheduled ingestion — zero live calls to
+      government sources at request time
     status: accepted
     date: 2026-06-08T00:00:00.000Z
     tags:
       - data
       - architecture
+      - curated
+      - cat:system
     body_path: decisions/adr-004-own-canonical-store.md
   - id: adr-005-official-sources-only
     project_slug: mapsofbharat
-    title: "Provenance rule: official/government or top-tier sources only; cite
-      every metric"
+    title: Official or top-tier sources only — and every metric carries its citation
     status: accepted
     date: 2026-06-08T00:00:00.000Z
     tags:
       - data
       - trust
+      - curated
+      - cat:product
     body_path: decisions/adr-005-official-sources-only.md
   - id: adr-006-vertical-slice
     project_slug: mapsofbharat
-    title: Build the Demographics vertical end-to-end first on a generic engine plus
-      adapter pattern
+    title: Ship one vertical (Demographics) end-to-end first, on a generic engine
+      plus adapters
     status: accepted
     date: 2026-06-08T00:00:00.000Z
     tags:
       - process
       - architecture
+      - curated
+      - cat:product
     body_path: decisions/adr-006-vertical-slice.md
   - id: adr-007-tech-stack
     project_slug: mapsofbharat
@@ -72,6 +82,7 @@ decisions:
     tags:
       - tech
       - architecture
+      - curated
     body_path: decisions/adr-007-tech-stack.md
   - id: adr-008-component-strategy
     project_slug: mapsofbharat
@@ -85,6 +96,7 @@ decisions:
       - ui
       - components
       - architecture
+      - curated
     body_path: decisions/adr-008-component-strategy.md
   - id: adr-009-build-plan
     project_slug: mapsofbharat
@@ -97,23 +109,29 @@ decisions:
     tags:
       - process
       - build-plan
+      - curated
     body_path: decisions/adr-009-build-plan.md
   - id: adr-010-subdistrict-crosswalk
     project_slug: mapsofbharat
-    title: Reaggregate 2011 sub-district counts into current-day districts
+    title: 2011 sub-district counts re-aggregated into today's districts — data
+      integrity over convenience
     status: accepted
     date: 2026-06-09T00:00:00.000Z
     tags:
       - data
       - architecture
+      - curated
+      - cat:reliability
     body_path: decisions/2026-06-09-reaggregate-subdistrict-crosswalk.md
   - id: adr-011-stage3-ac-rescope
     project_slug: mapsofbharat
-    title: Re-scope Stage 1 acceptance criteria to shipped Stage 3 reality; move
-      gaps to backlog
+    title: Acceptance criteria re-scoped to shipped reality — gaps moved to an
+      explicit backlog, not quietly forgotten
     status: accepted
     date: 2026-06-10T00:00:00.000Z
     tags:
       - process
       - scope
+      - curated
+      - cat:product
     body_path: decisions/2026-06-10-stage3-ac-rescope.md
