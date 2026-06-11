@@ -8,9 +8,9 @@ import { interpolateViridis, interpolateRdBu } from "d3-scale-chromatic";
 const INDIA_BOUNDS: [number, number, number, number] = [67, 6, 98, 37];
 const NEUTRAL = "#1c2530";
 
-type Metric = { id: string; name: string; category: string; unit: string; year: number; source: string; higher_is_better: number | null };
+type Metric = { id: string; name: string; category: string; unit: string; year: number; source: string; higher_is_better: number | null; levels?: string[] };
 type MetricData = {
-  name: string; unit: string; year: number; source: string; decimals: number;
+  name: string; unit: string; year: number; source: string; license?: string; decimals: number;
   min: number; max: number; mean: number; count: number; values: Record<string, number>;
 };
 type View = { level: "national" | "state"; code?: string; name?: string };
@@ -306,6 +306,13 @@ export default function IndiaMap() {
     if (!map || !sel || !ready) return;
     let cancelled = false;
     (async () => {
+      // metrics existing at only one level (state-only economy, district-only
+      // NFHS) force the map to that level instead of rendering empty
+      const meta = metrics.find((x) => x.id === sel);
+      if (meta?.levels?.length && !meta.levels.includes(level)) {
+        setLevel(meta.levels.includes("district") ? "district" : "state");
+        return;
+      }
       const md: MetricData = await fetch(`/api/metrics/${sel}?level=${level}`).then((r) => r.json());
       if (cancelled || !md.values) return;
       setData(md); valuesRef.current = md.values;
@@ -317,7 +324,7 @@ export default function IndiaMap() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, ready, level]);
+  }, [sel, ready, level, metrics]);
 
   // level switch: sync layer visibility; on a real change reset drill/pins/detail
   const prevLevelRef = useRef(init.lvl);
@@ -387,7 +394,7 @@ export default function IndiaMap() {
     ctx.fillText(`${title} (${data.unit})`, 14 * dpr, header * 0.38);
     ctx.fillStyle = "#8b98a5";
     ctx.font = `${Math.round(12 * dpr)}px sans-serif`;
-    ctx.fillText(`Source: ${data.source} · Census ${data.year} · MapsOfBharat`, 14 * dpr, header * 0.74);
+    ctx.fillText(`Source: ${data.source} · ${data.year} · MapsOfBharat`, 14 * dpr, header * 0.74);
     const a = document.createElement("a");
     a.href = out.toDataURL("image/png");
     const suffix = view.level === "state" && view.name ? "-" + view.name.replace(/\s+/g, "_") : "";
@@ -450,7 +457,7 @@ export default function IndiaMap() {
         {view.level === "state" && <button onClick={backToNational} className="mt-2 text-xs text-accent-teal hover:underline">← Back to India</button>}
         <select value={sel} onChange={(e) => setSel(e.target.value)} aria-label="Select metric"
           className="mt-2 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent-teal">
-          {["demographics", "livelihood"].map((cat) => {
+          {Array.from(new Set(metrics.map((m) => m.category))).map((cat) => {
             const inCat = metrics.filter((m) => m.category === cat);
             return inCat.length ? <optgroup key={cat} label={cat}>{inCat.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</optgroup> : null;
           })}
@@ -486,8 +493,8 @@ export default function IndiaMap() {
               <span>{mode === "vs_avg" ? "below" : fmt(data.min)}</span><span>{data.unit}</span><span>{mode === "vs_avg" ? "above" : fmt(data.max)}</span>
             </div>
             {mode === "vs_avg" && <div className="text-center text-[10px] text-foreground-muted">avg {fmt(data.mean)} {data.unit}</div>}
-            <div className="mt-2 text-[11px] text-foreground-muted">{data.count} {level === "state" ? "states" : "districts"} · Census {data.year}</div>
-            <div className="text-[10px] leading-tight text-foreground-muted/70">Source: {data.source} · GODL-India</div>
+            <div className="mt-2 text-[11px] text-foreground-muted">{data.count} {level === "state" ? "states" : "districts"} · {data.year}</div>
+            <div className="text-[10px] leading-tight text-foreground-muted/70">Source: {data.source}{data.license ? ` · ${data.license}` : ""}</div>
           </div>
         )}
         {!metrics.length && <div className="mt-2 text-xs text-accent-amber">No metrics loaded yet.</div>}

@@ -1,0 +1,150 @@
+"""Shared helpers for dataset adapters: region-name -> rid matching + canonical-store writes.
+
+Matching strategy (in order): exact normalized (state, district) -> word-sorted
+normalized (handles "Kameng East" vs "East Kameng") -> alias map (known renames)
+-> difflib fuzzy within the same state (cutoff 0.82, logged). Sources that use
+police districts (NCRB) should pre-aggregate City/Rural/Commissionerate splits
+into the base name before calling match().
+"""
+import datetime, difflib, os, re, sqlite3
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB = os.path.join(ROOT, "data", "mapsofbharat.db")
+
+# source-name -> canonical geojson name (normalized forms both sides).
+# Mostly pre-2014 names that NFHS/NCRB still print vs the current official names
+# carried by districts.geojson / region_keys.
+ALIASES = {
+    # states (incl. source typos)
+    "maharastra": "maharashtra", "chattisgarh": "chhattisgarh",
+    "orissa": "odisha", "uttrakhand": "uttarakhand", "telengana": "telangana",
+    "nct of delhi": "delhi", "pondicherry": "puducherry",
+    # Andhra Pradesh
+    "anantapur": "anantapuramu", "y s r": "ysr", "ysr kadapa": "ysr",
+    "sri potti sriramulu nello": "sri potti sriramulu nellore",
+    "nellore": "sri potti sriramulu nellore",
+    "dr br ambedkar konaseema": "konaseema",
+    # Karnataka renames (2014) — bijapur/raigarh-style collisions live in STATE_ALIASES
+    "belgaum": "belagavi", "bellary": "ballari",
+    "bangalore": "bengaluru urban", "bangalore urban": "bengaluru urban",
+    "bangalore rural": "bengaluru rural", "mysore": "mysuru",
+    "gulbarga": "kalaburagi", "shimoga": "shivamogga", "tumkur": "tumakuru",
+    "chikmagalur": "chikkamagaluru", "chamarajanagar": "chamarajanagara",
+    "bagalkot": "bagalkote", "davangere": "davanagere",
+    "chikballapur": "chikkaballapura",
+    # Odisha old transliterations
+    "debagarh": "deogarh", "baleshwar": "balasore", "baudh": "boudh",
+    # Gujarat
+    "kachchh": "kutch", "mahesana": "mehsana", "dohad": "dahod", "the dangs": "dang",
+    # Haryana
+    "gurgaon": "gurugram", "mewat": "nuh",
+    # Bihar
+    "pashchim champaran": "west champaran", "purba champaran": "east champaran",
+    # Jharkhand
+    "purbi singhbhum": "east singhbhum", "pashchimi singhbhum": "west singhbhum",
+    # Madhya Pradesh
+    "narsimhapur": "narsinghpur",
+    # Arunachal (NFHS lists Lower Dibang Valley separately, so bare = Upper)
+    "dibang valley": "upper dibang valley",
+    # Assam
+    "south salmara mancachar": "south salmara mankachar",
+}
+
+# (state_norm, district_norm) -> canonical norm; takes precedence over ALIASES.
+# Needed where the same old name maps differently per state (Bijapur exists in
+# Chhattisgarh but is Vijayapura's old name in Karnataka; Raigarh is real in CG
+# but Maharashtra's "Raigarh" spelling means Raigad).
+STATE_ALIASES = {
+    ("karnataka", "bijapur"): "vijayapura",
+    ("maharashtra", "raigarh"): "raigad",
+    ("maharashtra", "bid"): "beed",
+    ("chhattisgarh", "dantewada"): "dakshin bastar dantewada",
+}
+
+
+def norm(s) -> str:
+    s = str(s).lower().strip()
+    s = s.replace("&", " and ")
+    s = re.sub(r"\([^)]*\)", " ", s)
+    s = re.sub(r"[^a-z ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def norm_sorted(s) -> str:
+    return " ".join(sorted(norm(s).split()))
+
+
+class RegionMatcher:
+    def __init__(self, con: sqlite3.Connection):
+        self.state_by_name = {}
+        self.exact = {}
+        self.sorted_idx = {}
+        self.by_state: dict[str, dict[str, str]] = {}
+        for code, name in con.execute("SELECT code, name FROM region_keys WHERE level='state'"):
+            self.state_by_name[norm(name)] = code
+        for code, name, st in con.execute(
+            "SELECT code, name, st_code FROM region_keys WHERE level='district'"
+        ):
+            n = norm(name)
+            self.exact[(st, n)] = code
+            self.sorted_idx[(st, norm_sorted(name))] = code
+            self.by_state.setdefault(st, {})[n] = code
+        self.fuzzy_log: list[tuple[str, str, str]] = []
+
+    def state_code(self, state_name) -> str | None:
+        n = norm(state_name)
+        return self.state_by_name.get(ALIASES.get(n, n) if ALIASES.get(n) else n) or self.state_by_name.get(n)
+
+    def match(self, state_name, district_name, extra_aliases=None) -> str | None:
+        st = self.state_code(state_name)
+        if not st:
+            return None
+        n = norm(district_name)
+        sn = norm(state_name)
+        sn = ALIASES.get(sn, sn)
+        n = STATE_ALIASES.get((sn, n)) or (extra_aliases or {}).get(n) or ALIASES.get(n, n)
+        rid = self.exact.get((st, n))
+        if rid:
+            return rid
+        rid = self.sorted_idx.get((st, norm_sorted(n)))
+        if rid:
+            return rid
+        cands = self.by_state.get(st, {})
+        close = difflib.get_close_matches(n, cands.keys(), n=1, cutoff=0.82)
+        if close:
+            self.fuzzy_log.append((state_name, district_name, close[0]))
+            return cands[close[0]]
+        return None
+
+
+def upsert_metric(con, mid, name, category, unit, decimals, higher_is_better,
+                  description, source, source_url, license_, year):
+    con.execute(
+        """INSERT OR REPLACE INTO metrics
+           (id, name, category, unit, decimals, higher_is_better, default_scale,
+            description, source, source_url, license, year)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (mid, name, category, unit, decimals, higher_is_better, "sequential",
+         description, source, source_url, license_, year))
+
+
+def write_values(con, mid, level, year, values: dict):
+    con.execute(
+        "DELETE FROM metric_values WHERE metric_id=? AND region_level=? AND year=?",
+        (mid, level, year))
+    n = 0
+    for code, v in values.items():
+        if v is None:
+            continue
+        con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)",
+                    (mid, code, level, year, float(v), 0))
+        n += 1
+    return n
+
+
+def log_load(con, adapter, source, year, license_, fetched_at, rows, notes):
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    con.execute(
+        "INSERT INTO load_log (adapter, source, year, license, fetched_at, loaded_at, rows_written, notes) VALUES (?,?,?,?,?,?,?,?)",
+        (adapter, source, year, license_, fetched_at, now, rows, notes))

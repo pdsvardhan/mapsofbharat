@@ -15,7 +15,7 @@ test("explore loads the map, metric selector, and legend", async ({ page }) => {
   await expect.poll(async () => select.locator("option").count()).toBeGreaterThan(0);
 
   // legend text appears once metric data has loaded and coloured the map
-  await expect(page.getByText(/districts · Census/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
 
   // export/share/locate controls are present
   await expect(page.getByRole("button", { name: /Export current map as PNG/i })).toBeVisible();
@@ -31,7 +31,7 @@ test("switching the metric keeps the legend populated", async ({ page }) => {
   );
   const other = values.find((v) => v) ?? values[0];
   await select.selectOption(other);
-  await expect(page.getByText(/districts · Census/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
 });
 
 test("metrics API returns a list", async ({ request }) => {

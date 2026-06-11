@@ -10,7 +10,7 @@ const JAIPUR: [number, number] = [75.8, 26.9]; // Rajasthan
 
 async function waitForMapReady(page: Page) {
   await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/districts · Census/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
   // colours applied = feature-state set after metric fetch; give the 350ms transition a beat
   await page.waitForTimeout(500);
 }
@@ -51,7 +51,7 @@ test.describe("flow-explore-metric", () => {
     await select.selectOption(other);
 
     // Step 2: state-level choropleth with legend -> spatial distribution visible
-    await expect(page.getByText(/districts · Census/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
 
     // Steps 3+4: hover a region -> tooltip with value and rank/percentile
     await hoverLngLat(page, BHOPAL);
