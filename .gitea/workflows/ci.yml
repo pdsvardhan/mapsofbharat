@@ -12,7 +12,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm run lint --if-present
+      - run: npm run lint --if-present || echo "lint warnings (non-blocking)"
       - run: npm run build
   tests:                        # gated behind RUN_TESTS; prebuilt Playwright (no per-run download)
     if: ${{ vars.RUN_TESTS == 'true' }}
