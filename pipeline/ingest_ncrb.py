@@ -24,8 +24,8 @@ METHODOLOGY = ("Counts from NCRB Crime in India 2022 district tables; rates per 
                "the store — the vintage mismatch slightly inflates rates in fast-growing districts). "
                "NCRB reports by police district: City/Rural/Commissionerate splits are summed into the "
                "host revenue district (documented approximations for metro commissionerates); railway "
-               "and non-geographic units are excluded. Districts without a trustworthy denominator "
-               "(SHRUG-undercovered states) are withheld.")
+               "and non-geographic units are excluded. Denominators come from the official Census-2011 "
+               "sub-district reaggregation (complete national coverage, bug #18 fix), so no district is withheld.")
 
 DROP_UNITS = re.compile(
     r"crime branch|c\.?i\.?d|railway|cyber|stf|eow|special cell|"

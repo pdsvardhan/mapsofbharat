@@ -52,13 +52,13 @@ def test_no_empty_region_codes(con):
 
 
 def test_district_coverage_is_broad(con):
-    # union coverage across all verticals; census alone is 688 after the
-    # source-coverage gate withheld 45 districts in 5 SHRUG-undercovered states
+    # union coverage across all verticals; census now covers 733 districts after
+    # the bug #18 fix (official sub-district source, no withholding)
     assert _coverage(con) >= 680
 
 
 def test_each_metric_covers_expected_districts(con):
-    # per-metric coverage varies by vertical (census 688, NCRB ~650, NFHS
+    # per-metric coverage varies by vertical (census 733, NCRB ~685, NFHS
     # 410-671, economy 0 district rows) — compare against the committed
     # expectations baseline rather than the global union
     import json
