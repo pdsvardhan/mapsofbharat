@@ -40,3 +40,30 @@ verifier APPROVE. Commit fc507ba + docker-compose port rebind.
 - Items 166 (census religion/language/amenities — needs ~36 DDW state files) + 168 (Census 2001 — SHRUG pc01 not in holdings) remain locked; acquisition first, then build, then integrate + trace report for iteration 15
 - Component picks were delegated (7 slots registered with provenance note) — user may swap any
 - Public tunnel exposure still awaits explicit cloudflared go-ahead
+
+
+## Session 2026-06-26 — bug #18 fix (Stage 4, iter-15 continued)
+
+**Stage:** Stage 4 — iteration 15 (still building; integration deferred by user)
+**What changed:**
+- Root-caused intake report #18 (Aizawl pop 50,777 vs real ~400k; crime rate ~8x inflated):
+  the SHRUG sub-district PCA undercovers 5 states (MZ 66%, LD 52%, PY 70%, TR 82%, WB 82%)
+  — a source data gap, NOT the point-in-polygon mis-assignment the bug report assumed.
+- Rewrote `pipeline/reaggregate.py` to use the official ORGI sub-district PCA
+  (`raw/2011-IndiaStateDistSbDist.xlsx`, complete) + same-state correction (offshore/
+  enclave sub-districts) + missing-geometry reconciliation; removed the source-coverage
+  withholding gate (no longer needed).
+- National total now EXACT (1,210,854,977); census coverage 688 -> 733 districts; all 5
+  previously-withheld states covered (West Bengal's 91M un-withheld).
+- Re-ran `ingest_ncrb.py`: crime denominators corrected (Aizawl crime_ipc_rate
+  4986.5 -> 615.0, no longer national max). Regenerated drift baseline
+  (`expectations.json`: census 688->733, NCRB 650->685). pytest 8/8. Live-verified.
+
+**Decisions:** ADR-012-official-subdistrict-source (amends ADR-010).
+**Commits (branch iter-15-2026-06-11, pushed):** f433ce5 (#18 fix), 21eef75 (adr-012).
+**Deferred (user calls):** items 166 (religion/language/amenities) + 168 (Census 2001)
+  PARKED — data not acquirable from the server (todos 112/113). Integrate iter-15 DEFERRED
+  — tracker gate gap: a locked item can't be dropped-with-reason (todos 114 mapsofbharat,
+  115 ottomate). Independent #18 verifier still required pre-integrate.
+**Next session pick-up:** acquire 166/168 data OR fix the tracker gate (todo 115), then run
+  the #18 verifier + integrate iter-15 (todo 114).

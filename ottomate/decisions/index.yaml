@@ -135,3 +135,15 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/2026-06-10-stage3-ac-rescope.md
+  - id: adr-012-official-subdistrict-source
+    project_slug: mapsofbharat
+    title: Switch the census backbone to the official sub-district PCA — fixing a
+      silent data-undercoverage bug
+    status: accepted
+    date: 2026-06-26T00:00:00.000Z
+    tags:
+      - data
+      - reliability
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-06-26-bug18-official-subdistrict-source.md
