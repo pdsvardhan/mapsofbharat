@@ -67,3 +67,23 @@ verifier APPROVE. Commit fc507ba + docker-compose port rebind.
   115 ottomate). Independent #18 verifier still required pre-integrate.
 **Next session pick-up:** acquire 166/168 data OR fix the tracker gate (todo 115), then run
   the #18 verifier + integrate iter-15 (todo 114).
+
+## Session 2026-07-01 — iter-15 integrate + Stage 4 economy/labour expansion
+
+**Stage:** Stage 4 (iterate) — closed out iter-15, shipped iter-50 (3 new data verticals).
+**What changed:**
+- **Integrated iter-15 → main** (was blocked). Independent verifier on the #18 fix: AC1/3/4/5 PASS
+  (Aizawl pop 411,735, crime 615.0, national total exact, pytest 8/8); AC2 (Saitual standalone rows)
+  accepted-as-attribution — Saitual is a 2019 district absent from 2011 geometry, its population folds
+  into the 2011 parent (adr-013). Items 166 & 168 deferred-with-reason (todos 112/113). Canonical
+  adr-020 ci.yml landed on main (todo 4). Re-picked 6 component slots; 1 (rankings-table) honest-skip (todo 105).
+- **iter-50 — economy + labour expansion (26 → 36 metrics):**
+  - `ingest_plfs.py` — 3 state labour metrics (unemployment 2023-24, WPR 2022-23, LFPR 2020-21) via data.gov.in OGD.
+  - `ingest_rbi_fiscal.py` — 5 state fiscal metrics (per-capita NSDP FY24-25 + gsdp_growth + deficit/own-tax/debt %GSDP), ratios computed with ₹Lakh↔₹Crore alignment.
+  - `ingest_ec13.py` — 2 district metrics (establishments + non-farm employment per 1,000) via the geometric crosswalk (mass-conserving, 100% assigned).
+  - All 3 independently verified (reports 267/268/269). New `labour` category renders automatically; live at /api/metrics.
+
+**Decisions:** adr-013 (Saitual attribution), adr-014 (economic data expansion + caveats).
+**Commits (main, pushed):** 289ee82 (iter-15 integrate), dcb6994 (iter-50), + mirror commits (71dd162, c87ba53).
+**Scouted for roadmap:** Agriculture (data.gov.in APY, on disk, ready), NITI MPI 2023 (PDF on disk, needs bar-chart parser); NDAP rejected (login-wall). Elections/forest/air need user-assisted download (servers unreachable).
+**Next session pick-up:** build Agriculture (APY files staged) or write the NITI MPI PDF parser; ECI elections awaiting user download (todo 140). Optional refinements from verifiers: RBI debt cross-year GSDP for 6 states; PLFS LFPR refresh when a newer persons series lands.
