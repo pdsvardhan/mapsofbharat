@@ -160,3 +160,16 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/2026-07-01-ac2-saitual-attribution.md
+  - id: adr-014-economic-data-expansion
+    project_slug: mapsofbharat
+    title: "Expand economy + add labour vertical: RBI fiscal, PLFS, Economic Census
+      2013"
+    status: accepted
+    date: 2026-07-01T00:00:00.000Z
+    tags:
+      - data
+      - economy
+      - labour
+      - curated
+      - cat:product
+    body_path: decisions/2026-07-01-economic-data-expansion.md
