@@ -114,11 +114,11 @@ con.executescript("""
 DROP TABLE IF EXISTS metric_values;
 CREATE TABLE metric_values(metric_id TEXT, region_code TEXT, region_level TEXT, year INTEGER, value REAL, estimated INTEGER DEFAULT 0, PRIMARY KEY(metric_id,region_code,region_level,year));
 CREATE INDEX idx_mv ON metric_values(metric_id,region_level,year);
-CREATE TABLE IF NOT EXISTS metrics(id TEXT PRIMARY KEY, name TEXT, category TEXT, unit TEXT, decimals INTEGER, higher_is_better INTEGER, default_scale TEXT, description TEXT, source TEXT, source_url TEXT, license TEXT, year INTEGER);
+CREATE TABLE IF NOT EXISTS metrics(id TEXT PRIMARY KEY, name TEXT, category TEXT, unit TEXT, decimals INTEGER, higher_is_better INTEGER, default_scale TEXT, description TEXT, source TEXT, source_url TEXT, license TEXT, year INTEGER, methodology TEXT, last_updated TEXT);
 """)
 con.execute("DELETE FROM metrics")
 for mid,name,cat,unit,dec,hib,desc in METRICS:
-    con.execute("INSERT OR REPLACE INTO metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (mid,name,cat,unit,dec,hib,"viridis",desc,SRC,SRCURL,LIC,2011))
+    con.execute("INSERT OR REPLACE INTO metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (mid,name,cat,unit,dec,hib,"viridis",desc,SRC,SRCURL,LIC,2011,None,None))
 written = 0
 for code, vals in results.items():
     est = 1 if code in estimated else 0

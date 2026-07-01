@@ -3,7 +3,7 @@ flows:
     title: Explore a metric on the map
     type: ui
     priority: critical
-    test_status: not-tested
+    test_status: passing
     trigger: User opens a metric view
     expected_outcome: User sees the spatial distribution and a chosen region standing
     pre_conditions: []
@@ -27,7 +27,7 @@ flows:
     title: Drill into a state to district level
     type: ui
     priority: critical
-    test_status: not-tested
+    test_status: passing
     trigger: User clicks a state
     expected_outcome: District-level detail for the chosen state
     pre_conditions: []
@@ -51,7 +51,7 @@ flows:
     title: Compare two regions, years, or metrics
     type: ui
     priority: important
-    test_status: not-tested
+    test_status: passing
     trigger: User opens compare mode
     expected_outcome: Side-by-side comparison with optional difference
     pre_conditions: []
@@ -60,13 +60,14 @@ flows:
         action: Selects comparison type and A and B
         result: Selections set
       - actor: system
-        action: Renders two synced maps side by side
+        action: Pins the two selected regions and renders their values side by side in a
+          compare panel
         result: Comparison visible
       - actor: user
-        action: Toggles difference view
-        result: Difference requested
+        action: Reviews the per-region values and bars
+        result: Both regions' standing visible
       - actor: system
-        action: Renders A-minus-B or percent-change map
+        action: Shows the A-minus-B difference between the two regions
         result: Difference visible
     edge_cases: []
     linked_features: []
@@ -75,7 +76,7 @@ flows:
     title: Export or share the current view
     type: ui
     priority: important
-    test_status: not-tested
+    test_status: passing
     trigger: User clicks export or share
     expected_outcome: A downloadable file or shareable link
     pre_conditions: []
@@ -96,7 +97,7 @@ flows:
     title: Ingest or refresh a dataset
     type: automated
     priority: important
-    test_status: not-tested
+    test_status: passing
     trigger: Scheduled job or manual run
     expected_outcome: Fresh, cited data available to the UI
     pre_conditions: []

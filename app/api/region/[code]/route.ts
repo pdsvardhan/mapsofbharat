@@ -4,10 +4,12 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// All metrics for one region (district rid), with national rank per metric.
-// Rank honours higher_is_better: rank 1 is the "best" district for that metric.
+// All metrics for one region, with rank per metric within that region's level.
+// District rids contain "_" (st_dt); bare two-digit codes are states.
+// Rank honours higher_is_better: rank 1 is the "best" region for that metric.
 export async function GET(_req: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
+  const level = code.includes("_") ? "district" : "state";
   const d = db();
   if (!d) return NextResponse.json({ error: "no-data" }, { status: 404 });
 
@@ -19,22 +21,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
                 RANK() OVER (PARTITION BY metric_id ORDER BY value ASC)  AS rank_asc,
                 COUNT(*) OVER (PARTITION BY metric_id) AS cnt
          FROM metric_values
-         WHERE region_level = 'district' AND value IS NOT NULL
+         WHERE region_level = ? AND value IS NOT NULL
        )
        SELECT m.id, m.name, m.category, m.unit, m.year, m.source, m.source_url,
-              m.decimals, m.higher_is_better, r.value, r.cnt,
+              m.decimals, m.higher_is_better, m.methodology, m.last_updated,
+              r.value, r.cnt,
               CASE WHEN m.higher_is_better = 0 THEN r.rank_asc ELSE r.rank_desc END AS rank
        FROM ranked r
        JOIN metrics m ON m.id = r.metric_id
        WHERE r.region_code = ?
        ORDER BY m.category, m.name`
     )
-    .all(code) as Array<Record<string, unknown>>;
+    .all(level, code) as Array<Record<string, unknown>>;
 
   if (!rows.length) return NextResponse.json({ error: "not-found", code }, { status: 404 });
 
+  const key = d
+    .prepare("SELECT name, iso_3166_2 FROM region_keys WHERE level = ? AND code = ?")
+    .get(level, code) as { name?: string; iso_3166_2?: string } | undefined;
+
   return NextResponse.json({
     code,
+    level,
+    name: key?.name ?? null,
+    iso_3166_2: key?.iso_3166_2 ?? null,
     metrics: rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -45,6 +55,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
       source_url: r.source_url,
       decimals: r.decimals,
       higher_is_better: r.higher_is_better,
+      methodology: r.methodology,
+      last_updated: r.last_updated,
       value: r.value,
       rank: r.rank,
       count: r.cnt,

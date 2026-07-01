@@ -1,1 +1,37 @@
-pages: []
+pages:
+  - id: page-explore
+    title: Explore
+    route: /explore
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components:
+      - name: command-palette
+        category: navigation
+        picked: false
+        variants: []
+      - name: region-detail-sheet
+        category: overlay
+        picked: false
+        variants: []
+      - name: mode-dock
+        category: navigation
+        picked: true
+        asset_library_ref: mc-floating-dock
+        variants: []
+      - name: rankings-table
+        category: display
+        picked: false
+        variants: []
+      - name: drill-breadcrumbs
+        category: navigation
+        picked: false
+        variants: []
+      - name: filter-rail
+        category: input
+        picked: false
+        variants: []
+      - name: value-range-filter
+        category: input
+        picked: false
+        variants: []

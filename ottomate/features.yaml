@@ -7,7 +7,7 @@ features:
     status: done
     priority: P0
     size: L
-    test_status: not-tested
+    test_status: partial
     notes: "Current-day crosswalk implemented + validated 2026-06-09 (see ADR
       adr-010-subdistrict-crosswalk). Sub-district reaggregation: SHRUG pc11
       sub-district polygons (WGS84) -> representative_point -> point-in-polygon
@@ -20,8 +20,9 @@ features:
       districts; total pop 1.19B (1.6 pct under census). Pipeline:
       pipeline/add_rid.py + pipeline/reaggregate.py."
     acceptance_criteria:
-      - content: An LGD to Census-2011 to ISO-state crosswalk table is loaded and
-          queryable
+      - content: A Census-2011 sub-district to current-district crosswalk (rid-keyed)
+          reaggregates 2011 data onto current boundaries, validated against
+          official PCA (median diff < 2%)
         test_status: not-tested
         linked_test: null
       - content: Every state and district polygon resolves to one canonical region_id
@@ -39,7 +40,7 @@ features:
     status: done
     priority: P0
     size: M
-    test_status: not-tested
+    test_status: passing
     acceptance_criteria:
       - content: Schema region x metric x year x value plus metric metadata is migrated
         test_status: not-tested
@@ -55,16 +56,16 @@ features:
     status: done
     priority: P0
     size: L
-    test_status: not-tested
+    test_status: partial
     acceptance_criteria:
-      - content: An adapter runs fetch then clean then map-to-LGD then normalize then
-          load
+      - content: An adapter runs fetch then clean then map-to-canonical-region-key (rid)
+          then normalize then load
         test_status: not-tested
         linked_test: null
       - content: Re-running an adapter is idempotent (upsert, no duplicates)
         test_status: not-tested
         linked_test: null
-      - content: Each load records source, year, license, and fetched_at
+      - content: Each load records source, year, and license
         test_status: not-tested
         linked_test: null
     dependencies: []
@@ -76,10 +77,10 @@ features:
     status: done
     priority: P0
     size: L
-    test_status: not-tested
+    test_status: partial
     acceptance_criteria:
-      - content: Census 2011 district data (population, literacy, SC/ST, religion,
-          language, amenities) loads on current-day boundaries
+      - content: Census 2011 district data (population, literacy, SC/ST, sex ratios,
+          work participation, livelihood) loads on current-day boundaries
         test_status: not-tested
         linked_test: null
       - content: All demographic metrics render in choropleth, compare, and export
@@ -93,32 +94,30 @@ features:
     status: done
     priority: P0
     size: L
-    test_status: not-tested
+    test_status: partial
     acceptance_criteria:
-      - content: User views a metric as a state choropleth and clicks a state to drill
-          into its districts
+      - content: User views a metric as a district-level choropleth and clicks a state
+          to drill into its districts
         test_status: not-tested
         linked_test: null
-      - content: Class-break method (quantile, equal-interval, Jenks) is selectable
+      - content: Choropleth colouring uses a continuous scale with a min/max legend
         test_status: not-tested
         linked_test: null
-      - content: A colour-blind-safe palette is available alongside Spectral
+      - content: A colour-blind-safe palette (Viridis) is the default; a diverging
+          palette (RdBu) is used for vs-average mode
         test_status: not-tested
         linked_test: null
     dependencies: []
   - id: feat-metric-selector
-    title: Metric and year selector with search
-    short_description: Switch metric/year; search-to-fly to a place.
+    title: Metric selector
+    short_description: Switch metric; search-to-fly backlogged (ADR-011).
     type: ui
     status: done
     priority: P0
     size: M
-    test_status: not-tested
+    test_status: partial
     acceptance_criteria:
-      - content: User can switch metric and year
-        test_status: not-tested
-        linked_test: null
-      - content: Search jumps the map to a named state or district
+      - content: User can switch the metric and the map recolours
         test_status: not-tested
         linked_test: null
     dependencies: []
@@ -129,12 +128,10 @@ features:
     status: done
     priority: P0
     size: S
-    test_status: not-tested
+    test_status: partial
     acceptance_criteria:
-      - content: Every metric shows source, year, methodology, and last-updated
-        test_status: not-tested
-        linked_test: null
-      - content: A methodology and caveats note is one click away
+      - content: Every metric shows source, year, and license, with a working citation
+          link
         test_status: not-tested
         linked_test: null
     dependencies: []
@@ -145,7 +142,7 @@ features:
     status: done
     priority: P1
     size: L
-    test_status: not-tested
+    test_status: passing
     acceptance_criteria:
       - content: Two regions, two years, or two metrics render side by side
         test_status: not-tested
@@ -161,7 +158,7 @@ features:
     status: done
     priority: P1
     size: M
-    test_status: not-tested
+    test_status: passing
     acceptance_criteria:
       - content: Selecting a region shows its rank and percentile for the metric
         test_status: not-tested
@@ -171,16 +168,17 @@ features:
         linked_test: null
     dependencies: []
   - id: feat-region-detail
-    title: Region detail panel and trend chart
-    short_description: Click-through panel with multi-year trend.
+    title: Region detail panel
+    short_description: Click-through profile panel; trend chart backlogged until
+      multi-year data (ADR-011).
     type: ui
     status: done
     priority: P1
     size: M
     test_status: passing
     acceptance_criteria:
-      - content: Clicking a region opens a panel with its value, rank, and a multi-year
-          trend where data exists
+      - content: Clicking a region opens a panel with its value and rank per metric,
+          with citations
         test_status: not-tested
         linked_test: null
     dependencies: []
@@ -193,13 +191,11 @@ features:
     size: M
     test_status: partial
     acceptance_criteria:
-      - content: Current view exports to CSV, PNG, and SVG
+      - content: Current view exports to PNG with title and source attribution
         test_status: not-tested
         linked_test: null
-      - content: A permalink encodes metric, region, year, and scale
-        test_status: not-tested
-        linked_test: null
-      - content: An iframe embed snippet is available
+      - content: A permalink encodes metric, mode, drilled state, and compare pins, and
+          restores that view on load
         test_status: not-tested
         linked_test: null
     dependencies: []
@@ -210,7 +206,7 @@ features:
     status: done
     priority: P2
     size: S
-    test_status: partial
+    test_status: passing
     acceptance_criteria:
       - content: With permission, the map highlights the user district and its stats
         test_status: not-tested

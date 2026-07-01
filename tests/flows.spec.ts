@@ -10,7 +10,7 @@ const JAIPUR: [number, number] = [75.8, 26.9]; // Rajasthan
 
 async function waitForMapReady(page: Page) {
   await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/districts · Census/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
   // colours applied = feature-state set after metric fetch; give the 350ms transition a beat
   await page.waitForTimeout(500);
 }
@@ -51,7 +51,7 @@ test.describe("flow-explore-metric", () => {
     await select.selectOption(other);
 
     // Step 2: state-level choropleth with legend -> spatial distribution visible
-    await expect(page.getByText(/districts · Census/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
 
     // Steps 3+4: hover a region -> tooltip with value and rank/percentile
     await hoverLngLat(page, BHOPAL);
@@ -70,12 +70,12 @@ test.describe("flow-drill-state", () => {
     await clickLngLat(page, BHOPAL);
     const back = page.getByRole("button", { name: /Back to India/i });
     await expect(back).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/· Madhya Pradesh/i).first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Drill trail" })).toContainText("Madhya Pradesh");
 
     // Steps 3+4: breadcrumb back -> national view restored
     await back.click();
     await expect(back).not.toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/· all districts/i)).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Drill trail" })).not.toContainText("Madhya Pradesh");
   });
 });
 
@@ -127,7 +127,7 @@ test.describe("flow-export-share", () => {
     await page.goto(`/explore?m=${encodeURIComponent(metric)}&st=23&stn=Madhya%20Pradesh`);
     await waitForMapReady(page);
     await expect(page.getByRole("button", { name: /Back to India/i })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/· Madhya Pradesh/i).first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Drill trail" })).toContainText("Madhya Pradesh");
     await expect(select).toHaveValue(metric);
   });
 });

@@ -22,7 +22,7 @@ lifecycle_phase: building
 scope_size: large
 target_devices: both
 hosting_target: vault7a-docker
-port: 8601
+port: 8610
 public_url: https://mapsofbharat.vault7a.xyz
 repository_url: http://localhost:3300/pdsv/mapsofbharat
 problem_statement: "Reliable India statistics are scattered across government
