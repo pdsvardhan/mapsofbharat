@@ -24,7 +24,7 @@ target_devices: both
 hosting_target: vault7a-docker
 port: 8610
 public_url: https://mapsofbharat.vault7a.xyz
-repository_url: http://localhost:3300/pdsv/mapsofbharat
+repository_url: http://git.vault7a.xyz/pdsv/mapsofbharat
 problem_statement: "Reliable India statistics are scattered across government
   portals (Census, NCRB, MoSPI, ECI, ministry dashboards), often locked in PDFs
   or behind paywalled aggregators, rarely comparable across regions or years,

@@ -147,3 +147,16 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/2026-06-26-bug18-official-subdistrict-source.md
+  - id: adr-013-ac2-saitual-attribution
+    project_slug: mapsofbharat
+    title: Saitual's 2011 population attributes to its 2011 parent; AC2 accepted as
+      attribution
+    status: accepted
+    date: 2026-07-01T00:00:00.000Z
+    tags:
+      - data
+      - reliability
+      - acceptance-criteria
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-07-01-ac2-saitual-attribution.md
