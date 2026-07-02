@@ -1,23 +1,59 @@
-// Class-break computation + colour ramps for the choropleth (iter-15 item 164).
-// Continuous mode remains the default; class breaks bin values into k classes
-// and the legend shows bin edges.
+// Class-break computation + colour ramps for the choropleth.
+// Atlas curated ramp set (iter-51 item 392): six editorial ramps with
+// Navy–Yellow as the default; all four break methods kept (item 393).
+// Continuous ("Smooth") remains the default method.
 
 import {
   interpolateViridis,
-  interpolateCividis,
+  interpolateBlues,
+  interpolatePlasma,
+  interpolateYlGnBu,
   interpolateRdBu,
   interpolateSpectral,
 } from "d3-scale-chromatic";
 
 export type BreakMethod = "continuous" | "quantile" | "equal" | "jenks";
-export type PaletteId = "viridis" | "cividis" | "rdbu" | "spectral";
+export type PaletteId = "navyYellow" | "blues" | "plasma" | "ylgnbu" | "spectral" | "viridis";
+
+export { interpolateRdBu }; // used for the vs-avg diverging mode
+
+/** Piecewise-linear interpolation through fixed hex stops. */
+function rampFromStops(stops: string[]): (t: number) => string {
+  const rgb = stops.map((h) => {
+    const s = h.replace("#", "");
+    return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
+  });
+  return (t: number) => {
+    const c = Math.max(0, Math.min(1, t)) * (rgb.length - 1);
+    const i = Math.min(rgb.length - 2, Math.floor(c));
+    const f = c - i;
+    const mix = (k: number) => Math.round(rgb[i][k] + (rgb[i + 1][k] - rgb[i][k]) * f);
+    return `rgb(${mix(0)},${mix(1)},${mix(2)})`;
+  };
+}
 
 export const PALETTES: Record<PaletteId, { name: string; fn: (t: number) => string; note: string }> = {
-  viridis: { name: "Viridis", fn: interpolateViridis, note: "colour-blind safe (default)" },
-  cividis: { name: "Cividis", fn: interpolateCividis, note: "colour-blind safe" },
-  rdbu: { name: "RdBu", fn: (t) => interpolateRdBu(1 - t), note: "diverging" },
-  spectral: { name: "Spectral", fn: (t) => interpolateSpectral(1 - t), note: "not CB-safe" },
+  navyYellow: {
+    name: "Navy – Yellow",
+    fn: rampFromStops(["#16263e", "#3d4b66", "#6e7280", "#ab9f68", "#f0d64f"]),
+    note: "editorial default",
+  },
+  blues: { name: "Blues", fn: interpolateBlues, note: "sequential" },
+  plasma: { name: "Plasma", fn: interpolatePlasma, note: "high contrast" },
+  ylgnbu: { name: "Yellow–Green–Blue", fn: (t) => interpolateYlGnBu(1 - t), note: "sequential" },
+  spectral: { name: "Spectral", fn: (t) => interpolateSpectral(1 - t), note: "diverging, not CB-safe" },
+  viridis: { name: "Viridis", fn: interpolateViridis, note: "colour-blind safe" },
 };
+
+export const DEFAULT_PALETTE: PaletteId = "navyYellow";
+
+/** Old Observatory palette ids from shared links → nearest Atlas ramp. */
+export function normalizePalette(id: string | null): PaletteId {
+  if (id && id in PALETTES) return id as PaletteId;
+  if (id === "cividis") return "viridis";
+  if (id === "rdbu") return "spectral";
+  return DEFAULT_PALETTE;
+}
 
 /** k-1 inner break points for the chosen method (values sorted ascending). */
 export function computeBreaks(values: number[], method: BreakMethod, k = 5): number[] {
