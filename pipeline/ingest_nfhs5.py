@@ -19,7 +19,10 @@ FETCHED = "2026-06-10T20:30:00Z"
 METHODOLOGY = ("Survey estimate from NFHS-5 (2019-21) district factsheets (IIPS/MoHFW). "
                "District names matched to current boundaries (95% match); Delhi sub-districts "
                "and a few renamed districts could not be mapped 1:1 and are absent. District level only — "
-               "state factsheets are a separate series and unweighted district averages would be wrong.")
+               "state factsheets are a separate series and unweighted district averages would be wrong. "
+               "Factsheet values printed in parentheses (estimate based on 25-49 unweighted cases) "
+               "arrive in this compilation with a leading minus sign and are ingested as their "
+               "absolute value; '*' (fewer than 25 unweighted cases, suppressed by IIPS) stays absent.")
 
 # (metric_id, display name, source column, higher_is_better)
 PICKS = [
@@ -81,6 +84,15 @@ def main():
         for (key, rid) in rid_of.items():
             raw = df.loc[(df["State/UT"] == key[0]) & (df["District Names"] == key[1]), col]
             v = pd.to_numeric(raw.iloc[0] if len(raw) else None, errors="coerce")
+            # NFHS prints small-sample estimates (25-49 unweighted cases) in
+            # parentheses; the factsheet compilation carries them as NEGATIVE
+            # numbers ("(64.2)" -> "-64.2"). Every PICKS indicator is a 0-100
+            # percentage, so a negative is always that encoding — recover the
+            # published estimate. '*' (<25 cases, suppressed) coerces to NaN
+            # and stays absent. (iter-52 item 400: immunization was 443/671
+            # districts because its column has many small-sample estimates.)
+            if pd.notna(v) and -100 <= v < 0:
+                v = -v
             if pd.notna(v) and 0 <= v <= 100:
                 # last-write-wins on duplicate rid (factsheet rows are unique anyway)
                 vals[rid] = round(float(v), 1)
