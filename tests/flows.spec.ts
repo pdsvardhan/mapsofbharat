@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import fs from "node:fs";
 
 // E2E specs for the step-locked Ottomate flows, updated for the Atlas UI
 // (iter-51): homepage = explorer; drill = select state → "View N districts";
@@ -101,6 +102,10 @@ test.describe("flow-export-share", () => {
     await page.getByRole("button", { name: /Export current map as PNG/i }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^mapsofbharat-.+\.png$/);
+    // an empty/black canvas compresses to a few KB — a real choropleth doesn't
+    // (iter-53 item 402: PNG downloaded but was blank)
+    const file = await download.path();
+    expect(fs.statSync(file!).size).toBeGreaterThan(50_000);
   });
 
   test("Share menu copies a link that restores the view; embed snippet available", async ({ page, context }) => {

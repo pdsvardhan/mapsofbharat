@@ -184,6 +184,7 @@ export function RankingRail({
   onRowClick: (e: Entry) => void; onRowEnter: (e: Entry) => void; onRowLeave: () => void;
 }) {
   const [cohortOpen, setCohortOpen] = useState(false);
+  const [q, setQ] = useState("");
   const activeCohort = cohorts.find((c) => c.key === cohort) ?? cohorts[0];
   const min = entries.length ? entries[entries.length - 1].value : 0;
   const max = entries.length ? entries[0].value : 1;
@@ -192,6 +193,15 @@ export function RankingRail({
   type Row = { divider?: boolean; entry?: Entry; rank?: number };
   const rows = useMemo<Row[]>(() => {
     if (!hasMetric || !entries.length) return [];
+    // rail search (iter-53 item 406): matches shown at their TRUE ranks,
+    // bypassing cohort + Top/Bottom-25 slicing while active
+    const needle = q.trim().toLowerCase();
+    if (needle) {
+      return entries
+        .filter((e) => e.name.toLowerCase().includes(needle) || e.sub.toLowerCase().includes(needle))
+        .slice(0, 60)
+        .map((e) => ({ entry: e, rank: rankOf[e.code] }));
+    }
     if (districtsAll) {
       const slice = rankView === "bottom" ? entries.slice(-25) : entries.slice(0, 25);
       const out: Row[] = slice.map((e) => ({ entry: e, rank: rankOf[e.code] }));
@@ -207,7 +217,7 @@ export function RankingRail({
     let pool = activeCohort?.codes ? entries.filter((e) => activeCohort.codes!.has(e.code)) : [...entries];
     if (sortDir === "asc") pool = [...pool].reverse();
     return pool.map((e) => ({ entry: e, rank: rankOf[e.code] }));
-  }, [hasMetric, entries, districtsAll, rankView, sortDir, selectedCode, rankOf, activeCohort]);
+  }, [hasMetric, entries, districtsAll, rankView, sortDir, selectedCode, rankOf, activeCohort, q]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -257,6 +267,14 @@ export function RankingRail({
             </button>
           )}
         </div>
+        {hasMetric && (
+          <input
+            value={q} onChange={(e) => setQ(e.target.value)}
+            aria-label="Search the ranking"
+            placeholder={districtsAll ? "Find a district…" : "Find a place…"}
+            className="mt-2.5 w-full border border-border-soft bg-transparent px-2.5 py-1.5 text-[12px] text-bright placeholder:text-dim focus:border-faint"
+          />
+        )}
       </div>
       {hasMetric ? (
         <div className="atl-scroll min-h-0 flex-1 overflow-y-auto py-1.5 pl-[18px] pr-3">

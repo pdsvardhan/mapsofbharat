@@ -5,15 +5,13 @@
 
 import {
   interpolateViridis,
-  interpolateBlues,
-  interpolatePlasma,
-  interpolateYlGnBu,
+  interpolateYlOrBr,
   interpolateRdBu,
   interpolateSpectral,
 } from "d3-scale-chromatic";
 
 export type BreakMethod = "continuous" | "quantile" | "equal" | "jenks";
-export type PaletteId = "navyYellow" | "blues" | "plasma" | "ylgnbu" | "spectral" | "viridis";
+export type PaletteId = "navyYellow" | "sunset" | "rdbuDiv" | "earth" | "spectral" | "viridis";
 
 export { interpolateRdBu }; // used for the vs-avg diverging mode
 
@@ -38,20 +36,33 @@ export const PALETTES: Record<PaletteId, { name: string; fn: (t: number) => stri
     fn: rampFromStops(["#16263e", "#3d4b66", "#6e7280", "#ab9f68", "#f0d64f"]),
     note: "editorial default",
   },
-  blues: { name: "Blues", fn: interpolateBlues, note: "sequential" },
-  plasma: { name: "Plasma", fn: interpolatePlasma, note: "high contrast" },
-  ylgnbu: { name: "Yellow–Green–Blue", fn: (t) => interpolateYlGnBu(1 - t), note: "sequential" },
+  sunset: {
+    name: "Sunset",
+    fn: rampFromStops(["#fad873", "#f2a167", "#e17a8b", "#c25390", "#9c3492", "#6f2382"]),
+    note: "gold → violet",
+  },
+  rdbuDiv: { name: "Red – Blue", fn: (t) => interpolateRdBu(1 - t), note: "diverging, blue low" },
+  earth: { name: "Earth", fn: interpolateYlOrBr, note: "browns — burden/pollution" },
   spectral: { name: "Spectral", fn: (t) => interpolateSpectral(1 - t), note: "diverging, not CB-safe" },
   viridis: { name: "Viridis", fn: interpolateViridis, note: "colour-blind safe" },
 };
 
 export const DEFAULT_PALETTE: PaletteId = "navyYellow";
 
-/** Old Observatory palette ids from shared links → nearest Atlas ramp. */
+/** Suggested palette per topic (iter-53 item 403) — applied on metric pick
+    unless the user has manually chosen a ramp. */
+export const SUGGESTED_PALETTE: Record<string, PaletteId> = {
+  crime: "rdbuDiv",
+  health: "sunset",
+};
+
+/** Old palette ids from shared links → nearest current Atlas ramp. */
 export function normalizePalette(id: string | null): PaletteId {
   if (id && id in PALETTES) return id as PaletteId;
-  if (id === "cividis") return "viridis";
-  if (id === "rdbu") return "spectral";
+  if (id === "cividis" || id === "ylgnbu") return "viridis";
+  if (id === "rdbu") return "rdbuDiv";
+  if (id === "plasma") return "sunset";
+  if (id === "blues") return "navyYellow";
   return DEFAULT_PALETTE;
 }
 

@@ -206,7 +206,7 @@ export function ScalePopover({
   ];
   return (
     <div
-      className="atl-pop absolute bottom-[10px] left-[272px] z-30 w-[280px] border border-border bg-panel-solid p-4"
+      className="atl-pop absolute bottom-[10px] left-[318px] z-30 w-[280px] border border-border bg-panel-solid p-4"
       style={{ boxShadow: "0 8px 26px rgba(0,0,0,.45)" }}
       role="dialog" aria-label="Scale options"
     >

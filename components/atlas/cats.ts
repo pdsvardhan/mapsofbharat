@@ -5,7 +5,7 @@
 export type Metric = {
   id: string; name: string; category: string; unit: string; year: number; source: string;
   higher_is_better: number | null; levels?: string[]; methodology?: string | null;
-  decimals?: number;
+  decimals?: number; default_scale?: string | null;
 };
 
 export const CAT_ORDER = ["demographics", "economy", "health", "crime", "labour", "livelihood"];
