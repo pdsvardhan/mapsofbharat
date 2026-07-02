@@ -173,3 +173,15 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/2026-07-01-economic-data-expansion.md
+  - id: adr-015-atlas-ui-overhaul
+    project_slug: mapsofbharat
+    title: "Atlas UI overhaul: dark editorial almanac redesign of the explorer"
+    status: accepted
+    date: 2026-07-02T00:00:00.000Z
+    tags:
+      - ui
+      - design
+      - revamp
+      - curated
+      - cat:product
+    body_path: decisions/2026-07-02-atlas-ui-overhaul.md

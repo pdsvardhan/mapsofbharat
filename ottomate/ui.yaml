@@ -1,7 +1,8 @@
 pages:
   - id: page-explore
     title: Explore
-    route: /explore
+    route: /
+    empty_state: Neutral map + START HERE card until an indicator is picked (iter-51)
     permissions: anonymous
     mobile_handling: responsive
     entry_points: []

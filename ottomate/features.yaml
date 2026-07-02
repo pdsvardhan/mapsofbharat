@@ -190,6 +190,8 @@ features:
     priority: P1
     size: M
     test_status: partial
+    notes: "iter-51 (adr-015): CSV export retired; Link/PNG/Embed folded into one
+      Share menu. /embed route unchanged."
     acceptance_criteria:
       - content: Current view exports to PNG with title and source attribution
         test_status: not-tested
@@ -203,10 +205,12 @@ features:
     title: Find-my-district (geolocation)
     short_description: Personal hook for the public.
     type: ui
-    status: done
+    status: dropped
     priority: P2
     size: S
     test_status: passing
+    notes: "Retired at iter-51 (2026-07-02): geolocation dropped from Atlas UI per
+      user decision. Drop-with-reason: adr-015-atlas-ui-overhaul."
     acceptance_criteria:
       - content: With permission, the map highlights the user district and its stats
         test_status: not-tested

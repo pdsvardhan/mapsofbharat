@@ -28,18 +28,24 @@ flows:
     type: ui
     priority: critical
     test_status: passing
-    trigger: User clicks a state
+    trigger: User selects a state, then clicks View N districts in its profile
     expected_outcome: District-level detail for the chosen state
+    notes: "Interaction model changed at iter-51 (adr-015): state click now SELECTS
+      (docked profile); drilling happens via the profile drill button. Steps
+      updated 2026-07-02."
     pre_conditions: []
     steps:
       - actor: user
-        action: Clicks a state
+        action: Clicks a state (map or ranking rail)
+        result: State selected - docked profile with View N districts button
+      - actor: user
+        action: Clicks View N districts in the profile
         result: Drill requested
       - actor: system
-        action: Zooms to the state and loads its district polygons and data
-        result: District choropleth shown
+        action: Zooms to the state, filters districts, recolours on a local scale
+        result: District choropleth for that state with local legend
       - actor: user
-        action: Clicks the breadcrumb
+        action: Clicks India in the breadcrumb
         result: Back requested
       - actor: system
         action: Zooms back to the India view
