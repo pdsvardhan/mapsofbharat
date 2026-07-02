@@ -24,7 +24,7 @@ export function ChooserModal({
     <div className="atl-fade fixed inset-0 z-40 flex items-center justify-center" style={{ background: "rgba(7,8,11,.74)" }} onClick={onClose}>
       <div
         role="dialog" aria-label="Choose an indicator" onClick={(e) => e.stopPropagation()}
-        className="atl-pop flex h-[540px] w-[760px] max-w-[94vw] flex-col overflow-hidden border border-border bg-panel-solid"
+        className="atl-pop flex h-[640px] max-h-[86vh] w-[920px] max-w-[96vw] flex-col overflow-hidden border border-border bg-panel-solid"
         style={{ boxShadow: "0 30px 70px rgba(0,0,0,.55)" }}
       >
         <div className="flex flex-none items-baseline justify-between border-b border-border-soft px-6 pb-4 pt-5">

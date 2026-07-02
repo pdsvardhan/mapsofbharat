@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
-  BreakMethod, PaletteId, PALETTES, DEFAULT_PALETTE, normalizePalette,
+  BreakMethod, PaletteId, PALETTES, DEFAULT_PALETTE, SUGGESTED_PALETTE, normalizePalette,
   computeBreaks, colorFor, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
@@ -47,10 +47,12 @@ function bbox(geom: { coordinates: unknown }): [number, number, number, number] 
 
 function readUrl() {
   if (typeof window === "undefined")
-    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "continuous" as BreakMethod, pal: DEFAULT_PALETTE, rev: false };
+    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false };
   const p = new URLSearchParams(window.location.search);
   const m = p.get("m") || "";
-  const brk = (["quantile", "equal", "jenks"].includes(p.get("brk") || "") ? p.get("brk") : "continuous") as BreakMethod;
+  // Jenks is the global default (iter-53 item 404); explicit URL param wins
+  const brkParam = p.get("brk");
+  const brk = (["continuous", "quantile", "equal", "jenks"].includes(brkParam || "") ? brkParam : "jenks") as BreakMethod;
   // old Observatory links: metric set but no lvl meant the district default
   const lvl = (p.get("lvl") === "state" ? "state" : p.get("lvl") === "district" ? "district" : m ? "district" : "state") as "state" | "district";
   return {
@@ -63,6 +65,8 @@ function readUrl() {
     brk,
     pal: normalizePalette(p.get("pal")),
     rev: p.get("rev") === "1",
+    brkPinned: !!brkParam,
+    palPinned: !!p.get("pal"),
   };
 }
 
@@ -117,6 +121,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const cohortSetsRef = useRef(cohortSets);
   const dataRef = useRef<MetricData | null>(null);
   const toastT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // manual scale/palette picks (or URL pins) suppress per-metric suggestions
+  const brkTouchedRef = useRef(init.brkPinned);
+  const palTouchedRef = useRef(init.palPinned);
 
   useEffect(() => { levelRef.current = level; }, [level]);
   useEffect(() => { focusRef.current = focus; }, [focus]);
@@ -144,15 +151,36 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     try {
       const s = JSON.parse(localStorage.getItem(PREFS_STORE) || "null");
       if (s && !new URLSearchParams(window.location.search).get("pal")) {
-        if (s.palette) setPalette(normalizePalette(s.palette));
-        if (s.method && ["continuous", "quantile", "equal", "jenks"].includes(s.method)) setBrkMethod(s.method);
+        if (s.palette) { setPalette(normalizePalette(s.palette)); palTouchedRef.current = true; }
+        if (s.method && ["continuous", "quantile", "equal", "jenks"].includes(s.method)) { setBrkMethod(s.method); brkTouchedRef.current = true; }
         if (typeof s.reverse === "boolean") setReverse(s.reverse);
       }
     } catch { /* ignore */ }
   }, []);
   useEffect(() => {
-    try { localStorage.setItem(PREFS_STORE, JSON.stringify({ palette, method: brkMethod, reverse })); } catch { /* ignore */ }
+    // persist only deliberate picks — suggested defaults stay ephemeral
+    if (!brkTouchedRef.current && !palTouchedRef.current) return;
+    try {
+      localStorage.setItem(PREFS_STORE, JSON.stringify({
+        ...(palTouchedRef.current ? { palette } : {}),
+        ...(brkTouchedRef.current ? { method: brkMethod } : {}),
+        reverse,
+      }));
+    } catch { /* ignore */ }
   }, [palette, brkMethod, reverse]);
+
+  // per-metric suggested scale + palette (iter-53 items 403/404):
+  // metrics.default_scale and topic-suggested ramps apply on pick, but never
+  // override a URL pin, a persisted pref, or a manual pick this session
+  useEffect(() => {
+    if (!meta) return;
+    const ds = (meta as { default_scale?: string | null }).default_scale;
+    if (!brkTouchedRef.current && ds && ["continuous", "quantile", "equal", "jenks"].includes(ds))
+      setBrkMethod(ds as BreakMethod);
+    if (!palTouchedRef.current)
+      setPalette(SUGGESTED_PALETTE[meta.category] ?? DEFAULT_PALETTE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel, metrics.length]);
 
   // metric list + region name index
   useEffect(() => {
@@ -183,8 +211,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0d0f14" } }] },
       bounds: INDIA_BOUNDS, fitBoundsOptions: { padding: 24 },
       attributionControl: false, maxZoom: 12, minZoom: 3, dragRotate: false,
-      preserveDrawingBuffer: true,
-    } as maplibregl.MapOptions & { preserveDrawingBuffer?: boolean });
+      // MapLibre v5 moved this under canvasContextAttributes — the old
+      // top-level option was silently ignored, which made PNG exports blank
+      // (iter-53 item 402).
+      canvasContextAttributes: { preserveDrawingBuffer: true },
+    } as maplibregl.MapOptions);
     mapRef.current = map;
     (window as any).__mob_map = map;
 
@@ -420,7 +451,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const p = new URLSearchParams();
     if (sel) { p.set("m", sel); p.set("lvl", level); }
     if (mode !== "value") p.set("mode", mode);
-    if (brkMethod !== "continuous") p.set("brk", brkMethod);
+    if (brkMethod !== "jenks") p.set("brk", brkMethod);
     if (palette !== DEFAULT_PALETTE) p.set("pal", palette);
     if (reverse) p.set("rev", "1");
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
@@ -601,6 +632,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   const exportPng = useCallback(() => {
     const map = mapRef.current; if (!map || !data) return;
+    // compose right after a fresh frame so the preserved buffer is populated
+    map.once("render", () => composePng(map));
+    map.triggerRepaint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, sel, focus, palette, reverse, fmtVal, scopeMin, scopeMax]);
+
+  function composePng(map: maplibregl.Map) {
+    const md = dataRef.current; if (!md) return;
+    const data = md;
     const src = map.getCanvas();
     const dpr = window.devicePixelRatio || 1;
     const header = Math.round(58 * dpr);
@@ -640,7 +680,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const suffix = focus ? "-" + focus.name.replace(/\s+/g, "_") : "";
     a.download = `mapsofbharat-${sel}${suffix}.png`;
     a.click();
-  }, [data, sel, focus, palette, reverse, fmtVal, scopeMin, scopeMax]);
+  }
 
   // search: pick a place
   const onSearchRegion = useCallback((r: RegionIdx) => {
@@ -673,12 +713,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         e.preventDefault();
         setSearchOpen((o) => !o); setChooserOpen(false); setScaleOpen(false);
       } else if (e.key === "Escape") {
-        setSearchOpen(false); setChooserOpen(false); setScaleOpen(false);
+        if (searchOpen || chooserOpen || scaleOpen) {
+          setSearchOpen(false); setChooserOpen(false); setScaleOpen(false);
+        } else if (selectedRef.current || focusRef.current) {
+          // Escape steps all the way back to the national view (item 405)
+          clearSelected();
+          if (focusRef.current) exitFocus(true);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [minimal]);
+  }, [minimal, searchOpen, chooserOpen, scaleOpen]);
 
   // ── breadcrumb model ────────────────────────────────────────────────────
   const crumbs = useMemo(() => {
@@ -793,7 +839,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             <div ref={ref} style={{ position: "absolute", inset: 0 }} />
 
             {/* LEFT STACK */}
-            <div className="absolute left-3.5 top-3.5 z-[5] flex w-[254px] flex-col gap-2.5">
+            <div className="absolute left-3.5 top-3.5 z-[5] flex w-[300px] flex-col gap-2.5">
               <Crumbs items={crumbs} hasBack={hasBack} onBack={onBack} />
               <IndicatorCard
                 metricName={meta?.name ?? null}
@@ -803,13 +849,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               />
               <LevelColourCard
                 level={level} onLevel={(l) => setLevel(l)} levelLock={levelLock}
-                palette={palette} onPalette={setPalette}
+                palette={palette} onPalette={(p) => { palTouchedRef.current = true; setPalette(p); }}
               />
             </div>
 
             {/* LEGEND */}
             {data && meta && (
-              <div className="absolute bottom-3.5 left-3.5 z-[5] w-[254px]">
+              <div className="absolute bottom-3.5 left-3.5 z-[5] w-[300px]">
                 <LegendCard
                   metricName={data.name} unit={data.unit} decimals={data.decimals}
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}
@@ -826,7 +872,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             )}
             {scaleOpen && (
               <ScalePopover
-                method={brkMethod} onMethod={setBrkMethod}
+                method={brkMethod} onMethod={(m) => { brkTouchedRef.current = true; setBrkMethod(m); }}
                 reverse={reverse} onReverse={() => setReverse((r) => !r)}
                 onClose={() => setScaleOpen(false)}
               />
@@ -871,6 +917,28 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 style={{ background: "rgba(26,23,14,.96)", borderColor: "#6b3020", color: "#eecdb8" }}
               >
                 {!data ? "Pick an indicator, then click two regions" : pins.length === 0 ? "Click the first region to compare" : "Now click a second region"}
+              </div>
+            )}
+
+            {/* FLOATING REGION PROFILE (iter-53 item 407 — lives on the plate, not the rail) */}
+            {selected && !compare && (
+              <div className="atl-pop absolute right-3.5 top-3.5 z-[6] w-[300px] border border-border" style={{ background: "var(--panel)", boxShadow: "0 10px 30px rgba(0,0,0,.45)" }}>
+                <RegionProfile
+                  sel={{
+                    code: selected.code, name: selected.name,
+                    sub: selected.kind === "district"
+                      ? `${selected.state} · district`
+                      : `${districtCountOf(selected.code) || "—"} districts`,
+                    kind: selected.kind, value: selectedValue,
+                  }}
+                  unit={data?.unit ?? ""} hasMetric={!!data}
+                  entries={entries} min={scopeMin} max={scopeMax}
+                  fmtVal={fmtVal} fmtFull={fmtFull}
+                  rank={selectedRank} scopeNoun={scopeNoun}
+                  drillLabel={selected.kind === "state" && !focusActive ? `View ${districtCountOf(selected.code) || ""} districts`.replace("  ", " ") : null}
+                  onDrill={() => drillIntoState(selected.code.padStart(2, "0"), selected.name)}
+                  onClear={clearSelected}
+                />
               </div>
             )}
 
@@ -925,26 +993,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               onExit={() => { setCompare(false); clearPins(); }}
             />
           ) : (
-            <>
-              {selected && (
-                <RegionProfile
-                  sel={{
-                    code: selected.code, name: selected.name,
-                    sub: selected.kind === "district"
-                      ? `${selected.state} · district`
-                      : `${districtCountOf(selected.code) || "—"} districts`,
-                    kind: selected.kind, value: selectedValue,
-                  }}
-                  unit={data?.unit ?? ""} hasMetric={!!data}
-                  entries={entries} min={scopeMin} max={scopeMax}
-                  fmtVal={fmtVal} fmtFull={fmtFull}
-                  rank={selectedRank} scopeNoun={scopeNoun}
-                  drillLabel={selected.kind === "state" && !focusActive ? `View ${districtCountOf(selected.code) || ""} districts`.replace("  ", " ") : null}
-                  onDrill={() => drillIntoState(selected.code.padStart(2, "0"), selected.name)}
-                  onClear={clearSelected}
-                />
-              )}
-              <RankingRail
+            <RankingRail
                 hasMetric={!!data}
                 metricLabel={data?.name ?? ""}
                 entries={entries} rankOf={rankOf}
@@ -984,7 +1033,6 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   setHovered(null);
                 }}
               />
-            </>
           )}
         </aside>
       </div>
