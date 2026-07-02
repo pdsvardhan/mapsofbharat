@@ -6,6 +6,8 @@ revenue district by name, drop non-geographic units (logged), and compute rates
 per 100k using Census-2011 reaggregated population (the only district population
 in the canonical store; the denominator vintage is stated in each metric's
 description). State rows = sum of matched counts / state 2011 population.
+crime_women_rate uses the Census-2011 reaggregated FEMALE population as its
+denominator (per 100k women, item 401), replayed from the persisted crosswalk.
 Run: pipeline/.venv/bin/python pipeline/ingest_ncrb.py
 """
 import os, re, sqlite3
@@ -27,8 +29,22 @@ METHODOLOGY = ("Counts from NCRB Crime in India 2022 district tables; rates per 
                "and non-geographic units are excluded. Denominators come from the official Census-2011 "
                "sub-district reaggregation (complete national coverage, bug #18 fix), so no district is withheld.")
 
+# \bcyber\b (not bare "cyber") so non-geographic cyber wings ("Cyber Cell",
+# "Cyber Ahmedabad Range") are dropped but Telangana's CYBERABAD commissionerate
+# is NOT — bare "cyber" silently dropped Cyberabad's counts (5,424 cyber crimes,
+# 1.7k+ IPC women/murder rows) from every metric before the commissionerate map
+# could roll them into Ranga Reddy (iter-52 item 401).
+METHODOLOGY_WOMEN = ("Counts from NCRB Crime in India 2022 district tables; rates per 100,000 WOMEN "
+                     "computed against Census-2011 reaggregated FEMALE population (TOT_F from the official "
+                     "ORGI sub-district PCA, reaggregated onto current districts via the persisted crosswalk "
+                     "— the same mapping that produced pop_total). The 2011-vs-2022 denominator vintage "
+                     "mismatch slightly inflates rates in fast-growing districts and is stated, not hidden. "
+                     "NCRB reports by police district: City/Rural/Commissionerate splits are summed into the "
+                     "host revenue district (documented approximations for metro commissionerates); railway "
+                     "and non-geographic units are excluded.")
+
 DROP_UNITS = re.compile(
-    r"crime branch|c\.?i\.?d|railway|cyber|stf|eow|special cell|"
+    r"crime branch|c\.?i\.?d|railway|\bcyber\b|stf|eow|special cell|"
     r"ghrp|grp|total", re.I)
 SPLIT_SUFFIXES = re.compile(
     r"\s+(city|rural|urban|commissionerate|commissionarate|commr\.?)$", re.I)
@@ -44,6 +60,7 @@ COMMISSIONERATE_MAP = {
     ("telangana", "rachakonda"): "medchal malkajgiri",
     ("telangana", "warangal"): "warangal urban",
     ("telangana", "jagityal"): "jagtial",
+    ("telangana", "ramagundam"): "peddapalli",
     ("uttar pradesh", "kanpur"): "kanpur nagar",
     ("assam", "guwahati"): "kamrup metropolitan",
     ("maharashtra", "pimpri chinchwad"): "pune",
@@ -59,11 +76,49 @@ TABLES = [
      "crime_murder_rate", "Murders", "Murder cases registered (Sec. 302 IPC)"),
     ("ncrb_cii2022_district_1.3_crime_against_women.csv", "District",
      "Total Crime against Women (IPC+SLL) - Col. ( 54)",
-     "crime_women_rate", "Crimes against women", "Total crimes against women (IPC+SLL)"),
+     "crime_women_rate", "Crimes against women (per 100k women)",
+     "Total crimes against women (IPC+SLL)"),
     ("ncrb_cii2022_district_1.9_cyber_crimes.csv", "District",
      "Total Cyber Crimes (A+B+C) - Col. ( 51)",
      "crime_cyber_rate", "Cyber crimes", "Total cyber crimes (IT Act + IPC + SLL)"),
 ]
+
+
+def female_population(con):
+    """Census-2011 female population (TOT_F) reaggregated onto current districts.
+
+    Replays reaggregate.py's mapping exactly: the persisted `crosswalk` table
+    (sub-district -> rid, point-in-polygon / nearest) plus the same
+    dominant-piece reconciliation for official sub-districts that had no
+    geometry — so the female denominator is consistent with the stored
+    pop_total to the person. Returns ({rid: female_pop}, {st_code: female_pop}).
+    """
+    sub = pd.read_excel(os.path.join(PIPE, "raw", "2011-IndiaStateDistSbDist.xlsx"),
+                        sheet_name="Data", dtype=str)
+    sdf = sub[(sub["Level"] == "SUB-DISTRICT") & (sub["TRU"] == "Total")].copy()
+    sdf["scode"] = sdf["State"].str.zfill(2)
+    sdf["sd"] = sdf["scode"] + sdf["District"].str.zfill(3) + sdf["Subdistt"].str.zfill(5)
+    sdf["dcode"] = sdf["scode"] + "_" + sdf["District"].astype(int).astype(str)
+    for c in ("TOT_F", "TOT_P"):
+        sdf[c] = pd.to_numeric(sdf[c], errors="coerce")
+    xw = dict(con.execute("SELECT sd_code, rid FROM crosswalk"))
+    sdf["rid"] = sdf["sd"].map(xw)
+    mapped = sdf[sdf["rid"].notna()]
+    orphan = sdf[sdf["rid"].isna()].copy()
+    if len(orphan):
+        dom = mapped.groupby("dcode").apply(
+            lambda g: g.groupby("rid")["TOT_P"].sum().idxmax())
+        orphan["rid"] = orphan["dcode"].map(dom)
+        mapped = pd.concat([mapped, orphan[orphan["rid"].notna()]])
+    by_rid = mapped.groupby("rid")["TOT_F"].sum().to_dict()
+    by_st: dict[str, float] = {}
+    for rid, f in by_rid.items():
+        st = rid.split("_")[0]
+        by_st[st] = by_st.get(st, 0) + f
+    total_f = sum(by_rid.values())
+    assert abs(total_f - 587_447_730) / 587_447_730 < 0.01, \
+        f"female reaggregation total {total_f:,.0f} drifts >1% from Census 2011 (587,447,730)"
+    return by_rid, by_st
 
 
 def main():
@@ -73,6 +128,9 @@ def main():
         "SELECT region_code, value FROM metric_values WHERE metric_id='pop_total' AND region_level='district' AND year=2011"))
     pop_st = dict(con.execute(
         "SELECT region_code, value FROM metric_values WHERE metric_id='pop_total' AND region_level='state' AND year=2011"))
+    fpop, fpop_st = female_population(con)
+    print(f"female denominator: {len(fpop)} districts, {len(fpop_st)} states, "
+          f"total {sum(fpop.values()):,.0f}")
 
     total_rows = 0
     dropped_units = set()
@@ -128,19 +186,28 @@ def main():
                 unmatched_all.add(key)
 
         matched_share = sum(counts.values()) / (sum(counts.values()) + sum(unmatched.values()) or 1) * 100
-        rates = {rid: round(c / pop[rid] * 100000, 1) for rid, c in counts.items() if pop.get(rid)}
+        # crimes against women are normalised per 100k WOMEN (Census-2011 female
+        # population, same reaggregation as pop_total); other metrics per 100k persons
+        if mid == "crime_women_rate":
+            den, den_st = fpop, fpop_st
+            den_label, meth = "female population", METHODOLOGY_WOMEN
+        else:
+            den, den_st = pop, pop_st
+            den_label, meth = "population", METHODOLOGY
+        rates = {rid: round(c / den[rid] * 100000, 1) for rid, c in counts.items() if den.get(rid)}
 
-        # state level: sum matched district counts per state / state 2011 pop
+        # state level: sum matched district counts per state / state 2011 denominator
         st_counts: dict[str, float] = {}
         for rid, c in counts.items():
             st = rid.split("_")[0]
             st_counts[st] = st_counts.get(st, 0) + c
-        st_rates = {st: round(c / pop_st[st] * 100000, 1) for st, c in st_counts.items() if pop_st.get(st)}
+        st_rates = {st: round(c / den_st[st] * 100000, 1) for st, c in st_counts.items() if den_st.get(st)}
 
+        per_label = "per 100,000 women" if mid == "crime_women_rate" else "per 100,000 population"
         upsert_metric(con, mid, mname, "crime", "per 100k", 1, 0,
-                      f"{desc}, 2022, per 100,000 population (denominator: Census 2011 "
-                      f"reaggregated population — rate vintage mismatch is stated, not hidden).",
-                      SOURCE, URL, LICENSE, YEAR, methodology=METHODOLOGY)
+                      f"{desc}, 2022, {per_label} (denominator: Census 2011 "
+                      f"reaggregated {den_label} — rate vintage mismatch is stated, not hidden).",
+                      SOURCE, URL, LICENSE, YEAR, methodology=meth)
         n = write_values(con, mid, "district", YEAR, rates)
         n += write_values(con, mid, "state", YEAR, st_rates)
         total_rows += n

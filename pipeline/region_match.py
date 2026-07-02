@@ -59,6 +59,25 @@ STATE_ALIASES = {
     ("maharashtra", "raigarh"): "raigad",
     ("maharashtra", "bid"): "beed",
     ("chhattisgarh", "dantewada"): "dakshin bastar dantewada",
+    # NCRB prints the full official name "Kumaram Bheem Asifabad" (with the
+    # K/u spelling); region_keys carries the short form "Komaram Bheem" — too
+    # far apart for the 0.82 fuzzy cutoff, so the district had no crime rows.
+    ("telangana", "kumaram bheem asifabad"): "komaram bheem",
+    # Sikkim's 2021 district reorganisation: East->Gangtok, North->Mangan,
+    # South->Namchi, West->Gyalshing, plus Pakyong (carved out of East) and
+    # Soreng (carved out of West). Post-2021 sources (NCRB CII 2022+) print the
+    # new names — usually as "Gangtok (East)", whose parenthetical hint norm()
+    # strips — while region_keys carries the pre-2021 four-district geometry,
+    # so every new name maps to its parent district. Count-based adapters
+    # aggregate the two carve-outs into their parents (Pakyong->East,
+    # Soreng->West); a percentage source that reports the new six units would
+    # need per-adapter weighting instead of this map.
+    ("sikkim", "gangtok"): "east sikkim",
+    ("sikkim", "pakyong"): "east sikkim",
+    ("sikkim", "mangan"): "north sikkim",
+    ("sikkim", "namchi"): "south sikkim",
+    ("sikkim", "soreng"): "west sikkim",
+    ("sikkim", "gyalshing"): "west sikkim",
 }
 
 
