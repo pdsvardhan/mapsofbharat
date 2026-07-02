@@ -1,27 +1,33 @@
 import type { Metadata } from "next";
-import { Outfit, Inter, JetBrains_Mono } from "next/font/google";
-import { ThemeProvider } from "@/components/theme-provider";
+import { Hanken_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit", display: "swap" });
-const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap" });
+const hanken = Hanken_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-hanken",
+  display: "swap",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plexmono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "MapsOfBharat — India statistics, mapped",
+  title: "Maps of Bharat — India statistics, mapped",
   description:
     "Map-first data visualization for India. Official statistics as interactive choropleths, drilling India to state to district, fully cited.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${outfit.variable} ${jetbrains.variable} antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <ClientErrorReporter />
-          {children}
-        </ThemeProvider>
+    <html lang="en">
+      <body className={`${hanken.variable} ${plexMono.variable} antialiased`}>
+        <ClientErrorReporter />
+        {children}
       </body>
     </html>
   );

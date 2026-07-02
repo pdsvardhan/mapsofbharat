@@ -1,64 +1,55 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
-
-/* ── Observatory · Light ───────────────────────────── */
+/* ── Atlas · living-almanac editorial (iter-51, adr-015) ─────────
+   Dark-only. Ink canvas, cream text, madder accent, hairline borders.
+   Light theme retired with the Observatory design (adr-015). */
 :root {
-  --background: #f7f9fb;
-  --background-secondary: #eef2f6;
-  --foreground: #0b0f14;
-  --foreground-muted: #5a6776;
-  --card: #ffffff;
-  --card-hover: #f1f5f9;
-  --border: #d8e0e8;
-  --border-subtle: #e7edf3;
-  --ring: #0d9488;
-  --accent-teal: #0d9488;
-  --accent-amber: #b45309;
-  --accent-rose: #e11d48;
-  --positive: #059669;
-  --radius: 0.5rem;
-}
-
-/* ── Observatory · Dark (primary) ──────────────────── */
-.dark {
-  --background: #0b0f14;
-  --background-secondary: #141a22;
-  --foreground: #e6edf3;
-  --foreground-muted: #8b98a5;
-  --card: #141a22;
-  --card-hover: #1c2530;
-  --border: #243040;
-  --border-subtle: #1b2430;
-  --ring: #2dd4bf;
-  --accent-teal: #2dd4bf;
-  --accent-amber: #f59e0b;
-  --accent-rose: #fb7185;
-  --positive: #34d399;
+  --background: #0d0f14;
+  --panel: rgba(18, 19, 15, 0.93);
+  --panel-solid: #12130f;
+  --elevated: #1a1712;
+  --foreground: #e9e3d5;
+  --foreground-bright: #eae4d6;
+  --muted: #a49d8c;
+  --faint: #8a8477;
+  --dim: #6a6455;
+  --border: #3b3626;
+  --border-soft: #2a2619;
+  --border-faint: #211e14;
+  --accent: #d1502f;
+  --accent-hover: #e0603d;
+  --accent-ink: #16110b;
+  --accent-border: #6b3020;
+  --gold: #e6b34a;
+  --map-neutral: #26231c;
+  --map-nodata: #2a271d;
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-background-secondary: var(--background-secondary);
+  --color-panel: var(--panel);
+  --color-panel-solid: var(--panel-solid);
+  --color-elevated: var(--elevated);
   --color-foreground: var(--foreground);
-  --color-foreground-muted: var(--foreground-muted);
-  --color-card: var(--card);
-  --color-card-hover: var(--card-hover);
+  --color-bright: var(--foreground-bright);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-dim: var(--dim);
   --color-border: var(--border);
-  --color-border-subtle: var(--border-subtle);
-  --color-ring: var(--ring);
-  --color-accent-teal: var(--accent-teal);
-  --color-accent-amber: var(--accent-amber);
-  --color-accent-rose: var(--accent-rose);
-  --color-positive: var(--positive);
-  --radius-base: var(--radius);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-outfit), var(--font-inter), ui-sans-serif, sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --color-border-soft: var(--border-soft);
+  --color-border-faint: var(--border-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-border: var(--accent-border);
+  --color-gold: var(--gold);
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plexmono), ui-monospace, monospace;
 }
 
 * {
   border-color: var(--border);
+  box-sizing: border-box;
 }
 
 body {
@@ -69,7 +60,32 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3, h4 {
-  font-family: var(--font-heading);
-  letter-spacing: -0.01em;
+/* thin editorial scrollbars */
+.atl-scroll::-webkit-scrollbar { width: 6px; }
+.atl-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.atl-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* animated rank / compare bars */
+.rankbar { transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease; }
+
+@keyframes atlPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
 }
+.atl-liveDot { animation: atlPulse 1.9s ease-in-out infinite; }
+
+@keyframes atlFade { from { opacity: 0; } to { opacity: 1; } }
+.atl-fade { animation: atlFade 0.18s ease both; }
+
+@keyframes atlPop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.atl-pop { animation: atlPop 0.22s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .atl-liveDot, .atl-fade, .atl-pop { animation: none; }
+  .rankbar { transition: none; }
+}
+
+input { outline: none; }

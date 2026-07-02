@@ -1,37 +1,32 @@
 import { test, expect } from "@playwright/test";
 
-test("landing page renders and links to explore", async ({ page }) => {
+// Atlas smoke (iter-51): the homepage IS the explorer, neutral until an
+// indicator is picked; /explore permalinks redirect to / with params intact.
+
+test("homepage renders the explorer with the neutral START HERE state", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /India, mapped/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Explore the map/i })).toBeVisible();
-});
-
-test("explore loads the map, metric selector, and legend", async ({ page }) => {
-  await page.goto("/explore");
   await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
-
-  const select = page.getByLabel("Select metric");
-  await expect(select).toBeVisible();
-  await expect.poll(async () => select.locator("option").count()).toBeGreaterThan(0);
-
-  // legend text appears once metric data has loaded and coloured the map
-  await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
-
-  // export/share/locate controls are present
-  await expect(page.getByRole("button", { name: /Export current map as PNG/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Copy shareable link/i })).toBeVisible();
+  await expect(page.getByText("Maps of Bharat").first()).toBeVisible();
+  await expect(page.getByText(/Choose an indicator/i).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /BROWSE INDICATORS/i })).toBeVisible();
 });
 
-test("switching the metric keeps the legend populated", async ({ page }) => {
-  await page.goto("/explore");
-  const select = page.getByLabel("Select metric");
-  await expect.poll(async () => select.locator("option").count()).toBeGreaterThan(1);
-  const values = await select.locator("option").evaluateAll((opts) =>
-    (opts as HTMLOptionElement[]).map((o) => o.value)
-  );
-  const other = values.find((v) => v) ?? values[0];
-  await select.selectOption(other);
-  await expect(page.getByText(/districts · \d{4}/i)).toBeVisible({ timeout: 20_000 });
+test("/explore redirects to / and keeps query params", async ({ page }) => {
+  await page.goto("/explore?m=literacy_rate");
+  await page.waitForURL((url) => url.pathname === "/" && url.searchParams.get("m") === "literacy_rate", { timeout: 15_000 });
+  await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
+});
+
+test("picking an indicator via the chooser colours the map and legend", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: /BROWSE INDICATORS/i }).click();
+  const dialog = page.getByRole("dialog", { name: /Choose an indicator/i });
+  await expect(dialog).toBeVisible();
+  // pick the first metric row in the active topic
+  await dialog.getByRole("button").filter({ hasText: /·|%|per/i }).first().click();
+  await expect(page.getByText(/\d+ (districts|states) ·/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Ranked by|Top districts/i)).toBeVisible({ timeout: 10_000 });
 });
 
 test("metrics API returns a list", async ({ request }) => {
