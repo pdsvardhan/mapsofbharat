@@ -1,6 +1,6 @@
 {
   "district_coverage": 733,
-  "metric_count": 36,
+  "metric_count": 39,
   "per_metric_district_count": {
     "agri_labourers_pct": 733,
     "child_sex_ratio": 733,
@@ -24,10 +24,12 @@
     "nfhs5_women_anaemia": 671,
     "nonfarm_emp_per_1000": 733,
     "other_workers_pct": 733,
+    "pop_density": 733,
     "pop_total": 733,
     "sc_pct": 733,
     "sex_ratio": 733,
     "st_pct": 733,
+    "urban_pct": 733,
     "work_participation": 733
   }
 }
