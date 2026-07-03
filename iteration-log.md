@@ -130,3 +130,27 @@ verifier APPROVE. Commit fc507ba + docker-compose port rebind.
 districts, 36 per-metric entries); typecheck + next build clean; Playwright 11/11 vs :3100.
 **Next session pick-up:** consider a 2011→current alias pack for the ~25 post-geometry new
 districts (JJM logged list is the seed); NCRB city-series and UDISE district cards still parked.
+
+## Session 2026-07-03 — Atlas overhaul + data-quality + ingestion wave
+
+**Iterations this session:** 51 (Atlas UI overhaul), 52 (data-quality fixes), 53 (13 UI comments), 58 (ingestion wave).
+**Outcome:** site 36 to 59 metrics, 6 to 11 topics; Atlas editorial UI live; all four iterations verified (7/7, 4/4, 7/7, 13/13) and deployed to https://mapsofbharat.vault7a.xyz.
+
+**What changed:**
+- iter-51: full UI revamp to Atlas dark-editorial (masthead, chooser modal, floating panels, ranking rail, compare THE GAP, palette set, jenks scale); retired CSV/geolocation/value-range/light-theme (adr-015).
+- iter-52: Sikkim restored to crime via 2021 rename crosswalk; PLFS aligned to one round (2023-24); NFHS immunization 443 to 660 via negative-encoding recovery; crime_women_rate switched to per-lakh-women; Telangana cyber 27.8 to 43.8 after recovering Cyberabad's 5,424 dropped rows.
+- iter-53: PNG blank fixed (MapLibre v5 canvasContextAttributes), jenks default, palette overhaul (added Sunset/Red-Blue/Earth, removed Blues/YlGnBu/Plasma), Escape-to-India, rail search, floating profile, bigger panels.
+- iter-58: 11 new adapters, 23 metrics — density+urban+area (Top-10-Area cohort live), religion x6 district, LS-2024 turnout, MPCE x2, suicide rate, road deaths, UDISE x3, teledensity+internet, per-capita power, tap water 726 districts, tourism x2; 5 new chooser categories.
+
+**Decisions:** adr-015 (Atlas UI overhaul). Two data deviations upheld by verifier: ADSI file is the 2023 edition (ingested as 2023); CEA Table 9.9 used over 9.7 (9.7 was utilities-only and contradicted the known national per-capita figure).
+
+**Friction (systemic):**
+- tooling: sub-agent session-capacity caps interrupted 3 agents mid-run (acquisition x2, iter-58 coder). Mitigation adopted: per-vertical commits so caps never lose finished work; resume-from-transcript worked each time.
+- api-change: MapLibre v5 moved preserveDrawingBuffer under canvasContextAttributes; silent blank PNG for a full iteration until user reported it.
+- tooling: an integrate script used the wrong todo route (PATCH /api/projects/slug/todos vs PATCH /api/todos/id) and left 150-153 open despite delivery; caught and fixed. Correct close route is PATCH /api/todos/id.
+- env-limitation: server is network-blocked from tourism.gov.in, trai.gov.in, ECI, censusindia, fsi, cpcb; working pattern is local-download then scp. The data.gov.in S3 bucket ogd20 returns 403 to all automation.
+- data-mismatch: RBI QSDCB district banking unobtainable (SAP login wall plus broken legacy TLS); UDISE district auth-walled; both shipped or parked at state level with disclosure.
+
+**Anti-gaslight surface at packup (pre-existing, not this session):** 12 original features lack feature_claims/acceptance-criteria rows and carry stale feature-level verification (June). Work IS independently verified, but this session's verifier reports were logged against iteration-item ids, not feature ids. Tracked as a ledger-hygiene todo.
+
+**Next session pickup:** build agriculture (todo 141, file on disk) / poverty (142, NITI MPI PDF) / environment (143, needs user downloads) verticals; PC-level election turnout; default_scale cleanup (154); or ledger-hygiene backfill.
