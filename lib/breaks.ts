@@ -54,6 +54,11 @@ export const DEFAULT_PALETTE: PaletteId = "navyYellow";
 export const SUGGESTED_PALETTE: Record<string, PaletteId> = {
   crime: "rdbuDiv",
   health: "sunset",
+  // iter-58 item 431: safety = burden metrics (suicide/road deaths) like crime;
+  // infrastructure (tap water / power / connectivity) reads well on the
+  // colour-blind-safe viridis ramp.
+  safety: "rdbuDiv",
+  infrastructure: "viridis",
 };
 
 /** Old palette ids from shared links → nearest current Atlas ramp. */

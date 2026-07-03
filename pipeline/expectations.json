@@ -1,9 +1,11 @@
 {
   "district_coverage": 733,
-  "metric_count": 36,
+  "metric_count": 59,
   "per_metric_district_count": {
     "agri_labourers_pct": 733,
+    "buddhist_pct": 733,
     "child_sex_ratio": 733,
+    "christian_pct": 733,
     "crime_cyber_rate": 692,
     "crime_ipc_rate": 692,
     "crime_murder_rate": 692,
@@ -11,8 +13,11 @@
     "cultivators_pct": 733,
     "estab_per_1000": 733,
     "female_literacy_rate": 733,
+    "hindu_pct": 733,
     "household_industry_pct": 733,
+    "jain_pct": 733,
     "literacy_rate": 733,
+    "muslim_pct": 733,
     "nfhs5_child_marriage": 671,
     "nfhs5_clean_fuel": 671,
     "nfhs5_full_immunization": 660,
@@ -24,10 +29,14 @@
     "nfhs5_women_anaemia": 671,
     "nonfarm_emp_per_1000": 733,
     "other_workers_pct": 733,
+    "pop_density": 733,
     "pop_total": 733,
     "sc_pct": 733,
     "sex_ratio": 733,
+    "sikh_pct": 733,
     "st_pct": 733,
+    "tap_water_pct": 726,
+    "urban_pct": 733,
     "work_participation": 733
   }
 }

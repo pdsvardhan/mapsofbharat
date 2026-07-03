@@ -98,7 +98,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [compare, setCompare] = useState(init.cmp.length > 0);
   const [pins, setPins] = useState<Sel[]>([]);
   const [cohort, setCohort] = useState<string>("all");
-  const [cohortSets, setCohortSets] = useState<{ pop: Set<string> | null; nsdp: Set<string> | null }>({ pop: null, nsdp: null });
+  const [cohortSets, setCohortSets] = useState<{ pop: Set<string> | null; nsdp: Set<string> | null; area: Set<string> | null }>({ pop: null, nsdp: null, area: null });
   const [rankView, setRankView] = useState<"top" | "bottom">("top");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [chooserOpen, setChooserOpen] = useState(false);
@@ -510,7 +510,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // cohort dimming (states level only)
     const ck = cohortRef.current;
     const cs = cohortSetsRef.current;
-    const cohortSet = levelRef.current === "state" && ck !== "all" ? (ck === "pop" ? cs.pop : cs.nsdp) : null;
+    const cohortSet = levelRef.current === "state" && ck !== "all"
+      ? (ck === "pop" ? cs.pop : ck === "nsdp" ? cs.nsdp : cs.area)
+      : null;
 
     for (const code of allCodes(source)) {
       const v = valuesRef.current[code];
@@ -529,16 +531,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   // ── cohorts (real top-10 lists from our own state-level metrics) ────────
   const ensureCohorts = useCallback(() => {
-    if (cohortSetsRef.current.pop && cohortSetsRef.current.nsdp) return;
+    if (cohortSetsRef.current.pop && cohortSetsRef.current.nsdp && cohortSetsRef.current.area) return;
     const top10 = (values: Record<string, number>) =>
       new Set(Object.entries(values).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([c]) => c));
     Promise.all([
       fetch("/api/metrics/pop_total?level=state").then((r) => r.json()).catch(() => null),
       fetch("/api/metrics/econ_percapita_nsdp_rbi?level=state").then((r) => r.json()).catch(() => null),
-    ]).then(([pop, nsdp]) => {
+      fetch("/api/metrics/area_km2?level=state").then((r) => r.json()).catch(() => null),
+    ]).then(([pop, nsdp, area]) => {
       setCohortSets({
         pop: pop?.values ? top10(pop.values) : new Set(),
         nsdp: nsdp?.values ? top10(nsdp.values) : new Set(),
+        area: area?.values ? top10(area.values) : new Set(),
       });
     });
   }, []);
@@ -547,6 +551,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     { key: "all", name: "All states", note: "", codes: null },
     { key: "pop", name: "Top 10 · Population", note: "Top 10 states by population (Census 2011)", codes: cohortSets.pop },
     { key: "nsdp", name: "Top 10 · Per-capita NSDP", note: "Top 10 states by per-capita NSDP (RBI)", codes: cohortSets.nsdp },
+    { key: "area", name: "Top 10 · Area", note: "Top 10 states by area (Census 2011)", codes: cohortSets.area },
   ], [cohortSets]);
 
   // ── derived rail data ────────────────────────────────────────────────────

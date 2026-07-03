@@ -87,3 +87,46 @@ verifier APPROVE. Commit fc507ba + docker-compose port rebind.
 **Commits (main, pushed):** 289ee82 (iter-15 integrate), dcb6994 (iter-50), + mirror commits (71dd162, c87ba53).
 **Scouted for roadmap:** Agriculture (data.gov.in APY, on disk, ready), NITI MPI 2023 (PDF on disk, needs bar-chart parser); NDAP rejected (login-wall). Elections/forest/air need user-assisted download (servers unreachable).
 **Next session pick-up:** build Agriculture (APY files staged) or write the NITI MPI PDF parser; ECI elections awaiting user download (todo 140). Optional refinements from verifiers: RBI debt cross-year GSDP for 6 states; PLFS LFPR refresh when a newer persons series lands.
+
+## Session 2026-07-03 — iter-58 ingestion wave (11 verticals, 23 new metrics)
+
+**Stage:** Stage 4 (iterate) — items 419-431: metrics table 36 → 59, five new Atlas categories.
+**What changed (branch iter-58-2026-07-03):**
+- `ingest_census_a01.py` — pop_density + urban_pct (733 districts + 36 states, crosswalk replay,
+  median diff vs pop_total 0.000%) + official state `area_km2` (Top-10-Area cohort feed).
+  Spot: Delhi 11,320/km², India urban 31.14%, Rajasthan 342,239 km² (largest).
+- `ingest_religion_c01.py` — 6 religion shares (733d+36s) from the 35 C-01 workbooks; post-2011
+  splits by population-weighted parent attribution via the crosswalk (documented). Spot: Punjab
+  Sikh 57.7, Kerala Muslim 26.6, Mizoram Christian 87.2. Tripura workbook prints districts
+  without the "District -" prefix → rows selected by MDDS code, all 640 of 640.
+- `ingest_ls2024.py` — voter_turnout_ls2024 (36s; ECI Report 12 read with xlrd
+  ignore_workbook_corruption — OLE quirk, stream intact). National 66.10%, Lakshadweep 84.98.
+- `ingest_hces.py` — mpce_rural/mpce_urban (36s each) from HCES 2023-24 Statement 7 (WITHOUT
+  imputation; All-India 4,122/6,996 asserted).
+- `ingest_adsi.py` — suicide_rate (36s). DEVIATION: raw file named ADSI-2022 is the 2023
+  edition; 2023 table ingested (national 12.3, Sikkim 40.2, A&N highest 49.6); the brief's 2022
+  spot values (12.4/43.1) asserted present in LIST-2.3.
+- `ingest_morth.py` — road_accident_death_rate (36s), 2023 deaths / Census-2011 pop (documented
+  like crime); state sum == 172,890 gate; Daman & Diu NA → merged-UT row (disclosed).
+- `ingest_udise.py` — udise_ger_secondary / udise_dropout_secondary / udise_ptr_secondary
+  (36s each; India 78.7 / 11.5 / 15 asserted). District level auth-walled (noted).
+- `ingest_trai.py` — teledensity + internet_subs_per_100 (36s each, QE Dec-25). TRAI's own
+  State/UT tables used — circle→state attribution is TRAI's (metro circles folded, UPE+UPW
+  combined, NE broken out); no state skipped, no local apportionment invented.
+- `ingest_cea.py` — percapita_power_kwh FY24 (36s). DEVIATION: Table 9.9 (utilities+non-utilities,
+  All-India 1,400) instead of the brief's 9.7 (utilities-only 967 — contradicts its own
+  spot-truth). J&K+Ladakh combined row applied to both (disclosed).
+- `ingest_jjm.py` — tap_water_pct (726 districts + 34 states, snapshot 2026-07-03). JJM-name
+  match 729/754 = 96.7%; 25 unmatched are post-geometry new districts (logged, not guessed,
+  still in state sums); state = household-sum ratio, never an average of percentages; Delhi &
+  Chandigarh absent from the JJM CSV (no rural reporting). National 82.1%.
+- `ingest_tourism.py` — tourist_visits_domestic/foreign 2024 (36s each) from the 2025
+  compendium Table 4.1.2 (newer year than the 2024 edition); serial-keyed parse, Overall-row
+  sums asserted; UP leads domestic (646.8M). Delhi/Maharashtra 2024 are MoT estimates (noted).
+- UI (items 420+431): `components/india-map.tsx` third cohort "Top 10 · Area" (mirrors
+  pop/nsdp); `components/atlas/cats.ts` +elections/society/safety/infrastructure/education
+  (accents/icons/desc); `lib/breaks.ts` SUGGESTED_PALETTE safety→rdbuDiv, infrastructure→viridis.
+**Checks:** pytest 8/8 after every vertical; expectations.json regenerated (59 metrics, 733
+districts, 36 per-metric entries); typecheck + next build clean; Playwright 11/11 vs :3100.
+**Next session pick-up:** consider a 2011→current alias pack for the ~25 post-geometry new
+districts (JJM logged list is the seed); NCRB city-series and UDISE district cards still parked.
