@@ -1,6 +1,6 @@
 {
   "district_coverage": 733,
-  "metric_count": 53,
+  "metric_count": 59,
   "per_metric_district_count": {
     "agri_labourers_pct": 733,
     "buddhist_pct": 733,
@@ -35,6 +35,7 @@
     "sex_ratio": 733,
     "sikh_pct": 733,
     "st_pct": 733,
+    "tap_water_pct": 726,
     "urban_pct": 733,
     "work_participation": 733
   }
