@@ -185,3 +185,13 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/2026-07-02-atlas-ui-overhaul.md
+  - id: adr-016-mob-site-sync-backfill
+    project_slug: mapsofbharat
+    title: "Site-sync backfill: service/secret inventories, pages, public docs, real
+      README (#178)"
+    status: accepted
+    date: 2026-07-06T00:00:00.000Z
+    tags:
+      - curated
+      - cat:product
+    body_path: decisions/2026-07-06-site-sync-backfill.md

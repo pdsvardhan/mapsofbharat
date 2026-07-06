@@ -9,13 +9,11 @@ pages:
     components:
       - name: command-palette
         category: navigation
-        picked: true
-        asset_library_ref: mc-command-palette
+        picked: false
         variants: []
       - name: region-detail-sheet
         category: overlay
-        picked: true
-        asset_library_ref: mc-slide-drawer
+        picked: false
         variants: []
       - name: mode-dock
         category: navigation
@@ -28,8 +26,7 @@ pages:
         variants: []
       - name: drill-breadcrumbs
         category: navigation
-        picked: true
-        asset_library_ref: mc-breadcrumbs
+        picked: false
         variants: []
       - name: filter-rail
         category: input
@@ -41,3 +38,28 @@ pages:
         picked: true
         asset_library_ref: mc-elastic-slider
         variants: []
+  - id: page-mob-explore-index
+    title: Explore index
+    route: /explore
+    purpose: Browse the metric catalogue and jump into any statistic on the map.
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
+  - id: page-mob-methodology
+    title: Methodology
+    route: /methodology
+    purpose: In-app documentation of sources, the rid crosswalk, normalization and
+      boundary policy.
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
+  - id: page-mob-embed
+    title: Embed view
+    route: /embed
+    purpose: Embeddable map/chart views for sharing and external sites.
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []

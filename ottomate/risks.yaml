@@ -121,5 +121,40 @@ auth_config:
   strategy: none
   mfa_supported: false
   auth_library: n-a
-third_party_services: []
-secrets: []
+third_party_services:
+  - id: 51
+    project_slug: mapsofbharat
+    name: MoSPI eSankhyiki / data.gov.in API
+    purpose: Key-authenticated pulls of PLFS, CPI, WPI, IIP, NAS, HCES series into
+      the Python ingestion pipeline (pipeline/datagov_pull.py). Ingestion-time
+      only.
+    auth_method: api-key
+    failure_mode: "degraded: new-data ingestion stalls; the served canonical DB is
+      unaffected"
+  - id: 52
+    project_slug: mapsofbharat
+    name: Cloudflare Tunnel
+    purpose: "Public ingress: mapsofbharat.vault7a.xyz routes via the vault7a tunnel
+      directly to the app container (:3000)."
+    auth_method: bearer-token
+    failure_mode: "degraded: site unreachable externally; LAN :8610 remains"
+  - id: 53
+    project_slug: mapsofbharat
+    name: NPM reverse proxy (LAN)
+    purpose: LAN-side host for mapsofbharat.vault7a.xyz via split-horizon DNS.
+    auth_method: anonymous
+    failure_mode: "degraded: LAN hostname fails; direct :8610 and the tunnel path remain"
+  - id: 54
+    project_slug: mapsofbharat
+    name: Gitea
+    purpose: Repo hosting + Actions CI on git.vault7a.xyz/pdsv/mapsofbharat
+      (canonical ci.yml).
+    auth_method: basic-auth
+    failure_mode: "degraded: push/CI blocked; runtime unaffected"
+secrets:
+  - id: 31
+    project_slug: mapsofbharat
+    name: DATA_GOV_IN_API_KEY
+    where_stored: env-file
+    what_for: MoSPI eSankhyiki / data.gov.in API access for the Python ingestion pipeline
+    rotation_cadence: never

@@ -18,7 +18,7 @@ summary:
     public; depth (compare, time-series, export, embed) for journalists,
     researchers, and analysts.
 current_status: building
-lifecycle_phase: building
+lifecycle_phase: shipped
 scope_size: large
 target_devices: both
 hosting_target: vault7a-docker
