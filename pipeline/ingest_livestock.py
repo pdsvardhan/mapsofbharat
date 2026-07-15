@@ -146,12 +146,14 @@ def main():
         upsert_metric(con, mid, label, "agriculture", unit, 0, None,
                       f"{label} population per district, 20th Livestock Census 2019.",
                       SOURCE, URL, LICENSE, YEAR, methodology=METHODOLOGY)
-        n = write_values(con, mid, "district", YEAR,
-                         {k: round(v) for k, v in d_acc[mid].items() if v > 0})
-        n += write_values(con, mid, "state", YEAR,
-                          {k: round(v) for k, v in s_acc[mid].items() if v > 0})
+        # keep TRUE ZEROS — a district with 0 buffalo is real data, not missing
+        # (verifier-596: dropping them undercounted buffalo coverage).
+        dvals = {k: round(v) for k, v in d_acc[mid].items()}
+        svals = {k: round(v) for k, v in s_acc[mid].items()}
+        n = write_values(con, mid, "district", YEAR, dvals)
+        n += write_values(con, mid, "state", YEAR, svals)
         total += n
-        print(f"  {mid}: {len(d_acc[mid])} districts, {len(s_acc[mid])} states")
+        print(f"  {mid}: {len(dvals)} districts, {len(svals)} states (stored)")
 
     # cattle per 1000 people (Census 2011 population)
     pop_d = dict(con.execute("SELECT region_code, value FROM metric_values "
