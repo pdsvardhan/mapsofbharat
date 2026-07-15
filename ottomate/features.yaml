@@ -250,9 +250,9 @@ features:
           states; district-level or dense views label only top-8/bottom-3
         test_status: passing
         linked_test: tests/social-card.spec.ts
-      - content: Header carries an editorial headline, plain-language subtitle with data
-          year, and a national anchor-stat callout, average for rates or total
-          for counts
+      - content: Header carries an editorial headline, plain-language scope subtitle,
+          and a national anchor-stat callout (average for rates, total for
+          counts); the data year is carried in the footer source citation
         test_status: passing
         linked_test: tests/social-card.spec.ts
       - content: Discrete 5-class legend with Indian-format break labels K/L/Cr, brand
