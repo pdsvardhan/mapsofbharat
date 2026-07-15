@@ -329,11 +329,20 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     ctx.strokeStyle = P.border;
     ctx.lineWidth = 1;
     ctx.strokeRect(bx, by, iw, ih);
-    const ipr = fitProjection(geoBounds(fs), { x: bx, y: by + 16, w: iw, h: ih - 22 }, 10);
+    // island value in the header at state level (iter-72 item 567)
+    const insetVal = spec.level === "state" && values[code] != null
+      ? fmtIndianShort(values[code], spec.metric.decimals, spec.metric.unit) : null;
+    const geoTop = insetVal ? 34 : 16;
+    const ipr = fitProjection(geoBounds(fs), { x: bx, y: by + geoTop, w: iw, h: ih - geoTop - 6 }, 10);
     for (const f of fs) drawRegion(f, ipr);
     ctx.fillStyle = P.dim;
     ctx.font = `600 10px ${MONO}`;
     ctx.fillText(INSET_STATES[code].toUpperCase(), bx + 6, by + 13);
+    if (insetVal) {
+      ctx.fillStyle = P.text;
+      ctx.font = `700 13px ${SANS}`;
+      ctx.fillText(insetVal, bx + 6, by + 29);
+    }
     insetIdx++;
   }
 
@@ -374,7 +383,13 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       const push = dense ? 120 : 74;
       l.x = l.cx + (dx / len) * push;
       l.y = l.cy + (dy / len) * push;
-      l.x = Math.max(mapRect.x + 8, Math.min(mapRect.x + mapRect.w - 8, l.x));
+      // clamp by measured text width so long names (DNH&DD…) never leave the canvas (iter-72 item 566)
+      ctx.font = `700 15px ${SANS}`;
+      const vw = ctx.measureText(l.val).width;
+      ctx.font = `500 10.5px ${SANS}`;
+      const tw = Math.max(vw, ctx.measureText(l.name).width);
+      if (side === "l") l.x = Math.max(l.x, 12 + tw + 4);
+      else l.x = Math.min(l.x, LW - 12 - tw - 4);
       l.y = Math.max(mapRect.y + 20, Math.min(mapRect.y + mapRect.h - 16, l.y));
     });
     const gap = 34;

@@ -43,7 +43,12 @@ export function SocialExportDialog({
       const cv = previewRef.current;
       if (!cv) return;
       const { w, h } = presetSize(preset);
-      const pw = 400, ph = Math.round((pw * h) / w);
+      // viewport-responsive preview (iter-72 item 569): as large as fits
+      // beside the 300px control column, capped by 84% viewport height
+      const maxW = Math.min(760, Math.max(380, window.innerWidth - 440));
+      const maxH = Math.round(window.innerHeight * 0.84);
+      const pw = Math.min(maxW, Math.round((maxH * w) / h));
+      const ph = Math.round((pw * h) / w);
       cv.width = pw * 2; cv.height = ph * 2;
       cv.style.width = `${pw}px`; cv.style.height = `${ph}px`;
       const ctx = cv.getContext("2d");

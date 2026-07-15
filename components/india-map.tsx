@@ -640,57 +640,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     copyText(`<iframe src="${url.toString()}" width="800" height="560" style="border:0" loading="lazy" title="Maps of Bharat"></iframe>`, "embed");
   }, [copyText]);
 
-  const exportPng = useCallback(() => {
-    const map = mapRef.current; if (!map || !data) return;
-    // compose right after a fresh frame so the preserved buffer is populated
-    map.once("render", () => composePng(map));
-    map.triggerRepaint();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, sel, focus, palette, reverse, fmtVal, scopeMin, scopeMax]);
-
-  function composePng(map: maplibregl.Map) {
-    const md = dataRef.current; if (!md) return;
-    const data = md;
-    const src = map.getCanvas();
-    const dpr = window.devicePixelRatio || 1;
-    const header = Math.round(58 * dpr);
-    const out = document.createElement("canvas");
-    out.width = src.width;
-    out.height = src.height + header;
-    const ctx = out.getContext("2d"); if (!ctx) return;
-    ctx.fillStyle = "#0d0f14";
-    ctx.fillRect(0, 0, out.width, out.height);
-    ctx.drawImage(src, 0, header);
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#e9e3d5";
-    ctx.font = `700 ${Math.round(20 * dpr)}px 'Hanken Grotesk', sans-serif`;
-    const title = focus ? `${data.name} · ${focus.name}` : data.name;
-    ctx.fillText(`${title} (${data.unit})`, 14 * dpr, header * 0.36);
-    ctx.fillStyle = "#a49d8c";
-    ctx.font = `${Math.round(12 * dpr)}px 'Hanken Grotesk', sans-serif`;
-    ctx.fillText(`Source: ${data.source} · ${data.year} · Maps of Bharat`, 14 * dpr, header * 0.72);
-    // legend ramp baked into the header (right side)
-    const rampW = Math.round(150 * dpr), rampH = Math.round(8 * dpr);
-    const rx = out.width - rampW - 14 * dpr, ry = Math.round(header * 0.36 - rampH / 2);
-    const grad = ctx.createLinearGradient(rx, 0, rx + rampW, 0);
-    const basePal = PALETTES[palette].fn;
-    const fn = reverse ? (t: number) => basePal(1 - t) : basePal;
-    [0, 0.25, 0.5, 0.75, 1].forEach((t) => grad.addColorStop(t, fn(t)));
-    ctx.fillStyle = grad;
-    ctx.fillRect(rx, ry, rampW, rampH);
-    ctx.fillStyle = "#a49d8c";
-    ctx.font = `${Math.round(10 * dpr)}px 'IBM Plex Mono', monospace`;
-    ctx.textAlign = "left";
-    ctx.fillText(fmtVal(scopeMin), rx, ry + rampH + 9 * dpr);
-    ctx.textAlign = "right";
-    ctx.fillText(fmtVal(scopeMax), rx + rampW, ry + rampH + 9 * dpr);
-    ctx.textAlign = "left";
-    const a = document.createElement("a");
-    a.href = out.toDataURL("image/png");
-    const suffix = focus ? "-" + focus.name.replace(/\s+/g, "_") : "";
-    a.download = `mapsofbharat-${sel}${suffix}.png`;
-    a.click();
-  }
+  // Legacy viewport-screenshot PNG export removed (iter-72 item 568) — the
+  // social CARD dialog is the sole image export now.
 
   // search: pick a place
   const onSearchRegion = useCallback((r: RegionIdx) => {
@@ -912,23 +863,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               <button
                 onClick={() => setSocialOpen(true)} disabled={!data}
                 aria-label="Export a social media card"
-                className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors hover:bg-elevated disabled:opacity-40"
-                style={{ color: "#d8ccbe" }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /><circle cx="15.5" cy="8.5" r="1.5" />
-                </svg>
-                CARD
-              </button>
-              <span className="w-px flex-none" style={{ background: "#2a2619" }} />
-              <button
-                onClick={exportPng} disabled={!data} aria-label="Export current map as PNG"
                 className="flex items-center gap-2 bg-accent px-[17px] py-2.5 text-[11.5px] font-bold tracking-[.06em] text-accent-ink transition-colors hover:bg-accent-hover disabled:opacity-40"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /><circle cx="15.5" cy="8.5" r="1.5" />
                 </svg>
-                PNG
+                CARD
               </button>
             </div>
 
