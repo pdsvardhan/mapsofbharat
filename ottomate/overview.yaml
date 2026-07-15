@@ -1,12 +1,11 @@
 slug: mapsofbharat
 display_name: MapsOfBharat
 summary:
-  tagline: Map-first statistics & data visualization for India
-  short_description: "An interactive map of India for official statistics:
-    choropleths that drill from state to district, with compare mode
-    (region/year/metric), rankings, and one-click export. Every metric is
-    sourced from government or top-tier institutions, harmonized to a canonical
-    region key, and fully cited."
+  tagline: India's official statistics, finally on a map
+  short_description: Pick any official statistic about India — literacy,
+    population, crime, voter turnout — and see it as an interactive map you can
+    drill from country to state to district. Every number cited to its
+    government source, comparable across regions and years, and downloadable.
   core_idea: MapsOfBharat is a map-first data-visualization platform for India. A
     user picks an official statistic (literacy, population density, crime rate,
     voter turnout, and more) and sees it as an interactive choropleth that

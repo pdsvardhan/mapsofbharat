@@ -1,8 +1,9 @@
 features:
   - id: feat-geo-backbone
     title: Geography backbone and region crosswalk
-    short_description: LGD/Census-2011/ISO crosswalk + Survey-of-India compliant
-      boundaries; the heart of the pipeline.
+    short_description: "The hard part: a crosswalk reconciling Census-2011 districts
+      with today's boundaries, so old data renders correctly on the current,
+      Survey-of-India-compliant map."
     type: backend
     status: done
     priority: P0
@@ -35,7 +36,8 @@ features:
     dependencies: []
   - id: feat-canonical-store
     title: Canonical metric store and schema
-    short_description: Generic region x metric x year x value store + metric metadata.
+    short_description: All data lives in one canonical store — region × metric ×
+      year × value — with full metadata on every metric.
     type: backend
     status: done
     priority: P0
@@ -51,7 +53,8 @@ features:
     dependencies: []
   - id: feat-ingest-pipeline
     title: Ingestion pipeline and dataset adapters
-    short_description: "Per-dataset adapters: fetch, clean, map to LGD, normalize, load."
+    short_description: Each dataset gets an adapter that fetches, cleans, maps and
+      loads it — adding a new statistic is a pipeline run, not a rebuild.
     type: automated
     status: done
     priority: P0
@@ -71,8 +74,8 @@ features:
     dependencies: []
   - id: feat-demographics-pilot
     title: Demographics vertical (Census 2011)
-    short_description: "First end-to-end category: Census 2011 at district level on
-      current-day boundaries."
+    short_description: Census 2011 demographics was the proving ground — ingested
+      end to end and rendered at district level on today's boundaries.
     type: hybrid
     status: done
     priority: P0
@@ -89,7 +92,8 @@ features:
     dependencies: []
   - id: feat-choropleth-map
     title: Interactive choropleth with India to state to district drill
-    short_description: "Core map: drill-down + class breaks + colour-blind-safe palettes."
+    short_description: "The core experience: a colour-graded map of India you can
+      drill from country to state to district, in colour-blind-safe palettes."
     type: ui
     status: done
     priority: P0
@@ -110,7 +114,7 @@ features:
     dependencies: []
   - id: feat-metric-selector
     title: Metric selector
-    short_description: Switch metric; search-to-fly backlogged (ADR-011).
+    short_description: Switch the statistic on the map in one click.
     type: ui
     status: done
     priority: P0
@@ -123,7 +127,8 @@ features:
     dependencies: []
   - id: feat-source-trust
     title: Source citation and methodology surface
-    short_description: "Trust layer: provenance on every metric."
+    short_description: Every number carries its official source, year and
+      methodology — nothing uncited, ever.
     type: ui
     status: done
     priority: P0
@@ -137,7 +142,8 @@ features:
     dependencies: []
   - id: feat-compare-mode
     title: Compare mode (region, year, or metric)
-    short_description: Side-by-side A/B with difference view.
+    short_description: Put two regions, two years, or two metrics side by side with
+      a difference view.
     type: ui
     status: done
     priority: P1
@@ -169,8 +175,7 @@ features:
     dependencies: []
   - id: feat-region-detail
     title: Region detail panel
-    short_description: Click-through profile panel; trend chart backlogged until
-      multi-year data (ADR-011).
+    short_description: Click any state or district to open its full profile panel.
     type: ui
     status: done
     priority: P1
@@ -184,7 +189,8 @@ features:
     dependencies: []
   - id: feat-export-share
     title: Export and shareable/embeddable views
-    short_description: CSV/PNG/SVG + permalink + iframe.
+    short_description: Any view exports to CSV, PNG or SVG — or share it as a
+      permalink, or embed it as an iframe.
     type: ui
     status: done
     priority: P1
@@ -215,4 +221,41 @@ features:
       - content: With permission, the map highlights the user district and its stats
         test_status: not-tested
         linked_test: null
+    dependencies: []
+  - id: feat-social-export
+    parent_id: feat-export-share
+    title: Social export mode (Instagram-ready map cards)
+    short_description: "One-click social-media export: 4:5/1:1 presets,
+      mainland+insets layout, value labels, editorial headline, anchor stat,
+      classed legend, brand block, dark ink + paper almanac themes."
+    type: ui
+    status: done
+    priority: P1
+    size: M
+    test_status: passing
+    notes: iter-71 items 558-565. Child of feat-export-share (5-AC cap forced split;
+      parent keeps PNG/permalink ACs).
+    acceptance_criteria:
+      - content: Social export offers 4:5 (1080x1350) and 1:1 (1080x1080) presets,
+          rendered at 2x for print quality
+        test_status: passing
+        linked_test: tests/social-card.spec.ts
+      - content: Export crops to mainland India with Andaman-Nicobar and Lakshadweep as
+          inset boxes, no dead-space margins
+        test_status: passing
+        linked_test: tests/social-card.spec.ts
+      - content: Regions labelled with name + formatted value, leader lines for small
+          states; district-level or dense views label only top-8/bottom-3
+        test_status: passing
+        linked_test: tests/social-card.spec.ts
+      - content: Header carries an editorial headline, plain-language subtitle with data
+          year, and a national anchor-stat callout, average for rates or total
+          for counts
+        test_status: passing
+        linked_test: tests/social-card.spec.ts
+      - content: Discrete 5-class legend with Indian-format break labels K/L/Cr, brand
+          block with wordmark + @mapsofbharat + site URL plus source citation,
+          all legible in both dark ink and paper almanac themes
+        test_status: passing
+        linked_test: tests/social-card.spec.ts
     dependencies: []

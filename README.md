@@ -1,6 +1,6 @@
 # MapsOfBharat
 
-Map-first statistics & data visualization for India. Pick an official statistic — literacy, population density, crime rate, voter turnout, and more — and explore it as an interactive choropleth that drills **India → state → district**, with linked charts, rankings, side-by-side comparison (region / year / metric), citations on every number, and one-click export.
+Map-first statistics & data visualization for India. Pick an official statistic — literacy, population density, crime rate, voter turnout, and more — and explore it as an interactive choropleth that drills **India → state → district**, with linked charts, rankings, side-by-side comparison (region / year / metric), citations on every number, and one-click export — including Instagram-ready social cards (4:5/1:1, labelled choropleth, dark ink or paper theme).
 
 Live at **https://mapsofbharat.vault7a.xyz** · tracked by [Ottomate](https://ottomate.vault7a.xyz/projects/mapsofbharat).
 
