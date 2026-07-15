@@ -155,3 +155,22 @@ districts (JJM logged list is the seed); NCRB city-series and UDISE district car
 
 **Next session pickup:** build agriculture (todo 141, file on disk) / poverty (142, NITI MPI PDF) / environment (143, needs user downloads) verticals; PC-level election turnout; default_scale cleanup (154); or ledger-hygiene backfill.
 - 2026-07-15 iter-74 item 577 (observation): "Maps of Bharat" wordmark/title is a placeholder — final product name to be decided in a future branding pass. No code change.
+
+## Session 2026-07-15 — social export mode (4 iterations)
+
+**Stage:** Stage 4 — iterations 71, 72, 74, 76 (19 items, all verified + integrated)
+**Duration:** ~2h15m
+**What changed:**
+- iter-71 (8 items): social export mode shipped — feat-social-export (child of feat-export-share), lib/social-export.ts canvas compositor (4:5/1:1 @2x, mainland+insets, value labels+leaders, editorial headline, anchor stat, jenks-5 legend with K/L/Cr, brand block, ink+paper themes), CARD dialog in toolbar, e2e spec
+- iter-72 (4 items): label x-clamp (DNH&DD), inset values, legacy PNG button + composePng removed (CARD sole export, AC 273 reworded), viewport-responsive preview
+- iter-74 (5 items): Lakshadweep dot archipelago (source geojson is a degenerate 4-pt polygon — todo 196), 19/13px labels + 12.5px legend for mobile, brand top-right with anchor below (site URL dropped), year out of subtitle (AC 513 reworded), title-placeholder observation logged
+- iter-76 (2 items): dense/district cards use numbered rank markers + HIGHEST/LOWEST panels (no on-map text labels), no-data hatched map+legend (AC 512 reworded); new district-card e2e
+
+**Decisions:** none (feature additions/fixes; taste picks recorded in trace reports: paper almanac theme, @mapsofbharat brand, rank markers + panels)
+**Friction:**
+- API-change: `/api/reports/<id>/classify` wants `item_type` + flat `target_kind`/`target_id` — prompts/classify-text.md documents `type` + nested `target` (drift; todo filed on ottomate)
+- API-change: item `build-status` silently ignores `verifier-pending` (stays `building`; only verifier-result advances) — stage-4 ref table overstates the enum (same todo)
+- API-change: `verification_reports.target_kind` enum is `stage-3-feature|stage-4-iteration-item`; test-runs/deploy-artifacts POSTs return flat `{"id":N}` not nested
+- env-limitation: dev server needs explicit DB_PATH (default /data is container-only); orphaned next-server processes held :3111 across kills — kill via ss port-holder lookup
+- tooling: server-side AC cap is 5 per feature (forced feat-social-export child split — good outcome)
+**Next session context:** social cards shipped + iterated 4x, live at mapsofbharat.vault7a.xyz. Open threads: create the actual @mapsofbharat IG account; inset islands show no rank markers (panels list them); adjacent-district markers can touch; todo 196 proper Lakshadweep geometry; roadmap verticals 141/142/143; default_scale cleanup 154; rails 149; ledger backfill 159.
