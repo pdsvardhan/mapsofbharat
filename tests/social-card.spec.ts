@@ -71,6 +71,25 @@ test.describe("feat-social-export", () => {
     await expect(dlg).not.toBeVisible();
   });
 
+  test("district card downloads with dense mode (markers + panels)", async ({ page }) => {
+    // iter-76 item 579: dense views use rank markers + list panels
+    test.setTimeout(120_000);
+    await page.goto("/?m=nfhs5_underweight_u5&lvl=district");
+    await waitForMapReady(page);
+    await page.getByRole("button", { name: /export a social media card/i }).click();
+    const dlg = page.getByRole("dialog", { name: /social media card/i });
+    await expect(dlg).toBeVisible();
+    await page.waitForTimeout(1500); // 671 polygons take a beat
+    const dlp = page.waitForEvent("download", { timeout: 20_000 });
+    await dlg.getByRole("button", { name: /download png/i }).click();
+    const dl = await dlp;
+    expect(dl.suggestedFilename()).toBe("mapsofbharat-nfhs5_underweight_u5-card-portrait-ink.png");
+    const p = "/tmp/mob-card-district-ink.png";
+    await dl.saveAs(p);
+    expect(pngSize(p)).toEqual({ w: 2160, h: 2700 });
+    expect(fs.statSync(p).size).toBeGreaterThan(100_000); // real 671-district choropleth
+  });
+
   test("card button disabled without a metric", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
