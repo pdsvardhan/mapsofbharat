@@ -137,20 +137,38 @@ class RegionMatcher:
         return None
 
 
+# Valid class-break METHODS for metrics.default_scale — consumed by the
+# choropleth (india-map.tsx). NOT palette names. (#154 root-cause fix.)
+VALID_BREAK_METHODS = {"continuous", "quantile", "equal", "jenks"}
+
+
 def upsert_metric(con, mid, name, category, unit, decimals, higher_is_better,
-                  description, source, source_url, license_, year, methodology=None):
+                  description, source, source_url, license_, year, methodology=None,
+                  default_scale=None):
     # idempotent migration: trust-layer columns (iter-15 item 161)
     mcols = {r[1] for r in con.execute("PRAGMA table_info(metrics)")}
     for c in ("methodology", "last_updated"):
         if c not in mcols:
             con.execute(f"ALTER TABLE metrics ADD COLUMN {c} TEXT")
+    # default_scale is a class-break METHOD, never a palette name (#154): the old
+    # hardcoded "sequential"/"viridis" were silently ignored by the UI, leaving
+    # the per-metric override (iter-53 item 404) inert. Preserve an existing valid
+    # override across re-ingests; else use the caller's method if valid; else the
+    # app-wide default 'continuous'. set_default_scales.py recomputes data-driven
+    # methods as the final rebuild step.
+    prev = con.execute("SELECT default_scale FROM metrics WHERE id=?", (mid,)).fetchone()
+    ds = default_scale if default_scale in VALID_BREAK_METHODS else None
+    if ds is None and prev and prev[0] in VALID_BREAK_METHODS:
+        ds = prev[0]
+    if ds is None:
+        ds = "continuous"
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     con.execute(
         """INSERT OR REPLACE INTO metrics
            (id, name, category, unit, decimals, higher_is_better, default_scale,
             description, source, source_url, license, year, methodology, last_updated)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (mid, name, category, unit, decimals, higher_is_better, "sequential",
+        (mid, name, category, unit, decimals, higher_is_better, ds,
          description, source, source_url, license_, year, methodology, now))
 
 

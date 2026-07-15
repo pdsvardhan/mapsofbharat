@@ -118,7 +118,10 @@ CREATE TABLE IF NOT EXISTS metrics(id TEXT PRIMARY KEY, name TEXT, category TEXT
 """)
 con.execute("DELETE FROM metrics")
 for mid,name,cat,unit,dec,hib,desc in METRICS:
-    con.execute("INSERT OR REPLACE INTO metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (mid,name,cat,unit,dec,hib,"viridis",desc,SRC,SRCURL,LIC,2011,None,None))
+    # default_scale is a class-break METHOD, not a palette (#154). Bootstrap with
+    # the app default 'continuous'; set_default_scales.py assigns the data-driven
+    # method as the final rebuild step.
+    con.execute("INSERT OR REPLACE INTO metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (mid,name,cat,unit,dec,hib,"continuous",desc,SRC,SRCURL,LIC,2011,None,None))
 written = 0
 for code, vals in results.items():
     est = 1 if code in estimated else 0
