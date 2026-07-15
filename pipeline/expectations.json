@@ -1,6 +1,6 @@
 {
   "district_coverage": 733,
-  "metric_count": 62,
+  "metric_count": 65,
   "per_metric_district_count": {
     "agri_cropped_area": 425,
     "agri_labourers_pct": 733,
@@ -34,6 +34,9 @@
     "other_workers_pct": 733,
     "pop_density": 733,
     "pop_total": 733,
+    "poverty_intensity": 667,
+    "poverty_mpi": 667,
+    "poverty_mpi_hcr": 667,
     "sc_pct": 733,
     "sex_ratio": 733,
     "sikh_pct": 733,
