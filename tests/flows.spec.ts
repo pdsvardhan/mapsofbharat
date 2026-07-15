@@ -94,14 +94,19 @@ test.describe("flow-compare", () => {
 });
 
 test.describe("flow-export-share", () => {
-  test("PNG export produces a download artifact", async ({ page }) => {
+  test("CARD export produces a download artifact", async ({ page }) => {
+    // iter-72 item 568: the social card replaced the viewport-screenshot PNG
     await page.goto("/?m=literacy_rate");
     await waitForMapReady(page);
 
+    await page.getByRole("button", { name: /Export a social media card/i }).click();
+    const dlg = page.getByRole("dialog", { name: /social media card/i });
+    await expect(dlg).toBeVisible();
+    await page.waitForTimeout(1000); // preview debounce + fonts
     const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
-    await page.getByRole("button", { name: /Export current map as PNG/i }).click();
+    await dlg.getByRole("button", { name: /download png/i }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^mapsofbharat-.+\.png$/);
+    expect(download.suggestedFilename()).toMatch(/^mapsofbharat-.+-card-.+\.png$/);
     // an empty/black canvas compresses to a few KB — a real choropleth doesn't
     // (iter-53 item 402: PNG downloaded but was blank)
     const file = await download.path();
