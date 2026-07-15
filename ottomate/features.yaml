@@ -246,8 +246,9 @@ features:
           inset boxes, no dead-space margins
         test_status: passing
         linked_test: tests/social-card.spec.ts
-      - content: Regions labelled with name + formatted value, leader lines for small
-          states; district-level or dense views label only top-8/bottom-3
+      - content: State cards label regions with name + formatted value and leader lines;
+          district-level or dense views instead mark the top-8/bottom-3 with
+          numbered rank markers plus HIGHEST/LOWEST list panels
         test_status: passing
         linked_test: tests/social-card.spec.ts
       - content: Header carries an editorial headline, plain-language scope subtitle,
