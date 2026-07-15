@@ -1,8 +1,11 @@
 {
   "district_coverage": 733,
-  "metric_count": 59,
+  "metric_count": 62,
   "per_metric_district_count": {
+    "agri_cropped_area": 425,
     "agri_labourers_pct": 733,
+    "agri_rice_production": 412,
+    "agri_wheat_production": 319,
     "buddhist_pct": 733,
     "child_sex_ratio": 733,
     "christian_pct": 733,
