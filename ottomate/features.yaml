@@ -199,9 +199,11 @@ features:
     notes: "iter-51 (adr-015): CSV export retired; Link/PNG/Embed folded into one
       Share menu. /embed route unchanged."
     acceptance_criteria:
-      - content: Current view exports to PNG with title and source attribution
-        test_status: not-tested
-        linked_test: null
+      - content: The CARD social export downloads a PNG with headline, values, legend,
+          source attribution and brand block (4:5/1:1, ink/paper) — sole image
+          export since iter-72
+        test_status: passing
+        linked_test: tests/flows.spec.ts
       - content: A permalink encodes metric, mode, drilled state, and compare pins, and
           restores that view on load
         test_status: not-tested
