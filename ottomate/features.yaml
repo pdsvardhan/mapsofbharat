@@ -124,6 +124,16 @@ features:
       - content: User can switch the metric and the map recolours
         test_status: not-tested
         linked_test: null
+      - content: Metrics are grouped by topic category in the selector (demographics,
+          poverty, agriculture, health, …); picking a category filters the list
+          to that topic
+        test_status: not-tested
+        linked_test: null
+      - content: Selecting a metric applies its per-metric default break method and
+          topic-suggested palette, and the legend reflects the metric's unit and
+          value formatting
+        test_status: not-tested
+        linked_test: null
     dependencies: []
   - id: feat-source-trust
     title: Source citation and methodology surface
@@ -137,6 +147,16 @@ features:
     acceptance_criteria:
       - content: Every metric shows source, year, and license, with a working citation
           link
+        test_status: not-tested
+        linked_test: null
+      - content: Each metric exposes methodology text (how the figure was
+          measured/derived), served by the metrics API and shown in the trust
+          surface
+        test_status: not-tested
+        linked_test: null
+      - content: Source metadata (source, year, license, methodology, coverage) is
+          stored per-metric in the canonical DB rather than hardcoded in the UI,
+          so it stays correct across re-ingests
         test_status: not-tested
         linked_test: null
     dependencies: []
@@ -184,6 +204,14 @@ features:
     acceptance_criteria:
       - content: Clicking a region opens a panel with its value and rank per metric,
           with citations
+        test_status: not-tested
+        linked_test: null
+      - content: The region panel shows the value against the national/state average
+          (vs-average) and the region's rank or percentile position
+        test_status: not-tested
+        linked_test: null
+      - content: The detail panel works at both state and district drill levels, always
+          reflecting the currently selected region
         test_status: not-tested
         linked_test: null
     dependencies: []
