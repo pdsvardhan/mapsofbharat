@@ -17,6 +17,8 @@ import { Metric, catAccent } from "@/components/atlas/cats";
 import { ChooserModal } from "@/components/atlas/chooser";
 import { SearchModal, RegionIdx } from "@/components/atlas/search-modal";
 import { ShareMenu } from "@/components/atlas/share-menu";
+import { SocialExportDialog } from "@/components/atlas/social-export-dialog";
+import type { SocialFeature } from "@/lib/social-export";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
 
@@ -78,6 +80,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const valuesRef = useRef<Record<string, number>>({});
   const rankRef = useRef<Record<string, number>>({});
   const statesRef = useRef<Record<string, any>>({});
+  const statesFCRef = useRef<{ features: SocialFeature[] } | null>(null);
   const districtsFCRef = useRef<any>(null);
   const restoreRef = useRef(readUrl());
 
@@ -104,6 +107,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -226,6 +230,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         fetch("/geo/states.geojson").then((r) => r.json()),
       ]);
       districtsFCRef.current = districts;
+      statesFCRef.current = states;
       (states.features as any[]).forEach((f) => { statesRef.current[String(f.properties?.st_code)] = f; });
       map.addSource("districts", { type: "geojson", data: districts, promoteId: "rid" });
       map.addSource("states", { type: "geojson", data: states, promoteId: "st_code" });
@@ -905,6 +910,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               <ShareMenu disabled={false} onCopyLink={copyLink} onCopyEmbed={copyEmbed} copied={copied} />
               <span className="w-px flex-none" style={{ background: "#2a2619" }} />
               <button
+                onClick={() => setSocialOpen(true)} disabled={!data}
+                aria-label="Export a social media card"
+                className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors hover:bg-elevated disabled:opacity-40"
+                style={{ color: "#d8ccbe" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /><circle cx="15.5" cy="8.5" r="1.5" />
+                </svg>
+                CARD
+              </button>
+              <span className="w-px flex-none" style={{ background: "#2a2619" }} />
+              <button
                 onClick={exportPng} disabled={!data} aria-label="Export current map as PNG"
                 className="flex items-center gap-2 bg-accent px-[17px] py-2.5 text-[11.5px] font-bold tracking-[.06em] text-accent-ink transition-colors hover:bg-accent-hover disabled:opacity-40"
               >
@@ -1043,6 +1060,26 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       </div>
 
       {/* OVERLAYS */}
+      {socialOpen && data && (
+        <SocialExportDialog
+          onClose={() => setSocialOpen(false)}
+          metric={{ name: data.name, unit: data.unit, year: data.year, source: data.source, decimals: data.decimals }}
+          level={level} focusName={focus?.name ?? null}
+          entries={entries.map((e) => ({ code: e.code, name: e.name, value: e.value }))}
+          features={
+            (level === "state"
+              ? statesFCRef.current?.features ?? []
+              : focus
+                ? ((districtsFCRef.current?.features ?? []) as SocialFeature[]).filter(
+                    (f) => String(Number(String(f.properties?.st_code))) === String(Number(focus.code)))
+                : districtsFCRef.current?.features ?? []) as SocialFeature[]
+          }
+          codeOf={(f) =>
+            level === "state" ? String(f.properties?.st_code) : String(f.properties?.rid)}
+          paletteFn={reverse ? (t: number) => PALETTES[palette].fn(1 - t) : PALETTES[palette].fn}
+          fileBase={`mapsofbharat-${sel}`}
+        />
+      )}
       {chooserOpen && (
         <ChooserModal
           metrics={metrics} selected={sel}
