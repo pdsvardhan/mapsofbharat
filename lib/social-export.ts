@@ -45,9 +45,9 @@ const HANDLE = "@mapsofbharat";
 const INSET_STATES: Record<string, string> = { "35": "Andaman & Nicobar", "31": "Lakshadweep" };
 
 // True island coordinates for the Lakshadweep archipelago (iter-74 item 573).
-// The source geojson carries a degenerate 4-point polygon for st_code 31
-// (todo 196 tracks acquiring proper geometry); the inset draws these as
-// point symbols instead of the bogus triangle.
+// The explorer choropleth now uses curated island geometry in public/geo
+// (iter-11 #196); this inset still draws them as point symbols, which read
+// cleaner than tiny filled polygons at inset scale.
 const LAKSHADWEEP_ISLANDS: [number, number][] = [
   [72.18, 11.60], // Bitra
   [72.71, 11.70], // Chetlat
@@ -60,13 +60,6 @@ const LAKSHADWEEP_ISLANDS: [number, number][] = [
   [73.64, 10.08], // Kalpeni
   [73.04, 8.28],  // Minicoy
 ];
-
-/** Total vertex count across a feature set — degenerate-geometry detector. */
-function countPts(fs: SocialFeature[]): number {
-  let n = 0;
-  for (const f of fs) for (const poly of rings(f)) for (const r of poly) n += r.length;
-  return n;
-}
 
 type Palette = {
   bg: string; plate: string; text: string; muted: string; dim: string;
@@ -397,9 +390,11 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       ? fmtIndianShort(values[code], spec.metric.decimals, spec.metric.unit) : null;
     const geoTop = insetVal ? 38 : 18;
     const irect = { x: bx, y: by + geoTop, w: iw, h: ih - geoTop - 6 };
-    if (code === "31" && countPts(fs) <= 6) {
-      // degenerate source polygon (iter-74 item 573): draw the archipelago
-      // as point symbols at true island coordinates instead of the triangle
+    if (code === "31") {
+      // Lakshadweep is a tiny archipelago; in the small inset the true island
+      // coordinates read far cleaner as point symbols than as filled polygons.
+      // The explorer choropleth uses the curated island geometry now shipped in
+      // public/geo (iter-11 #196); this inset keeps the point representation.
       const v = spec.level === "state" ? values[code] : undefined;
       const dotFill = v == null ? P.nodata : fill(v);
       const lonLats = LAKSHADWEEP_ISLANDS;
