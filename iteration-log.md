@@ -154,3 +154,4 @@ districts (JJM logged list is the seed); NCRB city-series and UDISE district car
 **Anti-gaslight surface at packup (pre-existing, not this session):** 12 original features lack feature_claims/acceptance-criteria rows and carry stale feature-level verification (June). Work IS independently verified, but this session's verifier reports were logged against iteration-item ids, not feature ids. Tracked as a ledger-hygiene todo.
 
 **Next session pickup:** build agriculture (todo 141, file on disk) / poverty (142, NITI MPI PDF) / environment (143, needs user downloads) verticals; PC-level election turnout; default_scale cleanup (154); or ledger-hygiene backfill.
+- 2026-07-15 iter-74 item 577 (observation): "Maps of Bharat" wordmark/title is a placeholder — final product name to be decided in a future branding pass. No code change.

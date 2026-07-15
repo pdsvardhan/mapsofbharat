@@ -39,11 +39,34 @@ const W = 1080;
 const MARGIN = 52;
 const SANS = "'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'IBM Plex Mono', ui-monospace, monospace";
-const SITE = "mapsofbharat.vault7a.xyz";
 const HANDLE = "@mapsofbharat";
 
 // Island UTs pulled out of the mainland frame into insets (st_code keyed).
 const INSET_STATES: Record<string, string> = { "35": "Andaman & Nicobar", "31": "Lakshadweep" };
+
+// True island coordinates for the Lakshadweep archipelago (iter-74 item 573).
+// The source geojson carries a degenerate 4-point polygon for st_code 31
+// (todo 196 tracks acquiring proper geometry); the inset draws these as
+// point symbols instead of the bogus triangle.
+const LAKSHADWEEP_ISLANDS: [number, number][] = [
+  [72.18, 11.60], // Bitra
+  [72.71, 11.70], // Chetlat
+  [73.00, 11.49], // Kiltan
+  [72.78, 11.22], // Kadmat
+  [72.73, 11.12], // Amini
+  [72.19, 10.86], // Agatti
+  [72.64, 10.57], // Kavaratti
+  [73.68, 10.82], // Andrott
+  [73.64, 10.08], // Kalpeni
+  [73.04, 8.28],  // Minicoy
+];
+
+/** Total vertex count across a feature set — degenerate-geometry detector. */
+function countPts(fs: SocialFeature[]): number {
+  let n = 0;
+  for (const f of fs) for (const poly of rings(f)) for (const r of poly) n += r.length;
+  return n;
+}
 
 type Palette = {
   bg: string; plate: string; text: string; muted: string; dim: string;
@@ -262,32 +285,51 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const scopeNoun = spec.focusName
     ? `districts of ${spec.focusName}`
     : spec.level === "district" ? "districts" : "states & UTs";
-  ctx.font = `500 19px ${SANS}`;
+  ctx.font = `500 20px ${SANS}`;
   ctx.fillStyle = P.muted;
-  // metric name only when the user rewrote the headline — never echo it twice
+  // metric name only when the user rewrote the headline — never echo it twice;
+  // no year here — the source citation carries it (iter-74 item 576)
   const customHead = spec.headline.trim() && spec.headline.trim().toLowerCase() !== spec.metric.name.toLowerCase();
-  const sub = `${customHead ? spec.metric.name + " · " : ""}${spec.entries.length} ${scopeNoun} · ${spec.metric.year}`;
+  const sub = `${customHead ? spec.metric.name + " · " : ""}${spec.entries.length} ${scopeNoun}`;
   ctx.fillText(sub, MARGIN, y + 34);
-  const headerBottom = Math.max(y + 34, MARGIN + hSize) + 10;
 
-  // anchor stat callout (top-right)
+  // brand block top-right: mark + wordmark + handle (iter-74 item 575)
+  const bxr = LW - MARGIN;
+  ctx.fillStyle = P.text;
+  ctx.fillRect(bxr - 34, MARGIN - 8, 34, 34);
+  ctx.fillStyle = P.bg;
+  ctx.font = `800 15px ${SANS}`;
+  ctx.textAlign = "center";
+  ctx.fillText("MB", bxr - 17, MARGIN + 15);
+  ctx.textAlign = "right";
+  ctx.fillStyle = P.text;
+  ctx.font = `700 16px ${SANS}`;
+  ctx.fillText("Maps of Bharat", bxr - 44, MARGIN + 6);
+  ctx.fillStyle = P.muted;
+  ctx.font = `500 12px ${MONO}`;
+  ctx.fillText(HANDLE, bxr - 44, MARGIN + 23);
+  ctx.textAlign = "left";
+
+  // anchor stat callout below the brand (iter-74 item 575)
   const ax = LW - MARGIN - anchorW;
+  const ay = MARGIN + 40;
   ctx.fillStyle = P.plate;
   ctx.strokeStyle = P.accent;
   ctx.lineWidth = 1.5;
   const ah = 78;
-  ctx.fillRect(ax, MARGIN - 6, anchorW, ah);
-  ctx.strokeRect(ax, MARGIN - 6, anchorW, ah);
+  ctx.fillRect(ax, ay, anchorW, ah);
+  ctx.strokeRect(ax, ay, anchorW, ah);
   ctx.fillStyle = P.accent;
   ctx.font = `800 30px ${SANS}`;
-  ctx.fillText(anchor.value, ax + 16, MARGIN + 30);
+  ctx.fillText(anchor.value, ax + 16, ay + 36);
   ctx.fillStyle = P.muted;
   ctx.font = `600 12.5px ${SANS}`;
-  ctx.fillText(anchor.label.toUpperCase(), ax + 16, MARGIN + 52);
+  ctx.fillText(anchor.label.toUpperCase(), ax + 16, ay + 58);
+  const headerBottom = Math.max(y + 34, ay + ah) + 10;
 
   // ── frame bottom-up: footer, legend, then the map gets the rest ──────────
-  const footerH = 64;
-  const legendH = 64;
+  const footerH = 46;
+  const legendH = 76;
   const footerTop = LH - MARGIN - footerH + 18;
   const legendTop = footerTop - legendH - 6;
   const mapRect = { x: MARGIN, y: headerBottom + 8, w: LW - MARGIN * 2, h: legendTop - 14 - (headerBottom + 8) };
@@ -332,16 +374,40 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     // island value in the header at state level (iter-72 item 567)
     const insetVal = spec.level === "state" && values[code] != null
       ? fmtIndianShort(values[code], spec.metric.decimals, spec.metric.unit) : null;
-    const geoTop = insetVal ? 34 : 16;
-    const ipr = fitProjection(geoBounds(fs), { x: bx, y: by + geoTop, w: iw, h: ih - geoTop - 6 }, 10);
-    for (const f of fs) drawRegion(f, ipr);
-    ctx.fillStyle = P.dim;
-    ctx.font = `600 10px ${MONO}`;
-    ctx.fillText(INSET_STATES[code].toUpperCase(), bx + 6, by + 13);
+    const geoTop = insetVal ? 38 : 18;
+    const irect = { x: bx, y: by + geoTop, w: iw, h: ih - geoTop - 6 };
+    if (code === "31" && countPts(fs) <= 6) {
+      // degenerate source polygon (iter-74 item 573): draw the archipelago
+      // as point symbols at true island coordinates instead of the triangle
+      const v = spec.level === "state" ? values[code] : undefined;
+      const dotFill = v == null ? P.nodata : fill(v);
+      const lonLats = LAKSHADWEEP_ISLANDS;
+      const b: [number, number, number, number] = [
+        Math.min(...lonLats.map((p) => p[0])), Math.min(...lonLats.map((p) => p[1])),
+        Math.max(...lonLats.map((p) => p[0])), Math.max(...lonLats.map((p) => p[1])),
+      ];
+      const ipr = fitProjection(b, irect, 12);
+      for (const [lon, lat] of lonLats) {
+        const [x, yy] = ipr(lon, lat);
+        ctx.beginPath();
+        ctx.arc(x, yy, 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = dotFill;
+        ctx.fill();
+        ctx.strokeStyle = P.mapLine;
+        ctx.lineWidth = 0.75;
+        ctx.stroke();
+      }
+    } else {
+      const ipr = fitProjection(geoBounds(fs), irect, 10);
+      for (const f of fs) drawRegion(f, ipr);
+    }
+    ctx.fillStyle = P.muted;
+    ctx.font = `600 11.5px ${MONO}`;
+    ctx.fillText(INSET_STATES[code].toUpperCase(), bx + 6, by + 14);
     if (insetVal) {
       ctx.fillStyle = P.text;
-      ctx.font = `700 13px ${SANS}`;
-      ctx.fillText(insetVal, bx + 6, by + 29);
+      ctx.font = `700 15px ${SANS}`;
+      ctx.fillText(insetVal, bx + 6, by + 32);
     }
     insetIdx++;
   }
@@ -365,12 +431,13 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     const c = centroidPx(f, proj);
     const val = fmtIndianShort(values[code], spec.metric.decimals, spec.metric.unit);
     const name = nameByCode.get(code) ?? code;
-    ctx.font = `700 15px ${SANS}`;
+    // mobile-legible label sizes (iter-74 item 574): value 19px / name 13px
+    ctx.font = `700 19px ${SANS}`;
     const valW = ctx.measureText(val).width;
-    ctx.font = `500 10.5px ${SANS}`;
+    ctx.font = `500 13px ${SANS}`;
     const nameW = ctx.measureText(name).width;
     const needW = Math.max(valW, nameW);
-    const inside = !dense && c.bw * 0.86 > needW && c.bh > 42 && c.areaPx > 4200;
+    const inside = !dense && c.bw * 0.86 > needW && c.bh > 52 && c.areaPx > 6000;
     labels.push({ code, cx: c.x, cy: c.y, val, name, inside, side: c.x >= mapCx ? "r" : "l", x: c.x, y: c.y });
   }
 
@@ -384,32 +451,32 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       l.x = l.cx + (dx / len) * push;
       l.y = l.cy + (dy / len) * push;
       // clamp by measured text width so long names (DNH&DD…) never leave the canvas (iter-72 item 566)
-      ctx.font = `700 15px ${SANS}`;
+      ctx.font = `700 19px ${SANS}`;
       const vw = ctx.measureText(l.val).width;
-      ctx.font = `500 10.5px ${SANS}`;
+      ctx.font = `500 13px ${SANS}`;
       const tw = Math.max(vw, ctx.measureText(l.name).width);
       if (side === "l") l.x = Math.max(l.x, 12 + tw + 4);
       else l.x = Math.min(l.x, LW - 12 - tw - 4);
-      l.y = Math.max(mapRect.y + 20, Math.min(mapRect.y + mapRect.h - 16, l.y));
+      l.y = Math.max(mapRect.y + 24, Math.min(mapRect.y + mapRect.h - 18, l.y));
     });
-    const gap = 34;
+    const gap = 42;
     for (let i = 1; i < outs.length; i++)
       if (outs[i].y - outs[i - 1].y < gap) outs[i].y = outs[i - 1].y + gap;
     for (let i = outs.length - 1; i > 0; i--)
-      if (outs[i].y > mapRect.y + mapRect.h - 16) outs[i].y = mapRect.y + mapRect.h - 16 - (outs.length - 1 - i) * gap;
+      if (outs[i].y > mapRect.y + mapRect.h - 18) outs[i].y = mapRect.y + mapRect.h - 18 - (outs.length - 1 - i) * gap;
   }
 
   // global collision pass: outside labels also dodge inside labels, each
   // other across sides, and the island inset boxes (movers push downward)
   type Box = { x: number; y: number; w: number; h: number };
   const boxOf = (l: Lbl): Box => {
-    ctx.font = `700 15px ${SANS}`;
+    ctx.font = `700 19px ${SANS}`;
     const vw = ctx.measureText(l.val).width;
-    ctx.font = `500 10.5px ${SANS}`;
+    ctx.font = `500 13px ${SANS}`;
     const w = Math.max(vw, ctx.measureText(l.name).width);
-    if (l.inside) return { x: l.cx - w / 2, y: l.cy - 15, w, h: 30 };
+    if (l.inside) return { x: l.cx - w / 2, y: l.cy - 18, w, h: 40 };
     const tx = l.x + (l.side === "r" ? 4 : -4);
-    return { x: l.side === "r" ? tx : tx - w, y: l.y - 15, w, h: 30 };
+    return { x: l.side === "r" ? tx : tx - w, y: l.y - 18, w, h: 40 };
   };
   const hit = (a: Box, b: Box) =>
     a.x < b.x + b.w + 8 && b.x < a.x + a.w + 8 && a.y < b.y + b.h + 3 && b.y < a.y + a.h + 3;
@@ -419,13 +486,13 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       for (const o of labels) {
         if (o === l) continue;
         const A = boxOf(l), B = boxOf(o);
-        if (hit(A, B)) l.y = B.y + B.h + 19;
+        if (hit(A, B)) l.y = B.y + B.h + 23;
       }
       for (const r of insetRects) {
         const A = boxOf(l);
-        if (hit(A, r)) l.y = r.y - 18; // sit above the inset frame
+        if (hit(A, r)) l.y = r.y - 22; // sit above the inset frame
       }
-      l.y = Math.max(mapRect.y + 20, Math.min(mapRect.y + mapRect.h - 16, l.y));
+      l.y = Math.max(mapRect.y + 24, Math.min(mapRect.y + mapRect.h - 18, l.y));
     }
 
   for (const l of labels) {
@@ -434,58 +501,58 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       ctx.lineWidth = 0.9;
       ctx.beginPath();
       ctx.moveTo(l.cx, l.cy);
-      ctx.lineTo(l.x, l.y - 5);
+      ctx.lineTo(l.x, l.y - 6);
       ctx.stroke();
     }
     const align: CanvasTextAlign = l.inside ? "center" : l.side === "r" ? "left" : "right";
     ctx.textAlign = align;
     const tx = l.inside ? l.cx : l.x + (l.side === "r" ? 4 : -4);
     const ty = l.inside ? l.cy : l.y;
-    ctx.font = `700 15px ${SANS}`;
-    ctx.lineWidth = 3.5;
+    ctx.font = `700 19px ${SANS}`;
+    ctx.lineWidth = 4.5;
     ctx.strokeStyle = P.halo;
     ctx.strokeText(l.val, tx, ty);
     ctx.fillStyle = P.text;
     ctx.fillText(l.val, tx, ty);
-    ctx.font = `500 10.5px ${SANS}`;
-    ctx.strokeText(l.name, tx, ty + 13);
+    ctx.font = `500 13px ${SANS}`;
+    ctx.strokeText(l.name, tx, ty + 16);
     ctx.fillStyle = P.muted;
-    ctx.fillText(l.name, tx, ty + 13);
+    ctx.fillText(l.name, tx, ty + 16);
   }
   ctx.textAlign = "left";
 
-  // ── discrete legend ───────────────────────────────────────────────────────
+  // ── discrete legend (mobile-legible sizes — iter-74 item 574) ───────────
   const edges = [min, ...breaks, max];
-  const sw = 88, sh = 12;
+  const sw = 108, sh = 14;
   let lx = MARGIN;
-  ctx.font = `600 11px ${SANS}`;
+  ctx.font = `600 13.5px ${SANS}`;
   ctx.fillStyle = P.muted;
   ctx.fillText(spec.metric.unit === "%" ? "Share (%)" : spec.metric.unit, lx, legendTop + 2);
   const nClasses = Math.max(1, edges.length - 1);
   for (let i = 0; i < nClasses; i++) {
     ctx.fillStyle = spec.paletteFn(nClasses === 1 ? 0 : i / (nClasses - 1));
-    ctx.fillRect(lx, legendTop + 10, sw, sh);
+    ctx.fillRect(lx, legendTop + 12, sw, sh);
     ctx.strokeStyle = P.border;
     ctx.lineWidth = 0.5;
-    ctx.strokeRect(lx, legendTop + 10, sw, sh);
-    ctx.fillStyle = P.dim;
-    ctx.font = `500 10px ${MONO}`;
+    ctx.strokeRect(lx, legendTop + 12, sw, sh);
+    ctx.fillStyle = P.muted;
+    ctx.font = `500 12.5px ${MONO}`;
     const lo = fmtIndianShort(edges[i], spec.metric.decimals, spec.metric.unit);
     const hi = fmtIndianShort(edges[i + 1], spec.metric.decimals, spec.metric.unit);
-    ctx.fillText(`${lo}–${hi}`, lx, legendTop + 38);
-    lx += sw + 10;
+    ctx.fillText(`${lo}–${hi}`, lx, legendTop + 46);
+    lx += sw + 12;
   }
   if (spec.entries.length < spec.features.length) {
     ctx.fillStyle = P.nodata;
-    ctx.fillRect(lx, legendTop + 10, 26, sh);
+    ctx.fillRect(lx, legendTop + 12, 30, sh);
     ctx.strokeStyle = P.border;
-    ctx.strokeRect(lx, legendTop + 10, 26, sh);
-    ctx.fillStyle = P.dim;
-    ctx.font = `500 10px ${MONO}`;
-    ctx.fillText("no data", lx, legendTop + 38);
+    ctx.strokeRect(lx, legendTop + 12, 30, sh);
+    ctx.fillStyle = P.muted;
+    ctx.font = `500 12.5px ${MONO}`;
+    ctx.fillText("no data", lx, legendTop + 46);
   }
 
-  // ── footer: source citation left · brand block right ─────────────────────
+  // ── footer: source citation only — brand lives top-right (iter-74 item 575)
   ctx.strokeStyle = P.border;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -493,26 +560,10 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   ctx.lineTo(LW - MARGIN, footerTop);
   ctx.stroke();
 
-  ctx.font = `500 11px ${SANS}`;
-  ctx.fillStyle = P.dim;
-  const srcLines = wrap(ctx, `Source: ${spec.metric.source} · ${spec.metric.year}`, LW - MARGIN * 2 - 330, 2);
-  srcLines.forEach((s, i) => ctx.fillText(s, MARGIN, footerTop + 22 + i * 15));
-
-  const bx = LW - MARGIN;
-  ctx.fillStyle = P.text;
-  ctx.fillRect(bx - 30, footerTop + 10, 30, 30);
-  ctx.fillStyle = P.bg;
-  ctx.font = `800 13px ${SANS}`;
-  ctx.textAlign = "center";
-  ctx.fillText("MB", bx - 15, footerTop + 30);
-  ctx.textAlign = "right";
-  ctx.fillStyle = P.text;
-  ctx.font = `700 14px ${SANS}`;
-  ctx.fillText("Maps of Bharat", bx - 40, footerTop + 24);
+  ctx.font = `500 12.5px ${SANS}`;
   ctx.fillStyle = P.muted;
-  ctx.font = `500 10.5px ${MONO}`;
-  ctx.fillText(`${HANDLE} · ${SITE}`, bx - 40, footerTop + 40);
-  ctx.textAlign = "left";
+  const srcLines = wrap(ctx, `Source: ${spec.metric.source} · ${spec.metric.year}`, LW - MARGIN * 2 - 20, 2);
+  srcLines.forEach((s, i) => ctx.fillText(s, MARGIN, footerTop + 24 + i * 17));
 
   return canvas;
 }
