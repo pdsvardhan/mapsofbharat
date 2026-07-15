@@ -70,7 +70,7 @@ function countPts(fs: SocialFeature[]): number {
 
 type Palette = {
   bg: string; plate: string; text: string; muted: string; dim: string;
-  border: string; accent: string; accentInk: string; nodata: string;
+  border: string; accent: string; accentInk: string; nodata: string; nodataLine: string;
   mapLine: string; leader: string; halo: string;
 };
 
@@ -78,14 +78,34 @@ const THEMES: Record<SocialTheme, Palette> = {
   ink: {
     bg: "#0d0f14", plate: "#101109", text: "#e9e3d5", muted: "#a49d8c", dim: "#6a6455",
     border: "#3b3626", accent: "#d1502f", accentInk: "#16110b", nodata: "#2a271d",
+    nodataLine: "rgba(233,227,213,0.16)",
     mapLine: "rgba(233,227,213,0.30)", leader: "rgba(164,157,140,0.65)", halo: "rgba(13,15,20,0.72)",
   },
   paper: {
     bg: "#f4efe3", plate: "#efe9d9", text: "#1c1a14", muted: "#5a5548", dim: "#8a8477",
     border: "#d5ccb6", accent: "#b8431f", accentInk: "#f7f2e6", nodata: "#e4dcc8",
+    nodataLine: "rgba(28,26,20,0.16)",
     mapLine: "rgba(28,26,20,0.28)", leader: "rgba(90,85,72,0.6)", halo: "rgba(244,239,227,0.78)",
   },
 };
+
+/** Diagonal-hatch fill for no-data regions (iter-76 item 580) — visibly
+    "not a class" against any ramp; falls back to the flat base colour. */
+function hatchPattern(ctx: CanvasRenderingContext2D, base: string, line: string): CanvasPattern | string {
+  const t = document.createElement("canvas");
+  t.width = 8; t.height = 8;
+  const c = t.getContext("2d");
+  if (!c) return base;
+  c.fillStyle = base;
+  c.fillRect(0, 0, 8, 8);
+  c.strokeStyle = line;
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(-2, 6); c.lineTo(6, -2);
+  c.moveTo(2, 10); c.lineTo(10, 2);
+  c.stroke();
+  return ctx.createPattern(t, "repeat") ?? base;
+}
 
 export function presetSize(preset: SocialPreset): { w: number; h: number } {
   return preset === "portrait" ? { w: W, h: 1350 } : { w: W, h: 1080 };
@@ -342,10 +362,11 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
 
   const proj = fitProjection(geoBounds(mainland.length ? mainland : spec.features), mapRect, 26);
 
+  const nodataFill = hatchPattern(ctx, P.nodata, P.nodataLine);
   const drawRegion = (f: SocialFeature, pr: Proj) => {
     const v = values[spec.codeOf(f)];
     tracePath(ctx, f, pr);
-    ctx.fillStyle = v == null ? P.nodata : fill(v);
+    ctx.fillStyle = v == null ? nodataFill : fill(v);
     ctx.fill("evenodd");
     ctx.strokeStyle = P.mapLine;
     ctx.lineWidth = 0.75;
@@ -412,16 +433,15 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     insetIdx++;
   }
 
-  // ── region labels ─────────────────────────────────────────────────────────
-  // National state view labels everything; dense views label top-8 / bottom-3.
+  // ── region callouts ──────────────────────────────────────────────────────
+  // National state view labels everything on-map; dense views (districts /
+  // >40 regions) use numbered rank markers + list panels (iter-76 item 579).
   const dense = spec.level === "district" || spec.entries.length > 40;
-  const labelCodes = new Set(
-    dense
-      ? [...spec.entries.slice(0, 8), ...spec.entries.slice(-3)].map((e) => e.code)
-      : spec.entries.map((e) => e.code),
-  );
   const nameByCode = new Map(spec.entries.map((e) => [e.code, e.name]));
   const mapCx = mapRect.x + mapRect.w / 2, mapCy = mapRect.y + mapRect.h / 2;
+
+  if (!dense) {
+  const labelCodes = new Set(spec.entries.map((e) => e.code));
 
   type Lbl = { code: string; cx: number; cy: number; val: string; name: string; inside: boolean; side: "l" | "r"; x: number; y: number };
   const labels: Lbl[] = [];
@@ -437,7 +457,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     ctx.font = `500 13px ${SANS}`;
     const nameW = ctx.measureText(name).width;
     const needW = Math.max(valW, nameW);
-    const inside = !dense && c.bw * 0.86 > needW && c.bh > 52 && c.areaPx > 6000;
+    const inside = c.bw * 0.86 > needW && c.bh > 52 && c.areaPx > 6000;
     labels.push({ code, cx: c.x, cy: c.y, val, name, inside, side: c.x >= mapCx ? "r" : "l", x: c.x, y: c.y });
   }
 
@@ -447,7 +467,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     outs.forEach((l) => {
       const dx = l.cx - mapCx, dy = l.cy - mapCy;
       const len = Math.hypot(dx, dy) || 1;
-      const push = dense ? 120 : 74;
+      const push = 74;
       l.x = l.cx + (dx / len) * push;
       l.y = l.cy + (dy / len) * push;
       // clamp by measured text width so long names (DNH&DD…) never leave the canvas (iter-72 item 566)
@@ -520,6 +540,87 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     ctx.fillText(l.name, tx, ty + 16);
   }
   ctx.textAlign = "left";
+  } else {
+    // ── dense mode: numbered rank markers + list panels (iter-76 item 579) ──
+    const tops = spec.entries.slice(0, 8);
+    const bots = spec.entries.slice(-3).reverse(); // lowest first
+    const want = new Set([...tops, ...bots].map((e) => e.code));
+    const centroids = new Map<string, { x: number; y: number }>();
+    for (const f of mainland) {
+      const code = spec.codeOf(f);
+      if (!want.has(code)) continue;
+      const c = centroidPx(f, proj);
+      centroids.set(code, { x: c.x, y: c.y });
+    }
+    // markers on inset islands are skipped — the panels still list them
+    const marker = (x: number, yy: number, n: string, top: boolean, r = 11) => {
+      ctx.beginPath();
+      ctx.arc(x, yy, r, 0, Math.PI * 2);
+      if (top) {
+        ctx.fillStyle = P.accent;
+        ctx.fill();
+      } else {
+        ctx.fillStyle = P.plate;
+        ctx.fill();
+        ctx.strokeStyle = P.text;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.fillStyle = top ? P.accentInk : P.text;
+      ctx.font = `700 ${Math.round(r * 1.05)}px ${SANS}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(n, x, yy + 0.5);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    };
+    tops.forEach((e, i) => {
+      const c = centroids.get(e.code);
+      if (c) marker(c.x, c.y, String(i + 1), true);
+    });
+    bots.forEach((e, i) => {
+      const c = centroids.get(e.code);
+      if (c) marker(c.x, c.y, String(i + 1), false);
+    });
+
+    const clip = (s: string, maxW: number): string => {
+      if (ctx.measureText(s).width <= maxW) return s;
+      let t = s;
+      while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+      return t + "…";
+    };
+    const panelW = 236, rowH = 26, headH = 26;
+    const panel = (px: number, py: number, title: string, top: boolean, rows: { code: string; name: string; value: number }[]) => {
+      const ph = headH + rows.length * rowH + 8;
+      ctx.globalAlpha = 0.94;
+      ctx.fillStyle = P.plate;
+      ctx.fillRect(px, py, panelW, ph);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = P.border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px, py, panelW, ph);
+      ctx.fillStyle = P.muted;
+      ctx.font = `600 11.5px ${MONO}`;
+      ctx.fillText(title, px + 12, py + 17);
+      rows.forEach((e, i) => {
+        const ry = py + headH + i * rowH + 15;
+        marker(px + 21, ry - 4, String(i + 1), top, 8.5);
+        ctx.font = `500 13px ${SANS}`;
+        ctx.fillStyle = P.text;
+        const valStr = fmtIndianShort(e.value, spec.metric.decimals, spec.metric.unit);
+        ctx.textAlign = "right";
+        ctx.font = `700 14px ${SANS}`;
+        const vw = ctx.measureText(valStr).width;
+        ctx.fillText(valStr, px + panelW - 12, ry);
+        ctx.textAlign = "left";
+        ctx.font = `500 13px ${SANS}`;
+        ctx.fillStyle = P.muted;
+        ctx.fillText(clip(e.name, panelW - 58 - vw), px + 36, ry);
+      });
+    };
+    panel(MARGIN, headerBottom + 16, "HIGHEST", true, tops);
+    panel(LW - MARGIN - panelW, ay + ah + 16, "LOWEST", false, bots);
+  }
 
   // ── discrete legend (mobile-legible sizes — iter-74 item 574) ───────────
   const edges = [min, ...breaks, max];
@@ -543,7 +644,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     lx += sw + 12;
   }
   if (spec.entries.length < spec.features.length) {
-    ctx.fillStyle = P.nodata;
+    ctx.fillStyle = nodataFill;
     ctx.fillRect(lx, legendTop + 12, 30, sh);
     ctx.strokeStyle = P.border;
     ctx.strokeRect(lx, legendTop + 12, 30, sh);
