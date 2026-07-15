@@ -11,7 +11,7 @@ export type Metric = {
 };
 
 export const CAT_ORDER = [
-  "demographics", "society", "economy", "poverty", "health", "education",
+  "demographics", "society", "economy", "poverty", "health", "lifestyle", "education",
   "labour", "livelihood", "agriculture", "crime", "safety", "infrastructure", "elections",
 ];
 
@@ -21,6 +21,7 @@ export const CAT_ACCENT: Record<string, string> = {
   economy: "#c8a24a",
   poverty: "#9c5b6b",
   health: "#5fa88a",
+  lifestyle: "#c98a4b",
   education: "#5578b4",
   labour: "#7a86c4",
   livelihood: "#8f9c54",
@@ -37,6 +38,7 @@ export const CAT_DESC: Record<string, string> = {
   economy: "Output, spending, enterprise & tourism",
   poverty: "Multidimensional poverty — NITI MPI (NFHS-5)",
   health: "Wellbeing, nutrition & healthcare — NFHS-5",
+  lifestyle: "Alcohol, tobacco, obesity & more — NFHS-5",
   education: "Schools & learning — UDISE+ 2024-25",
   labour: "Jobs & participation — PLFS",
   livelihood: "How workers earn — Census 2011",
@@ -54,6 +56,7 @@ export const CAT_ICON: Record<string, string> = {
   economy: "M4 6h16v12H4z M4 10h16 M7 15h4",
   poverty: "M3 21h18 M6 21v-6 M10 21v-9 M14 21v-5 M18 21v-8",
   health: "M3 12h4l2-5 3 10 2-5h5",
+  lifestyle: "M8 3h8 M12 3v5 M12 8c-3 0-5 2.5-5 5.5S9 21 12 21s5-4.5 5-7.5S15 8 12 8z",
   education: "M2 10l10-5 10 5-10 5z M6 12.5V17c1.5 1.5 10.5 1.5 12 0v-4.5",
   labour: "M4 8h16v11H4z M9 8V6a3 3 0 016 0v2 M4 13h16",
   livelihood: "M12 21v-7 M12 14c0-3 2.5-5 5.5-5 0 3-2.5 5-5.5 5z M12 14c0-3-2.5-5-5.5-5 0 3 2.5 5 5.5 5z",
