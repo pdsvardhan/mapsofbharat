@@ -233,3 +233,15 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/2026-07-16-estimate-disclosure.md
+  - id: adr-020-estimate-citation-per-metric
+    project_slug: mapsofbharat
+    title: Every estimated number cites the district it actually came from
+    status: accepted
+    date: 2026-07-16T00:00:00.000Z
+    tags:
+      - data
+      - provenance
+      - reliability
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-07-16-estimate-citation-key.md
