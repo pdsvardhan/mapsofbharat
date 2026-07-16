@@ -195,3 +195,28 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/2026-07-06-site-sync-backfill.md
+  - id: adr-017-agri-poverty-verticals
+    project_slug: mapsofbharat
+    title: "Expand data coverage: agriculture (APY) and poverty (NITI MPI) verticals"
+    status: accepted
+    date: 2026-07-15T00:00:00.000Z
+    tags:
+      - data
+      - agriculture
+      - poverty
+      - curated
+      - cat:product
+    body_path: decisions/2026-07-15-agri-poverty-verticals.md
+  - id: adr-018-fill-new-districts
+    project_slug: mapsofbharat
+    title: "Fill post-2011 districts: exact crosswalk re-aggregation + flagged
+      sibling inheritance"
+    status: accepted
+    date: 2026-07-16T00:00:00.000Z
+    tags:
+      - data
+      - geography
+      - reliability
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-07-16-fill-new-districts.md
