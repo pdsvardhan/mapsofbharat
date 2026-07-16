@@ -1,5 +1,34 @@
 # MapsOfBharat — Iteration Log
 
+## 2026-07-16 — iter-91 + iter-93: say which kind of estimate a number is
+
+**Ask:** "complete all pending tasks" → scoped by owner to the 9 buildable to-dos. Of 18 open, 6 were blocked on a browser session (network/auth walls already confirmed from the server) and 3 were open decisions. Untouched, still open — trying harder would only have produced a false claim.
+
+**Three to-dos rested on false premises. The data said so each time.**
+
+- **223 was filed as copy ("needs state-appropriate wording"). It was the data model.** `metric_values.estimated` is one boolean answering two unrelated questions: district = inherited from a donor (`fill_new_districts.py`, has `estimated_from`); state = the RBI fiscal year is a Budget/Revised Estimate (`ingest_rbi_fiscal.py:467-470`, `ESTIMATE_TAG`, no donor). So `right-rail.tsx:169` told all 60 state rows *"Inherited from the parent district — this district formed after the source's survey"*: no parent, nothing inherited, and a state is not a post-survey district. Rewording would only have made a false sentence read better. → **adr-021**, `estimate_kind` discriminator. Widened to three values because `ingest_pca.py:81` flags exact whole-state *aggregates* estimated=1 — forcing that into 'inherited' or 'projected' would write a knowingly false label, which is the bug being removed.
+- **639's prescribed fix would have been wrong.** "Real-only stats" was written for copies and silently generalised to projections, collapsing `fiscal_deficit_pct_gsdp` and `own_tax_pct_gsdp` to **min == max == 0.7645** — one real row (Gujarat 2022) scaling 31 states whose values actually run 0.54–6.92, under a legend reading "avg 0.76" over data averaging 3.71. → **adr-022**: exclude copies, not projections. An inherited value duplicates a real row already counted; a projected one is that state's only figure. Ranks deliberately held unchanged.
+- **adr-019 was accepted 2026-07-16 and never implemented.** The hatch it measured at 1.09:1 and formally dropped was still rendering — layer, image, visibility toggle and feature-state all live, no removal commit. The ADR, the to-do list and the session notes all described a state the code was never in. → iter-93 item 650.
+
+**Anti-gaslight, working as designed — twice:**
+
+1. `POST /api/iterations/91/items` correctly refused a post-lock addition ("status 'building' is not editable"), so item 650 went through its own intake → classify → lock as iter-93 rather than being forced past the gate.
+2. **The verifier caught a real defect in item 640.** `notRankedNote()` took no donor, so the region panel headline read "inherited from the parent district" while the *same panel* read "estimated from Adilabad" — the exact two-surfaces-disagree bug 640 exists to close, recurring inside the module written to prevent it. The test passed while the bug was live because it asserted only `/not ranked/i`. Fixed at 59bd98d; the test now pins the wording and asserts the generic sentence is absent.
+
+**Item 644 mutation-tested 3/3.** The verifier broke the code on purpose: gutting `countsInStats` failed the adr-022 test; restoring the dead `String(r.rank ?? 0)` failed the "never a rank of 00" test; removing `estimated_from` failed two tests. The specs provably fail when the code they cover breaks — which is the entire point of an item filed because 14/14 stayed green through item 611.
+
+**Evidence:** migration `inherited=1494 projected=60`, 0 unclassified, **0 value diffs and 0 row delta vs backup**, idempotent. Playwright **24/24** (test_run 101). Lint 25 errors vs main's 26 baseline (net −1; removing the hatch's `as any` dropped one). Reports 523–532. Deploy artifact 44. Merge 5528ef3.
+
+**Decisions:** adr-021 (every estimate records what kind it is), adr-022 (statistics exclude copies, not projections). Both curated, `cat:reliability`.
+
+**Friction:**
+- *env-limitation* — `/mnt/storage` went read-only mid-session and 19 containers stopped. Not a fault: a sibling Claude session had `rm -rf`'d `/mnt/storage/media/music/telugu` via `find … -maxdepth 1 -type d -exec rm -rf {} +` (find returns the start dir) and was correctly running `extundelete`. Two other sessions read the read-only mount as a hardware fault; one restarted the writers onto it and reported "sanity clean" while `ingest`/`immich` crash-looped. **Several sessions share this box as the same user and cannot see each other — an incident report from a sibling is a hypothesis, not evidence.** Deploy resumed only after the recovery finished (photorec, 26G carved) and the mount returned rw at 01:36:36.
+- *tooling* — Playwright is flaky on this host under full parallelism; verifiers reproduced failures on specs this branch never touched, and every one passed at `--workers=1/2`. Filed; green must mean green.
+- *skill* — the Ottomate to-do `title` caps at 300 chars and 422s over it. Cost two round-trips.
+
+**Next session pickup:** 16 open to-dos. 6 still blocked on a browser session (201 CPCB, 202 Vahan, 203 NPCI, 206 RBI Handbook, 157 RBI QSDCB, 113 Census 2001) — unchanged, still not doable from the server. 3 open decisions (204 SHRUG licence, 218 grade inheritances, 149 as-reported-year toggle, an adr-003 must_have still unbuilt). New from the verifiers: 254 (item 644's AC mapping is wrong — classifier error at intake), 255 (`scopeMin`/`scopeMax` bypass `countsInStats`, same class as 639), 256 (AC 271/525/526 + social-card footnote untested), 252 (commit bundling), 253 (Playwright flakiness).
+
+
 ## 2026-06-10 — Stage 3 completion
 
 Built feat-region-detail, feat-export-share, feat-find-my-district. Resolved 7
