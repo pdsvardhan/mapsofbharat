@@ -29,6 +29,8 @@ const NODATA = "#2a271d"; // indicator picked, region missing a value
 type MetricData = {
   name: string; unit: string; year: number; source: string; license?: string; decimals: number;
   min: number; max: number; mean: number; count: number; values: Record<string, number>;
+  // region_code -> 1 when inherited from a parent district (post-source new district)
+  estimated?: Record<string, 1>;
 };
 type Sel = { code: string; name: string; state: string; kind: "state" | "district" };
 type Focus = { code: string; name: string };
@@ -78,6 +80,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const valuesRef = useRef<Record<string, number>>({});
+  const estimatedRef = useRef<Record<string, 1>>({});
   const rankRef = useRef<Record<string, number>>({});
   const statesRef = useRef<Record<string, any>>({});
   const statesFCRef = useRef<{ features: SocialFeature[] } | null>(null);
@@ -256,6 +259,26 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       });
 
       map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: fillPaint } as any);
+      // diagonal-hatch overlay marking districts whose value is ESTIMATED
+      // (inherited from a parent — a district formed after the source's survey).
+      // Opacity is driven by the per-feature `estimated` state, so the hatch
+      // shows only on those districts. Neutral-tone lines read on any fill.
+      if (!map.hasImage("estimate-hatch")) {
+        const s = 8, cv = document.createElement("canvas");
+        cv.width = cv.height = s;
+        const g = cv.getContext("2d")!;
+        g.strokeStyle = "rgba(20,22,28,0.85)"; g.lineWidth = 1.1;
+        for (let o = -s; o < s * 2; o += 4) { g.beginPath(); g.moveTo(o, s); g.lineTo(o + s, 0); g.stroke(); }
+        const img = g.getImageData(0, 0, s, s);
+        map.addImage("estimate-hatch", { width: s, height: s, data: new Uint8Array(img.data.buffer) }, { pixelRatio: 2 });
+      }
+      map.addLayer({
+        id: "district-estimated", type: "fill", source: "districts",
+        paint: {
+          "fill-pattern": "estimate-hatch",
+          "fill-opacity": ["case", ["boolean", ["feature-state", "estimated"], false], 0.5, 0],
+        },
+      } as any);
       map.addLayer({ id: "district-line", type: "line", source: "districts", paint: linePaint(0.3) as any });
       map.addLayer({ id: "state-fill", type: "fill", source: "states", layout: { visibility: "none" }, paint: fillPaint } as any);
       map.addLayer({
@@ -415,6 +438,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const md: MetricData = await fetch(`/api/metrics/${sel}?level=${level}`).then((r) => r.json());
       if (cancelled || !md.values) return;
       setData(md); dataRef.current = md; valuesRef.current = md.values;
+      estimatedRef.current = md.estimated || {};
       const sorted = Object.entries(md.values).sort((a, b) => b[1] - a[1]);
       const ranks: Record<string, number> = {};
       sorted.forEach(([c], i) => (ranks[c] = i + 1));
@@ -441,6 +465,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     map.setLayoutProperty("state-fill", "visibility", showState ? "visible" : "none");
     map.setLayoutProperty("state-line", "visibility", showState ? "visible" : "none");
     map.setLayoutProperty("district-fill", "visibility", showState ? "none" : "visible");
+    map.setLayoutProperty("district-estimated", "visibility", showState ? "none" : "visible");
     map.setLayoutProperty("district-line", "visibility", showState ? "none" : "visible");
     if (!changed) return;
     if (drillingRef.current) { drillingRef.current = false; return; }
@@ -501,7 +526,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (s) map.setFeatureState({ source: s.kind === "state" ? "states" : "districts", id: s.code }, { selected: true });
 
     const codes = scopeCodes();
-    const vals = codes.map((c) => valuesRef.current[c]);
+    // class breaks + min/max use REAL values only, so inherited (estimated)
+    // parent values don't distort the scale or the legend
+    const vals = codes.filter((c) => !estimatedRef.current[c]).map((c) => valuesRef.current[c]);
     let min = Infinity, max = -Infinity, sum = 0;
     for (const v of vals) { if (v < min) min = v; if (v > max) max = v; sum += v; }
     if (!vals.length) { min = 0; max = 1; }
@@ -523,14 +550,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const v = valuesRef.current[code];
       const inScope = scope.has(code);
       if (v == null || !inScope) {
-        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false });
+        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, estimated: false });
         continue;
       }
       const color = modeRef.current === "vs_avg"
         ? interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - mean) / (2 * maxDev))))
         : colorFor(v, min, max, breaks, pal);
       const dim = cohortSet ? !cohortSet.has(code) : false;
-      map.setFeatureState({ source, id: code }, { color, dim });
+      const est = source === "districts" && estimatedRef.current[code] === 1;
+      map.setFeatureState({ source, id: code }, { color, dim, estimated: est });
     }
   }
 
@@ -725,9 +753,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   const hoverValue = hovered ? valuesRef.current[hovered.code] : null;
   const hoverRank = hovered ? rankOf[hovered.code] : null;
+  const hoverEst = !!(hovered && estimatedRef.current[hovered.code] === 1);
 
   const fmtHover = (v: number | null | undefined) =>
-    v == null ? "no data" : fmtFull(v);
+    v == null ? "no data" : fmtFull(v) + (hoverEst ? " · est." : "");
 
   // ── minimal (embed) chrome ───────────────────────────────────────────────
   if (minimal) {
@@ -914,7 +943,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 {data && <span className="ml-2 font-mono text-[10.5px] text-muted">{fmtHover(hoverValue)}</span>}
                 <div className="mt-px text-[9.5px] text-dim">
                   {hovered.kind === "district"
-                    ? `${hovered.state}${hoverRank != null ? ` · #${hoverRank} of ${entries.length}` : ""}`
+                    ? `${hovered.state}${hoverEst ? " · estimated from parent" : hoverRank != null ? ` · #${hoverRank} of ${entries.length}` : ""}`
                     : hoverRank != null ? `#${hoverRank} of ${entries.length} ${scopeNoun}` : ""}
                 </div>
               </div>

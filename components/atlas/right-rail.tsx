@@ -14,6 +14,7 @@ export type CohortDef = { key: string; name: string; note: string; codes: Set<st
 export type RegionMetricRow = {
   id: string; name: string; category: string; unit: string; year: number;
   source: string; source_url: string; decimals: number; value: number; rank: number; count: number;
+  estimated?: number;
 };
 
 const BINS = 9;
@@ -58,7 +59,8 @@ export function RegionProfile({
 }) {
   const [allOpen, setAllOpen] = useState(false);
   const [allRows, setAllRows] = useState<RegionMetricRow[] | null>(null);
-  useEffect(() => { setAllOpen(false); setAllRows(null); }, [sel.code]);
+  const [estFrom, setEstFrom] = useState<string | null>(null);
+  useEffect(() => { setAllOpen(false); setAllRows(null); setEstFrom(null); }, [sel.code]);
 
   const { bins, sentence } = useMemo(() => {
     if (!hasMetric || sel.value == null || !entries.length) return { bins: [] as { h: number; on: boolean }[], sentence: "" };
@@ -85,7 +87,7 @@ export function RegionProfile({
     if (allRows === null)
       fetch(`/api/region/${encodeURIComponent(sel.code)}`)
         .then((r) => r.json())
-        .then((d) => setAllRows(d.metrics ?? []))
+        .then((d) => { setAllRows(d.metrics ?? []); setEstFrom(d.estimated_from ?? null); })
         .catch(() => setAllRows([]));
   };
 
@@ -155,12 +157,19 @@ export function RegionProfile({
                     </a>
                     <span className="whitespace-nowrap font-mono text-[11px] text-bright">
                       {m.value.toLocaleString("en-IN", { maximumFractionDigits: m.decimals ?? 0 })}
-                      <span className="ml-1 text-[9px] text-dim">#{m.rank}/{m.count}</span>
+                      {m.estimated
+                        ? <span className="ml-1 text-[9px] text-accent" title="Inherited from the parent district — this district formed after the source's survey">est.</span>
+                        : <span className="ml-1 text-[9px] text-dim">#{m.rank}/{m.count}</span>}
                     </span>
                   </div>
                 ))}
               </div>
             ))}
+          {estFrom && (
+            <div className="mt-1 border-t border-border-faint pt-2 text-[10px] leading-snug text-dim">
+              <span className="text-accent">est.</span> = estimated from <span className="text-muted">{estFrom}</span>, the parent district this one was carved out of (its value stands in until a survey covers this district directly).
+            </div>
+          )}
         </div>
       )}
       <span className="sr-only">{unit}</span>

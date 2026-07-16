@@ -55,7 +55,7 @@ def _values_for(con, mid):
     for level in ("district", "state"):
         rows = con.execute(
             "SELECT value FROM metric_values "
-            "WHERE metric_id=? AND region_level=? AND value IS NOT NULL",
+            "WHERE metric_id=? AND region_level=? AND value IS NOT NULL AND estimated=0",
             (mid, level),
         ).fetchall()
         vals = [r[0] for r in rows]
