@@ -1,25 +1,23 @@
-"""Census 2011 HH-14 household assets -> district asset metrics (item 591).
+"""Census 2011 HH-14 household assets -> district asset metrics (item 591/598).
 
 Source: Census 2011 Table HH-14 (Percentage of Households by Amenities and
-Assets), one XLSX per district from the Census NADA portal
-(raw-new/assets/hl14/HLPCA-<code>-2011_H14_census.xlsx; browser-downloaded).
-Each file's district-total row (Tehsil code 00000, Rural/Urban = "Total",
-area "District - ...") already carries percentages OF TOTAL HOUSEHOLDS for each
-asset. Column map (pandas 0-index = census column number - 1):
+Assets), one XLSX per district (raw-new/assets/hl14/HLPCA-<code>-2011_H14.xlsx).
+
+Re-aggregated onto CURRENT district boundaries (item 598): each file's
+SUB-DISTRICT total rows (Tehsil != 00000, area "Sub-Dist", Rural/Urban="Total")
+carry the asset percentages for that 2011 sub-district; we map each sub-district
+to its current district via the `crosswalk` table and take the POPULATION-WEIGHTED
+mean (weights = 2011 sub-district population from the official ORGI sub-district
+PCA, the same source reaggregate.py uses; HH-14 has no clean total-households
+column, and population is very nearly proportional to households within a state).
+So post-2011 districts get their own asset profile instead of no-data.
+
+Column map (pandas 0-index = census column number - 1):
   128 Television · 129 Computer+internet · 130 Computer no-internet ·
   135 Scooter/Motorcycle/Moped · 136 Car/Jeep/Van · 138 None of the assets
 
-Metrics (district, category assets):
-  assets_car        % households owning a car/jeep/van
-  assets_computer   % households with a computer/laptop (with OR without internet)
-  assets_tv         % households owning a television
-  assets_scooter    % households owning a scooter/motorcycle/moped
-  assets_none       % households owning NONE of the specified assets (deprivation)
-
-Only the needed columns/rows are read (640 files), for speed. Where several
-census districts map to one geometry district the percentages are AVERAGED
-(these are household shares; no household counts are read here) and the collision
-is logged — rare, since HH-14 uses 2011 codes matching the geometry vintage.
+Metrics (district, category assets): assets_car, assets_computer, assets_tv,
+assets_scooter, assets_none.
 
 Run: pipeline/.venv/bin/python pipeline/ingest_assets.py
 """
@@ -30,117 +28,83 @@ from collections import defaultdict
 
 import pandas as pd
 
-from region_match import RegionMatcher, upsert_metric, write_values, log_load, DB
+from region_match import upsert_metric, write_values, log_load, DB
 
 PIPE = os.path.dirname(os.path.abspath(__file__))
 DIR = os.path.join(PIPE, "raw-new", "assets", "hl14")
+SUBPCA = os.path.join(PIPE, "raw", "2011-IndiaStateDistSbDist.xlsx")
 SOURCE = "Census of India 2011, Table HH-14 (Households by Amenities and Assets)"
 URL = "https://censusindia.gov.in/nada/index.php/catalog/HH-14"
 LICENSE = "Census of India, Govt. of India (open data)"
 YEAR = 2011
 FETCHED = "2026-07-16T00:35:00Z"
 METHODOLOGY = (
-    "Census 2011 Table HH-14 (Percentage of Households by Amenities and Assets), "
-    "per-district files; the district-total row's published percentages of total "
-    "households owning each asset. Computer = computer/laptop with OR without "
-    "internet. 2011-vintage data. District names crosswalked to the current "
-    "geometry (exact -> alias -> fuzzy, logged); where several census districts "
-    "map to one stored district the shares are averaged.")
+    "Census 2011 Table HH-14 (Percentage of Households by Amenities and Assets): "
+    "sub-district asset percentages reaggregated onto current-day district "
+    "boundaries via the census sub-district crosswalk (ADR-010), population-weighted "
+    "(2011 sub-district population, official ORGI PCA), so districts created after "
+    "2011 carry their own asset profile. Computer = computer/laptop with OR without "
+    "internet. 2011 vintage.")
 
-USECOLS = [0, 1, 2, 3, 4, 8, 9, 128, 129, 130, 135, 136, 138]
-# metric -> (list of usecols positions to SUM for the value)
+# usecols -> renamed 0..10: state,district,tehsil,area,ru,tv,comp_wi,comp_woi,scooter,car,none
+USECOLS = [0, 2, 4, 8, 9, 128, 129, 130, 135, 136]
+USECOLS_ALL = USECOLS + [138]
 SPECS = [
-    ("assets_car", "Households owning a car", "%", 0, [11]),          # col 136
-    ("assets_computer", "Households with a computer", "%", 1, [8, 9]),  # 129+130
-    ("assets_tv", "Households owning a television", "%", 1, [7]),      # col 128
-    ("assets_scooter", "Households owning a two-wheeler", "%", 1, [10]),  # col 135
-    ("assets_none", "Households owning none of the listed assets", "%", 0, [12]),  # 138
+    ("assets_car", "Households owning a car", "%", 0, [9]),
+    ("assets_computer", "Households with a computer", "%", 1, [6, 7]),
+    ("assets_tv", "Households owning a television", "%", 1, [5]),
+    ("assets_scooter", "Households owning a two-wheeler", "%", 1, [8]),
+    ("assets_none", "Households owning none of the listed assets", "%", 0, [10]),
 ]
-
-DIST_ALIASES = {
-    "muktsar": "sri muktsar sahib", "sahibzada ajit singh nagar": "s a s nagar",
-    "garhwal": "pauri garhwal", "dhaulpur": "dholpur", "kheri": "lakhimpur kheri",
-    "allahabad": "prayagraj", "faizabad": "ayodhya", "sant ravidas nagar": "bhadohi",
-    "jyotiba phule nagar": "amroha", "mahamaya nagar": "hathras",
-    "kanshiram nagar": "kasganj", "the nilgiris": "nilgiris",
-    "koch bihar": "cooch behar", "hugli": "hooghly", "haora": "howrah",
-    "puruliya": "purulia", "maldah": "malda", "mumbai suburban": "mumbai",
-    "north twenty four parganas": "north parganas",
-    "south twenty four parganas": "south parganas",
-    "north district": "north sikkim", "south district": "south sikkim",
-    "east district": "east sikkim", "west district": "west sikkim",
-}
-STATE_REMAP = {"leh": "Ladakh", "kargil": "Ladakh"}
-CENSUS_STATE_REMAP = {
-    "daman and diu": "Dadra and Nagar Haveli and Daman and Diu",
-    "dadra and nagar haveli": "Dadra and Nagar Haveli and Daman and Diu",
-}
-
-
-def resolve_rid(m, state, name, norm):
-    st = STATE_REMAP.get(norm(name)) or CENSUS_STATE_REMAP.get(norm(state), state)
-    rid = m.match(st, name, extra_aliases=DIST_ALIASES)
-    if rid:
-        return rid
-    if norm(state).startswith("andhra"):
-        rid = m.match("Telangana", name, extra_aliases=DIST_ALIASES)
-        if rid:
-            return rid
-    scode = m.state_code(st) or m.state_code(state)
-    if scode and len(m.by_state.get(scode, {})) == 1:
-        return next(iter(m.by_state[scode].values()))
-    return None
 
 
 def main():
     con = sqlite3.connect(DB)
-    m = RegionMatcher(con)
-    from region_match import norm
-    acc = {mid: defaultdict(list) for mid, *_ in SPECS}
+    xw = dict(con.execute("SELECT sd_code, rid FROM crosswalk"))
+    assert xw, "crosswalk empty — run reaggregate.py first"
+    off = pd.read_excel(SUBPCA, sheet_name="Data", dtype=str)
+    sdf = off[(off["Level"] == "SUB-DISTRICT") & (off["TRU"] == "Total")].copy()
+    sdf["sdc"] = sdf["State"].str.zfill(2) + sdf["District"].str.zfill(3) + sdf["Subdistt"].str.zfill(5)
+    sdpop = dict(zip(sdf["sdc"], pd.to_numeric(sdf["TOT_P"], errors="coerce")))
+
+    # rid -> metric -> [weighted_sum, weight_sum]
+    acc = {mid: defaultdict(lambda: [0.0, 0.0]) for mid, *_ in SPECS}
     files = sorted(glob.glob(os.path.join(DIR, "*.xlsx")))
     assert len(files) >= 600, f"only {len(files)} HH-14 files"
-    nrows, unmatched, bad = 0, [], 0
+    n_sub, n_missing, bad = 0, 0, 0
 
     for fp in files:
         try:
-            # district-total row sits at raw index 7; read a small window
-            df = pd.read_excel(fp, header=None, skiprows=7, nrows=3,
-                               usecols=USECOLS, dtype=str)
+            df = pd.read_excel(fp, header=None, usecols=USECOLS_ALL, dtype=str)
         except Exception:
             bad += 1
             continue
-        df.columns = list(range(len(USECOLS)))   # 0..12 aligned to USECOLS order
-        # the district TOTAL row: tehsil(4)=="00000", area(8) startswith District, ru(9)=="Total"
-        row = None
-        for _, r in df.iterrows():
-            if str(r[4]) == "00000" and str(r[6]).strip().lower() == "total" \
-                    and str(r[5]).strip().startswith("District"):
-                row = r
-                break
-        if row is None:
-            bad += 1
-            continue
-        state, name = str(row[1]).strip(), str(row[3]).strip()
-        nrows += 1
-        rid = resolve_rid(m, state, name, norm)
-        if not rid:
-            unmatched.append(f"{state}/{name}")
-            continue
-        for mid, _, _, _, cols in SPECS:
-            vals = [pd.to_numeric(row[c], errors="coerce") for c in cols]
-            vals = [v for v in vals if pd.notna(v)]
-            if vals:
-                acc[mid][rid].append(round(sum(vals), 1))
+        df.columns = list(range(len(USECOLS_ALL)))   # 0..10
+        sub = df[(df[2] != "00000") & (df[4].astype(str).str.strip() == "Total")
+                 & (df[3].astype(str).str.strip().str.startswith("Sub-Dist"))]
+        for _, r in sub.iterrows():
+            sd_code = str(r[0]).zfill(2) + str(r[1]).zfill(3) + str(r[2]).zfill(5)
+            rid = xw.get(sd_code)
+            w = sdpop.get(sd_code)
+            if rid is None or not w or w <= 0:
+                n_missing += 1
+                continue
+            n_sub += 1
+            for mid, _, _, _, cols in SPECS:
+                vals = [pd.to_numeric(r[c], errors="coerce") for c in cols]
+                vals = [v for v in vals if pd.notna(v)]
+                if len(vals) == len(cols):
+                    a = acc[mid][rid]
+                    a[0] += sum(vals) * w
+                    a[1] += w
 
-    rate = (nrows - len(unmatched)) / max(nrows, 1) * 100
-    print(f"district files: {nrows} (bad {bad}); match {nrows - len(unmatched)}/{nrows} "
-          f"({rate:.1f}%); fuzzy {len(m.fuzzy_log)}")
-    print("unmatched:", unmatched[:20], "..." if len(unmatched) > 20 else "")
-    assert rate >= 90, f"match rate {rate:.1f}% below gate"
+    print(f"aggregated {n_sub} sub-districts -> {len(acc['assets_car'])} current districts; "
+          f"{n_missing} unmatched; {bad} unreadable files")
+    assert len(acc["assets_car"]) >= 700, "district coverage too low"
 
     total = 0
     for mid, name, unit, dec, cols in SPECS:
-        vals = {rid: round(sum(vs) / len(vs), 1) for rid, vs in acc[mid].items() if vs}
+        vals = {rid: round(ws / w, 1) for rid, (ws, w) in acc[mid].items() if w > 0}
         upsert_metric(con, mid, name, "assets", unit, dec, None,
                       name + " (Census 2011).", SOURCE, URL, LICENSE, YEAR,
                       methodology=METHODOLOGY)
@@ -149,9 +113,9 @@ def main():
         print(f"  {mid}: {len(vals)} districts")
 
     log_load(con, "ingest_assets.py", SOURCE, YEAR, LICENSE, FETCHED, total,
-             f"5 asset metrics from {len(files)} HH-14 district files; {nrows} districts, "
-             f"match {rate:.1f}% ({len(unmatched)} unmatched, logged); {bad} unreadable; "
-             f"fuzzy {len(m.fuzzy_log)}")
+             f"5 asset metrics reaggregated from HH-14 sub-districts via crosswalk "
+             f"(population-weighted); {n_sub} sub-districts -> "
+             f"{len(acc['assets_car'])} current districts (new districts included)")
     con.commit(); con.close()
     print(f"WROTE {total} values across 5 metrics.")
 
