@@ -51,40 +51,56 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
     .prepare("SELECT name, iso_3166_2 FROM region_keys WHERE level = ? AND code = ?")
     .get(level, code) as { name?: string; iso_3166_2?: string } | undefined;
 
-  // parent district that estimates for this district are inherited from (if any).
+  // Which district supplied each inherited value. Keyed (region, metric, year) —
+  // the same key the fill uses — because a district can inherit different metrics
+  // from different siblings: Mancherial takes crime from Nirmal and ASER from
+  // Adilabad. A single parent per district cannot state that (adr-020).
   // Guarded: the table only exists once fill_new_districts.py has run.
-  let estimatedFrom: string | null = null;
+  const donorOf = new Map<string, string>();
   try {
-    const s = d
-      .prepare("SELECT source_name FROM district_estimate_source WHERE region_code = ?")
-      .get(code) as { source_name?: string } | undefined;
-    estimatedFrom = s?.source_name ?? null;
+    const src = d
+      .prepare(
+        "SELECT metric_id, year, source_name FROM district_estimate_source WHERE region_code = ?"
+      )
+      .all(code) as { metric_id: string; year: number; source_name: string }[];
+    for (const s of src) donorOf.set(`${s.metric_id}|${s.year}`, s.source_name);
   } catch {
-    estimatedFrom = null;
+    /* pipeline has not run yet — every estimated_from stays null */
   }
+
+  const metrics = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    category: r.category,
+    unit: r.unit,
+    year: r.year,
+    source: r.source,
+    source_url: r.source_url,
+    decimals: r.decimals,
+    higher_is_better: r.higher_is_better,
+    methodology: r.methodology,
+    last_updated: r.last_updated,
+    value: r.value,
+    estimated: r.estimated ? 1 : 0,
+    rank: r.rank,
+    count: r.cnt,
+    // the district this specific number came from — null when the value is our own
+    estimated_from: r.estimated ? donorOf.get(`${r.id}|${r.year}`) ?? null : null,
+  }));
+
+  // Distinct donors across this region's estimates, for the panel's footnote.
+  // Replaces the old single `estimated_from`, which could name only one parent
+  // and named the wrong one whenever the metric-blind rule disagreed with the fill.
+  const estimatedParents = [
+    ...new Set(metrics.map((m) => m.estimated_from).filter((n): n is string => !!n)),
+  ].sort();
 
   return NextResponse.json({
     code,
     level,
     name: key?.name ?? null,
     iso_3166_2: key?.iso_3166_2 ?? null,
-    estimated_from: estimatedFrom,
-    metrics: rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      category: r.category,
-      unit: r.unit,
-      year: r.year,
-      source: r.source,
-      source_url: r.source_url,
-      decimals: r.decimals,
-      higher_is_better: r.higher_is_better,
-      methodology: r.methodology,
-      last_updated: r.last_updated,
-      value: r.value,
-      estimated: r.estimated ? 1 : 0,
-      rank: r.rank,
-      count: r.cnt,
-    })),
+    estimated_parents: estimatedParents,
+    metrics,
   });
 }
