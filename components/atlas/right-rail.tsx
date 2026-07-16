@@ -100,7 +100,7 @@ export function RegionProfile({
     // no standing of its own to report. Never fall back to a number here:
     // `rank ?? 1` would announce a copied value as the top of the table.
     const selEntry = entries.find((e) => e.code === sel.code);
-    if (rank == null) return { bins, sentence: notRankedNote(selEntry?.estimate_kind) };
+    if (rank == null) return { bins, sentence: notRankedNote(selEntry?.estimate_kind, selEntry?.estimated_from) };
     const N = entries.reduce((n, e) => n + (e.estimated ? 0 : 1), 0);
     const pct = N > 1 ? Math.round(((N - rank) / (N - 1)) * 100) : 100;
     return { bins, sentence: `Rank ${rank} of ${N} — ahead of ${pct}% of ${scopeNoun}.` };

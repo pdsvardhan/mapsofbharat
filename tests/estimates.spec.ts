@@ -143,14 +143,19 @@ test.describe("the rail discloses estimates at the point of use (adr-019)", () =
     await expect(row.getByTestId("est-badge")).toHaveCount(0);
   });
 
-  test("the region panel calls an inherited value not ranked", async ({ page }) => {
+  test("the region panel calls an inherited value not ranked, and names the donor", async ({ page }) => {
     await page.goto("/?m=aser_govt_school");
     await waitForMapReady(page);
 
     await page.getByLabel("Search the ranking").fill("Mancherial");
     await page.locator("button", { hasText: "Mancherial" }).first().click();
 
-    await expect(page.getByText(/not ranked/i)).toBeVisible();
+    // Asserting only /not ranked/i let item 640's defect through: the headline read
+    // "inherited from the parent district" while the ALL INDICATORS list below it
+    // said "estimated from Adilabad" — same district, same panel, on screen at once.
+    // Pin the wording, or the two surfaces can silently drift apart again.
+    await expect(page.getByText(/inherited from Adilabad — not ranked/i)).toBeVisible();
+    await expect(page.getByText(/inherited from the parent district/i)).toHaveCount(0);
   });
 
   test("the donor is readable without hovering (item 642, target_devices=both)", async ({ page }) => {

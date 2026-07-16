@@ -113,11 +113,25 @@ export function estimateFootnote(
   return `${est.length} of ${M} ${noun} estimated — see methodology`;
 }
 
-/** Rank-sentence clause for a value that carries no rank of its own. */
-export function notRankedNote(kind: EstimateKind | string | null | undefined): string {
+/**
+ * Rank-sentence clause for a value that carries no rank of its own.
+ *
+ * Takes the donor for the same reason estimateNote does (item 640): without it
+ * this sentence said "Value inherited from the parent district — not ranked."
+ * in the region panel's headline while the ALL INDICATORS list a few rows below
+ * said "estimated from Adilabad" — for the same district, on screen at once.
+ * That is the defect item 640 exists to close, and it recurred here because this
+ * one caller was left un-threaded.
+ */
+export function notRankedNote(
+  kind: EstimateKind | string | null | undefined,
+  donor?: string | null
+): string {
   switch (kind) {
     case "inherited":
-      return "Value inherited from the parent district — not ranked.";
+      return donor
+        ? `Value inherited from ${donor} — not ranked.`
+        : "Value inherited from the district this one was carved out of — not ranked.";
     case "projected":
       return "Budget or Revised Estimate, not an actual — not ranked.";
     case "aggregated":
