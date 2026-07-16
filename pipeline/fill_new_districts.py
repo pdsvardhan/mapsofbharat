@@ -13,13 +13,12 @@ a child that lacks a metric inherits the value of the largest-population sibling
 that has it (the retained parent district, which the survey actually covered).
 The inherited value is written with estimated=1 and its donor is recorded in
 district_estimate_source, keyed (region_code, metric_id, year) — the same key the
-fill uses. The donor is per-metric, not per-district: surveys cover different
-district sets, so which siblings hold a real value differs by metric. Mancherial
-inherits crime from Nirmal and ASER from Adilabad. Six pairs inherit from each
-other in opposite directions — Warangal Urban takes ASER from Warangal Rural
-while Warangal Rural takes crime from Warangal Urban. Deriving the citation by any
-single per-district rule misstates where the number came from (adr-020). This is
-applied ONLY to INTENSIVE metrics
+fill uses. Two separate reasons for that key, neither of which one-row-per-district
+survives: (1) four districts inherit from two different siblings depending on the
+metric — Mancherial takes crime from Nirmal and ASER from Adilabad — and one row
+cannot hold two donors; (2) deriving the citation by a rule of its own, rather than
+recording the donor the fill used, misstates where the number came from. See
+adr-020. This is applied ONLY to INTENSIVE metrics
 (percentages, rates, per-capita, densities, indices) — absolute COUNTS
 (population, livestock head, crop tonnes, area, GST crore, tourist visits) are
 NOT inherited, because a new district does not carry its parent's total.
@@ -95,14 +94,19 @@ def main():
                     filled_metrics[mid] += 1
 
     # 7. persist the donor of every estimate, keyed exactly as the fill was.
-    #    Keyed (region, metric, year) — NOT one row per district — because a
-    #    district legitimately inherits different metrics from different siblings:
-    #    surveys cover different district sets, so the pool of siblings holding a
-    #    real value differs per metric. Mancherial takes crime from Nirmal and ASER
-    #    from Adilabad. Six pairs inherit from each other in opposite directions
-    #    (Warangal Urban <- Warangal Rural for ASER; Warangal Rural <- Warangal
-    #    Urban for crime). A region_code PRIMARY KEY cannot hold either shape,
-    #    whatever donor rule is chosen.
+    #    Keyed (region, metric, year) — NOT one row per district — because four
+    #    districts inherit from TWO different siblings depending on the metric:
+    #    Mancherial takes crime from Nirmal and ASER from Adilabad (likewise
+    #    Komaram Bheem, Jangaon, Mulugu). Surveys cover different district sets, so
+    #    the pool of siblings holding a real value differs per metric. A
+    #    region_code PRIMARY KEY holds one donor per district and so cannot state
+    #    that, whatever donor rule is chosen.
+    #
+    #    (Reciprocal pairs — Warangal Urban <- Warangal Rural for ASER while
+    #    Warangal Rural <- Warangal Urban for crime, 6 such pairs — are a cycle in
+    #    the donor graph, NOT a reason for this key: each member has one donor and
+    #    fits a region_code PK fine. Noted so nobody re-derives it as a second
+    #    justification; it isn't one.)
     con.execute("DROP TABLE IF EXISTS district_estimate_source")
     con.execute("""CREATE TABLE district_estimate_source (
         region_code TEXT, metric_id TEXT, year INTEGER,
