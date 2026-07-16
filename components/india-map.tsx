@@ -614,11 +614,21 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     return out;
   }, [data, nameIdx, level, focusActive, focus]);
 
+  // Inherited values carry no rank — the same rule /api/region/[code] already
+  // applies (it ranks over estimated=0 only). A district that was never surveyed
+  // holds its parent's number, so ranking it would assert a standing it never
+  // earned. Real districts rank 1..N consecutively; estimated codes are absent
+  // from this map and render as "—".
   const rankOf = useMemo(() => {
     const m: Record<string, number> = {};
-    entries.forEach((e, i) => (m[e.code] = i + 1));
+    let r = 0;
+    for (const e of entries) if (!e.estimated) m[e.code] = ++r;
     return m;
   }, [entries]);
+
+  // Denominator for every rank sentence: only districts the source surveyed.
+  const realCount = useMemo(() => entries.reduce((n, e) => n + (e.estimated ? 0 : 1), 0), [entries]);
+  const estCount = entries.length - realCount;
 
   const scopeMin = entries.length ? entries[entries.length - 1].value : 0;
   const scopeMax = entries.length ? entries[0].value : 1;
@@ -947,8 +957,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 {data && <span className="ml-2 font-mono text-[10.5px] text-muted">{fmtHover(hoverValue)}</span>}
                 <div className="mt-px text-[9.5px] text-dim">
                   {hovered.kind === "district"
-                    ? `${hovered.state}${hoverEst ? " · estimated from parent" : hoverRank != null ? ` · #${hoverRank} of ${entries.length}` : ""}`
-                    : hoverRank != null ? `#${hoverRank} of ${entries.length} ${scopeNoun}` : ""}
+                    ? `${hovered.state}${hoverEst ? " · estimated from parent" : hoverRank != null ? ` · #${hoverRank} of ${realCount}` : ""}`
+                    : hoverRank != null ? `#${hoverRank} of ${realCount} ${scopeNoun}` : ""}
                 </div>
               </div>
             )}
@@ -1003,9 +1013,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 scopeSub={
                   data
                     ? focusActive && focus
-                      ? `${entries.length} districts in ${focus.name}`
+                      ? `${entries.length} districts in ${focus.name}${estCount ? ` · ${estCount} estimated` : ""}`
                       : districtsAll
-                        ? `${entries.length} districts nationwide`
+                        ? `${entries.length} districts nationwide${estCount ? ` · ${estCount} estimated` : ""}`
                         : `${entries.length} states${cohortActive ? ` · ${activeCohortDef!.name}` : ""}`
                     : "Pick an indicator to rank"
                 }
