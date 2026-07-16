@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-export type Entry = { code: string; name: string; sub: string; kind: "state" | "district"; value: number };
+export type Entry = { code: string; name: string; sub: string; kind: "state" | "district"; value: number; estimated?: number };
 export type CohortDef = { key: string; name: string; note: string; codes: Set<string> | null };
 export type RegionMetricRow = {
   id: string; name: string; category: string; unit: string; year: number;
@@ -73,13 +73,14 @@ export function RegionProfile({
       if (e.code === sel.code) selBin = bi;
     }
     const mc = Math.max(...counts) || 1;
-    const N = entries.length;
-    const r = rank ?? 1;
-    const pct = N > 1 ? Math.round(((N - r) / (N - 1)) * 100) : 100;
-    return {
-      bins: counts.map((c, i) => ({ h: Math.max(8, Math.round((c / mc) * 100)), on: i === selBin })),
-      sentence: `Rank ${r} of ${N} — ahead of ${pct}% of ${scopeNoun}.`,
-    };
+    const bins = counts.map((c, i) => ({ h: Math.max(8, Math.round((c / mc) * 100)), on: i === selBin }));
+    // A null rank means this district's value was inherited from its parent, so
+    // it has no standing of its own to report. Never fall back to a number here:
+    // `rank ?? 1` would announce a copied value as the top of the table.
+    if (rank == null) return { bins, sentence: "Value inherited from the parent district — not ranked." };
+    const N = entries.reduce((n, e) => n + (e.estimated ? 0 : 1), 0);
+    const pct = N > 1 ? Math.round(((N - rank) / (N - 1)) * 100) : 100;
+    return { bins, sentence: `Rank ${rank} of ${N} — ahead of ${pct}% of ${scopeNoun}.` };
   }, [hasMetric, sel.code, sel.value, entries, min, max, rank, scopeNoun]);
 
   const loadAll = () => {
@@ -301,7 +302,9 @@ export function RankingRail({
                   className="h-[26px] w-[3px] flex-none transition-colors"
                   style={{ background: r.entry.code === selectedCode ? "#d1502f" : r.entry.code === hoveredCode ? "#8a8477" : "transparent" }}
                 />
-                <span className="w-[22px] flex-none font-mono text-[10px] text-dim">{String(r.rank ?? 0).padStart(2, "0")}</span>
+                <span className="w-[22px] flex-none font-mono text-[10px] text-dim">
+                  {r.entry.estimated ? "—" : String(r.rank ?? 0).padStart(2, "0")}
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-semibold" style={{ color: r.entry.code === selectedCode ? "#f0e9db" : "#ccc4b2" }}>
                     {r.entry.name}
@@ -317,7 +320,17 @@ export function RankingRail({
                     />
                   </span>
                 </span>
-                <span className="flex-none font-mono text-[11.5px] text-bright">{fmtVal(r.entry.value)}</span>
+                <span className="flex-none whitespace-nowrap font-mono text-[11.5px] text-bright">
+                  {fmtVal(r.entry.value)}
+                  {r.entry.estimated ? (
+                    <span
+                      className="ml-1 text-[9px] text-accent"
+                      title="Inherited from the parent district — this district formed after the source's survey, so this value is its parent's, not its own measurement"
+                    >
+                      est.
+                    </span>
+                  ) : null}
+                </span>
               </button>
             ) : null
           )}
