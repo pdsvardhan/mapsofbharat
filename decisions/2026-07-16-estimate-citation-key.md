@@ -37,6 +37,11 @@ across 79 sibling groups and 102 inheriting districts:
   inherited — Krishna cited NTR, Kancheepuram cited Chengalpattu, Ferozepur cited
   Fazilka.
 
+Those first three counts sum to 99, not 102. The remaining 3 — Jangaon, Komaram
+Bheem and Mulugu — are multi-donor districts whose single stored citation named one
+of their two real donors: right for some of their values, wrong for the rest. They
+belong to no clean category, which is itself the point of reason 2 below.
+
 iter-13's verifier had approved "parent-cited" because it checked the field
 *existed*, not that it was *right*.
 

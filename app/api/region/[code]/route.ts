@@ -29,12 +29,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
        ),
        cnts AS (SELECT metric_id, MAX(cnt) AS cnt FROM ranked GROUP BY metric_id),
        mine AS (
-         SELECT metric_id, value, estimated FROM metric_values
+         SELECT metric_id, value, estimated, year FROM metric_values
          WHERE region_level = ? AND region_code = ? AND value IS NOT NULL
        )
        SELECT m.id, m.name, m.category, m.unit, m.year, m.source, m.source_url,
               m.decimals, m.higher_is_better, m.methodology, m.last_updated,
-              mine.value, mine.estimated, c.cnt,
+              mine.value, mine.estimated, mine.year AS value_year, c.cnt,
               CASE WHEN mine.estimated = 1 THEN NULL
                    WHEN m.higher_is_better = 0 THEN r.rank_asc ELSE r.rank_desc END AS rank
        FROM mine
@@ -64,8 +64,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
       )
       .all(code) as { metric_id: string; year: number; source_name: string }[];
     for (const s of src) donorOf.set(`${s.metric_id}|${s.year}`, s.source_name);
-  } catch {
-    /* pipeline has not run yet — every estimated_from stays null */
+  } catch (err) {
+    // Absent table = the pipeline has not run yet, which is expected on a fresh
+    // DB. Anything else is a real fault, and silently degrading every citation to
+    // null would hide it — the panel would just stop naming parents with no signal.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/no such table/i.test(msg)) {
+      console.error(`[region/${code}] district_estimate_source lookup failed:`, msg);
+    }
   }
 
   const metrics = rows.map((r) => ({
@@ -84,8 +90,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
     estimated: r.estimated ? 1 : 0,
     rank: r.rank,
     count: r.cnt,
-    // the district this specific number came from — null when the value is our own
-    estimated_from: r.estimated ? donorOf.get(`${r.id}|${r.year}`) ?? null : null,
+    // The district this specific number came from — null when the value is our own.
+    // Keyed on the VALUE's year (metric_values.year), which is what the pipeline
+    // writes into district_estimate_source — NOT metrics.year, which is a separate
+    // column that already disagrees for 36 rows. Keying on the wrong one looks fine
+    // today and would silently null every citation the moment they diverge here.
+    estimated_from: r.estimated ? donorOf.get(`${r.id}|${r.value_year}`) ?? null : null,
   }));
 
   // Distinct donors across this region's estimates, for the panel's footnote.
