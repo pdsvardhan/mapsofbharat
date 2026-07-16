@@ -14,6 +14,7 @@ import {
   computeBreaks, colorFor, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
+import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
 import { ChooserModal } from "@/components/atlas/chooser";
 import { SearchModal, RegionIdx } from "@/components/atlas/search-modal";
 import { ShareMenu } from "@/components/atlas/share-menu";
@@ -29,8 +30,14 @@ const NODATA = "#2a271d"; // indicator picked, region missing a value
 type MetricData = {
   name: string; unit: string; year: number; source: string; license?: string; decimals: number;
   min: number; max: number; mean: number; count: number; values: Record<string, number>;
-  // region_code -> 1 when inherited from a parent district (post-source new district)
+  /** How many rows min/max/mean actually rest on (adr-022). */
+  stats_count?: number;
+  // region_code -> 1 when the value is not this region's own measurement
   estimated?: Record<string, 1>;
+  /** region_code -> which kind of estimate: 'inherited' | 'projected' | 'aggregated' (adr-021). */
+  estimate_kind?: Record<string, string>;
+  /** region_code -> the district that supplied the number; 'inherited' only (item 640). */
+  estimated_from?: Record<string, string>;
 };
 type Sel = { code: string; name: string; state: string; kind: "state" | "district" };
 type Focus = { code: string; name: string };
@@ -81,6 +88,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const valuesRef = useRef<Record<string, number>>({});
   const estimatedRef = useRef<Record<string, 1>>({});
+  const estimateKindRef = useRef<Record<string, string>>({});
+  const estimatedFromRef = useRef<Record<string, string>>({});
   const rankRef = useRef<Record<string, number>>({});
   const statesRef = useRef<Record<string, any>>({});
   const statesFCRef = useRef<{ features: SocialFeature[] } | null>(null);
@@ -259,26 +268,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       });
 
       map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: fillPaint } as any);
-      // diagonal-hatch overlay marking districts whose value is ESTIMATED
-      // (inherited from a parent — a district formed after the source's survey).
-      // Opacity is driven by the per-feature `estimated` state, so the hatch
-      // shows only on those districts. Neutral-tone lines read on any fill.
-      if (!map.hasImage("estimate-hatch")) {
-        const s = 8, cv = document.createElement("canvas");
-        cv.width = cv.height = s;
-        const g = cv.getContext("2d")!;
-        g.strokeStyle = "rgba(20,22,28,0.85)"; g.lineWidth = 1.1;
-        for (let o = -s; o < s * 2; o += 4) { g.beginPath(); g.moveTo(o, s); g.lineTo(o + s, 0); g.stroke(); }
-        const img = g.getImageData(0, 0, s, s);
-        map.addImage("estimate-hatch", { width: s, height: s, data: new Uint8Array(img.data.buffer) }, { pixelRatio: 2 });
-      }
-      map.addLayer({
-        id: "district-estimated", type: "fill", source: "districts",
-        paint: {
-          "fill-pattern": "estimate-hatch",
-          "fill-opacity": ["case", ["boolean", ["feature-state", "estimated"], false], 0.5, 0],
-        },
-      } as any);
+      // No estimate hatch here by design (adr-019). The overlay that used to mark
+      // inherited districts was measured at 1.09:1 against the dark end of the
+      // ramp — below WCAG's 3:1 floor for non-text UI, and its 8px tile at
+      // pixelRatio 2 aliased to flat tone, so it communicated nothing. It was also
+      // disproportionate: inheritance is 2.7% of district data, yet an ASER map
+      // would hatch 12% of India, and we render NFHS sampling error perfectly
+      // flat. Estimates are disclosed where the number is read instead — rail
+      // badge, map hover, region panel, export footnote.
       map.addLayer({ id: "district-line", type: "line", source: "districts", paint: linePaint(0.3) as any });
       map.addLayer({ id: "state-fill", type: "fill", source: "states", layout: { visibility: "none" }, paint: fillPaint } as any);
       map.addLayer({
@@ -439,6 +436,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       if (cancelled || !md.values) return;
       setData(md); dataRef.current = md; valuesRef.current = md.values;
       estimatedRef.current = md.estimated || {};
+      estimateKindRef.current = md.estimate_kind || {};
+      estimatedFromRef.current = md.estimated_from || {};
       const sorted = Object.entries(md.values).sort((a, b) => b[1] - a[1]);
       const ranks: Record<string, number> = {};
       sorted.forEach(([c], i) => (ranks[c] = i + 1));
@@ -465,7 +464,6 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     map.setLayoutProperty("state-fill", "visibility", showState ? "visible" : "none");
     map.setLayoutProperty("state-line", "visibility", showState ? "visible" : "none");
     map.setLayoutProperty("district-fill", "visibility", showState ? "none" : "visible");
-    map.setLayoutProperty("district-estimated", "visibility", showState ? "none" : "visible");
     map.setLayoutProperty("district-line", "visibility", showState ? "none" : "visible");
     if (!changed) return;
     if (drillingRef.current) { drillingRef.current = false; return; }
@@ -526,9 +524,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (s) map.setFeatureState({ source: s.kind === "state" ? "states" : "districts", id: s.code }, { selected: true });
 
     const codes = scopeCodes();
-    // class breaks + min/max use REAL values only, so inherited (estimated)
-    // parent values don't distort the scale or the legend
-    const vals = codes.filter((c) => !estimatedRef.current[c]).map((c) => valuesRef.current[c]);
+    // Class breaks + min/max exclude COPIES, not projections (adr-022). An
+    // inherited value duplicates a real district already counted here; a projected
+    // one (RBI BE/RE) is its state's only figure. Excluding projections is what
+    // collapsed fiscal_deficit_pct_gsdp to min == max == 0.7645 — one real row
+    // scaling 31 states whose values run 0.54–6.92.
+    const vals = codes
+      .filter((c) => countsInStats(estimatedRef.current[c], estimateKindRef.current[c]))
+      .map((c) => valuesRef.current[c]);
     let min = Infinity, max = -Infinity, sum = 0;
     for (const v of vals) { if (v < min) min = v; if (v > max) max = v; sum += v; }
     if (!vals.length) { min = 0; max = 1; }
@@ -550,15 +553,16 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const v = valuesRef.current[code];
       const inScope = scope.has(code);
       if (v == null || !inScope) {
-        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, estimated: false });
+        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false });
         continue;
       }
       const color = modeRef.current === "vs_avg"
         ? interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - mean) / (2 * maxDev))))
         : colorFor(v, min, max, breaks, pal);
       const dim = cohortSet ? !cohortSet.has(code) : false;
-      const est = source === "districts" && estimatedRef.current[code] === 1;
-      map.setFeatureState({ source, id: code }, { color, dim, estimated: est });
+      // No `estimated` feature-state: adr-019 dropped ambient hatching, so nothing
+      // consumes it. Estimates are disclosed where the number is read.
+      map.setFeatureState({ source, id: code }, { color, dim });
     }
   }
 
@@ -594,9 +598,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const entries = useMemo<Entry[]>(() => {
     if (!data) return [];
     const f = focusActive && focus ? String(Number(focus.code)) + "_" : null;
-    // An inherited value carries its parent's number, not this district's own
-    // measurement, so the ranking list must be able to mark it (item 611).
+    // An estimated value is not this region's own measurement, so the ranking list
+    // must be able to mark it (item 611) — and estimate_kind travels with it so the
+    // rail can say WHICH kind without guessing from the flag (adr-021).
     const est = data.estimated ?? {};
+    const kinds = data.estimate_kind ?? {};
+    const donors = data.estimated_from ?? {};
     const out: Entry[] = [];
     for (const [code, value] of Object.entries(data.values)) {
       if (f && !code.startsWith(f) && !code.startsWith((focus?.code ?? "") + "_")) continue;
@@ -608,6 +615,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         kind: level === "district" ? "district" : "state",
         value,
         estimated: est[code] === 1 ? 1 : 0,
+        estimate_kind: kinds[code] ?? null,
+        estimated_from: donors[code] ?? null,
       });
     }
     out.sort((a, b) => b.value - a.value);
@@ -632,7 +641,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   const scopeMin = entries.length ? entries[entries.length - 1].value : 0;
   const scopeMax = entries.length ? entries[0].value : 1;
-  const scopeMean = entries.length ? entries.reduce((a, e) => a + e.value, 0) / entries.length : 0;
+  // The legend's average must be the average of the scale that coloured the map,
+  // or it contradicts the picture it labels (item 639): recolor() takes its mean
+  // over countsInStats, and averaging ALL entries here put Arunachal at ~66.485
+  // under a legend reading "avg 64.9", and 77.42 nationwide against the API's
+  // 77.68 — the inherited copies counted as extra districts.
+  const statsEntries = useMemo(
+    () => entries.filter((e) => countsInStats(e.estimated, e.estimate_kind)),
+    [entries]
+  );
+  const scopeMean = statsEntries.length
+    ? statsEntries.reduce((a, e) => a + e.value, 0) / statsEntries.length
+    : 0;
 
   const fmtVal = useCallback((v: number) =>
     v.toLocaleString("en-IN", { maximumFractionDigits: data?.decimals ?? 0 }), [data]);
@@ -768,9 +788,17 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const hoverValue = hovered ? valuesRef.current[hovered.code] : null;
   const hoverRank = hovered ? rankOf[hovered.code] : null;
   const hoverEst = !!(hovered && estimatedRef.current[hovered.code] === 1);
+  const hoverKind = hovered ? estimateKindRef.current[hovered.code] : null;
+  const hoverDonor = hovered ? estimatedFromRef.current[hovered.code] : null;
+  // Name the district the number actually came from, rather than "estimated from
+  // parent" while the region panel names Nirmal for the same cell (item 640).
+  // Falls back per kind — a projected figure has no donor to name.
+  const hoverEstNote = hoverEst ? estimateShort(hoverKind, hoverDonor) : "";
 
   const fmtHover = (v: number | null | undefined) =>
     v == null ? "no data" : fmtFull(v) + (hoverEst ? " · est." : "");
+
+  const embedEstimateNote = estimateFootnote(entries, scopeNoun);
 
   // ── minimal (embed) chrome ───────────────────────────────────────────────
   if (minimal) {
@@ -782,6 +810,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             <div className="text-xs font-bold text-bright">{data.name} <span className="font-normal text-faint">({data.unit})</span></div>
             <div className="mt-1.5 h-2 w-40" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => PALETTES[palette].fn(reverse ? 1 - t : t)).join(", ")})` }} />
             <div className="mt-0.5 flex justify-between font-mono text-[10px] text-faint"><span>{fmtVal(data.min)}</span><span>{fmtVal(data.max)}</span></div>
+            {/* An iframe travels without rail, panel or methodology, so the caveat
+                has to be on the embed itself — hovering is not a disclosure for a
+                reader who never hovers (item 643). */}
+            {embedEstimateNote && (
+              <div className="mt-1 max-w-40 text-[9px] leading-snug text-dim">{embedEstimateNote}</div>
+            )}
           </div>
         )}
         <a href="/" target="_blank" rel="noopener noreferrer"
@@ -957,8 +991,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 {data && <span className="ml-2 font-mono text-[10.5px] text-muted">{fmtHover(hoverValue)}</span>}
                 <div className="mt-px text-[9.5px] text-dim">
                   {hovered.kind === "district"
-                    ? `${hovered.state}${hoverEst ? " · estimated from parent" : hoverRank != null ? ` · #${hoverRank} of ${realCount}` : ""}`
-                    : hoverRank != null ? `#${hoverRank} of ${realCount} ${scopeNoun}` : ""}
+                    ? `${hovered.state}${hoverEst ? ` · ${hoverEstNote}` : hoverRank != null ? ` · #${hoverRank} of ${realCount}` : ""}`
+                    : hoverEst
+                      ? hoverEstNote
+                      : hoverRank != null ? `#${hoverRank} of ${realCount} ${scopeNoun}` : ""}
                 </div>
               </div>
             )}
@@ -1048,7 +1084,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           onClose={() => setSocialOpen(false)}
           metric={{ name: data.name, unit: data.unit, year: data.year, source: data.source, decimals: data.decimals }}
           level={level} focusName={focus?.name ?? null}
-          entries={entries.map((e) => ({ code: e.code, name: e.name, value: e.value }))}
+          entries={entries.map((e) => ({
+            code: e.code, name: e.name, value: e.value,
+            // Keep the estimate flag on the row — narrowing to {code,name,value}
+            // here is what left exported cards with no disclosure (item 643).
+            estimated: e.estimated, estimate_kind: e.estimate_kind,
+          }))}
           features={
             (level === "state"
               ? statesFCRef.current?.features ?? []

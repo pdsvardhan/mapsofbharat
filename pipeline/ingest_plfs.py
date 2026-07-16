@@ -91,7 +91,7 @@ def collect(records, name_key, value_key, m):
 def write_state_values(con, mid, year, values: dict):
     n = 0
     for code, v in values.items():
-        con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)",
+        con.execute("INSERT OR REPLACE INTO metric_values(metric_id,region_code,region_level,year,value,estimated) VALUES(?,?,?,?,?,?)",
                     (mid, code, "state", year, float(v), 0))
         n += 1
     return n

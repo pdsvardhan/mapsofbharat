@@ -29,12 +29,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
        ),
        cnts AS (SELECT metric_id, MAX(cnt) AS cnt FROM ranked GROUP BY metric_id),
        mine AS (
-         SELECT metric_id, value, estimated, year FROM metric_values
+         SELECT metric_id, value, estimated, estimate_kind, year FROM metric_values
          WHERE region_level = ? AND region_code = ? AND value IS NOT NULL
        )
        SELECT m.id, m.name, m.category, m.unit, m.year, m.source, m.source_url,
               m.decimals, m.higher_is_better, m.methodology, m.last_updated,
-              mine.value, mine.estimated, mine.year AS value_year, c.cnt,
+              mine.value, mine.estimated, mine.estimate_kind, mine.year AS value_year, c.cnt,
               CASE WHEN mine.estimated = 1 THEN NULL
                    WHEN m.higher_is_better = 0 THEN r.rank_asc ELSE r.rank_desc END AS rank
        FROM mine
@@ -88,6 +88,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
     last_updated: r.last_updated,
     value: r.value,
     estimated: r.estimated ? 1 : 0,
+    // WHICH kind of estimate — the panel cannot word this correctly from
+    // `estimated` alone. 'inherited' has a donor to name; 'projected' (RBI BE/RE)
+    // has none and is not a copy of anything. See adr-021.
+    estimate_kind: r.estimated ? (r.estimate_kind as string | null) ?? null : null,
     rank: r.rank,
     count: r.cnt,
     // The district this specific number came from — null when the value is our own.

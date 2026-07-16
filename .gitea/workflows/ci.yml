@@ -4,7 +4,7 @@ on:
     branches: ['**']
   pull_request:
 jobs:
-  quality:                      # always hard — fast gates (adr-020)
+  quality:                      # always hard — fast gates (standard CI template, todo 4)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -14,7 +14,9 @@ type Props = {
   metric: { name: string; unit: string; year: number; source: string; decimals: number };
   level: "state" | "district";
   focusName: string | null;
-  entries: { code: string; name: string; value: number }[];
+  /** Carries `estimated` / `estimate_kind` so the card can disclose them — a PNG
+   *  travels with no tooltip, rail or methodology to fall back on (item 643). */
+  entries: { code: string; name: string; value: number; estimated?: number; estimate_kind?: string | null }[];
   features: SocialFeature[];
   codeOf: (f: SocialFeature) => string;
   paletteFn: (t: number) => string;

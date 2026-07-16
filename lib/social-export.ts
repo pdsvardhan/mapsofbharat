@@ -6,6 +6,7 @@
 // Pure module: no React, no DB, geometry in, canvas out.
 
 import { computeBreaks, colorFor } from "@/lib/breaks";
+import { estimateFootnote } from "@/lib/estimate-kind";
 
 export type SocialPreset = "portrait" | "square";
 export type SocialTheme = "ink" | "paper";
@@ -24,8 +25,16 @@ export type SocialCardSpec = {
   level: "state" | "district";
   /** Drilled state name, or null for the national view. */
   focusName: string | null;
-  /** Scope rows sorted descending by value (same rows the ranking rail shows). */
-  entries: { code: string; name: string; value: number }[];
+  /**
+   * Scope rows sorted descending by value (same rows the ranking rail shows).
+   *
+   * `estimated` / `estimate_kind` travel with the row because a card is the one
+   * surface that leaves the site: adr-019 put estimate disclosure at the point of
+   * use — rail badge, hover, region panel — and a PNG on Instagram has none of
+   * those. Narrowing these rows to {code,name,value} is what made an exported map
+   * disclose nothing at all (item 643).
+   */
+  entries: { code: string; name: string; value: number; estimated?: number; estimate_kind?: string | null }[];
   /** Features to draw for this scope (states, or districts already filtered to focus). */
   features: SocialFeature[];
   /** Value key for a feature — states: String(Number(st_code)); districts: rid. */
@@ -658,7 +667,14 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
 
   ctx.font = `500 12.5px ${SANS}`;
   ctx.fillStyle = P.muted;
-  const srcLines = wrap(ctx, `Source: ${spec.metric.source} · ${spec.metric.year}`, LW - MARGIN * 2 - 20, 2);
+  // The estimate disclosure has to ride along on the card itself (item 643). This
+  // image travels with no tooltip, no rail and no methodology link, so if the
+  // footnote is not drawn here the reader has no way to learn the map contains
+  // numbers no one measured. Worded per kind — "estimated from a parent district"
+  // is false of an RBI Budget/Revised Estimate (adr-021).
+  const srcText = `Source: ${spec.metric.source} · ${spec.metric.year}`;
+  const note = estimateFootnote(spec.entries, spec.level === "district" ? "districts" : "states");
+  const srcLines = wrap(ctx, note ? `${srcText} · ${note}` : srcText, LW - MARGIN * 2 - 20, 2);
   srcLines.forEach((s, i) => ctx.fillText(s, MARGIN, footerTop + 24 + i * 17));
 
   return canvas;

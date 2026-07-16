@@ -180,7 +180,7 @@ def write_values(con, mid, level, year, values: dict):
     for code, v in values.items():
         if v is None:
             continue
-        con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)",
+        con.execute("INSERT OR REPLACE INTO metric_values(metric_id,region_code,region_level,year,value,estimated) VALUES(?,?,?,?,?,?)",
                     (mid, code, level, year, float(v), 0))
         n += 1
     return n

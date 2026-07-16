@@ -67,7 +67,9 @@ def compute(r):
     }
 
 d["dt_code"] = d.apply(resolve, axis=1)
-results, estimated = {}, set()
+# kind_of records WHY a code is in `estimated`, because the two paths below reach
+# it for unrelated reasons and a bare flag cannot tell them apart (adr-021).
+results, estimated, kind_of = {}, set(), {}
 for _, r in d.iterrows():
     code = r["dt_code"]
     if code and code not in results: results[code] = compute(r)
@@ -78,7 +80,11 @@ for x in feats:                       # whole-state aggregation (single-polygon 
     rows = d[d["State"] == str(x["st"]).zfill(2)]
     if len(rows):
         sums = {c: float(rows[c].sum()) for c in RAW}
-        results[x["code"]] = compute(sums); estimated.add(x["code"])
+        # Every census district of this state rolls into the one geojson feature
+        # the state has, so this sum is exact — not copied from anyone, not a
+        # projection. It is flagged estimated only because the value is not a
+        # district row of its own.
+        results[x["code"]] = compute(sums); estimated.add(x["code"]); kind_of[x["code"]] = "aggregated"
 agg = len(results) - exact
 
 COUNT = {"pop_total"}                  # nearest-parent inheritance (rates only, never counts)
@@ -90,7 +96,9 @@ for x in feats:
     if not cands: continue
     near = min(cands, key=lambda g: (g["cx"]-x["cx"])**2 + (g["cy"]-x["cy"])**2)
     results[x["code"]] = {k: (None if k in COUNT else v) for k, v in results[near["code"]].items()}
-    estimated.add(x["code"])
+    # A copy of the nearest district's values — an inheritance, chosen by distance
+    # rather than by 2011 lineage the way fill_new_districts.py chooses.
+    estimated.add(x["code"]); kind_of[x["code"]] = "inherited"
 inh = len(results) - exact - agg
 
 METRICS = [
@@ -112,7 +120,11 @@ os.makedirs(os.path.dirname(DB), exist_ok=True)
 con = sqlite3.connect(DB); con.execute("PRAGMA journal_mode=DELETE;")
 con.executescript("""
 DROP TABLE IF EXISTS metric_values;
-CREATE TABLE metric_values(metric_id TEXT, region_code TEXT, region_level TEXT, year INTEGER, value REAL, estimated INTEGER DEFAULT 0, PRIMARY KEY(metric_id,region_code,region_level,year));
+-- estimate_kind says WHICH kind of estimate a row is, because `estimated` alone
+-- cannot: 'inherited' (copied from a donor region), 'projected' (a Budget/Revised
+-- Estimate for a fiscal year not yet closed), 'aggregated' (an exact sum of real
+-- rows). NULL whenever estimated=0. See adr-021.
+CREATE TABLE metric_values(metric_id TEXT, region_code TEXT, region_level TEXT, year INTEGER, value REAL, estimated INTEGER DEFAULT 0, estimate_kind TEXT, PRIMARY KEY(metric_id,region_code,region_level,year));
 CREATE INDEX idx_mv ON metric_values(metric_id,region_level,year);
 CREATE TABLE IF NOT EXISTS metrics(id TEXT PRIMARY KEY, name TEXT, category TEXT, unit TEXT, decimals INTEGER, higher_is_better INTEGER, default_scale TEXT, description TEXT, source TEXT, source_url TEXT, license TEXT, year INTEGER, methodology TEXT, last_updated TEXT);
 """)
@@ -125,9 +137,10 @@ for mid,name,cat,unit,dec,hib,desc in METRICS:
 written = 0
 for code, vals in results.items():
     est = 1 if code in estimated else 0
+    kind = kind_of.get(code) if est else None
     for mid, v in vals.items():
         if v is None: continue
-        con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)", (mid, code, "district", 2011, v, est))
+        con.execute("INSERT OR REPLACE INTO metric_values(metric_id,region_code,region_level,year,value,estimated,estimate_kind) VALUES(?,?,?,?,?,?,?)", (mid, code, "district", 2011, v, est, kind))
         written += 1
 con.commit()
 print(f"coverage: exact={exact} + aggregated={agg} + inherited={inh} = {len(results)} / {len(feats)} coded districts ({estimated.__len__()} estimated)")

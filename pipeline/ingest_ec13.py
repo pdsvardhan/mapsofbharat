@@ -222,7 +222,7 @@ def main():
     def write(mid, rates):
         n = 0
         for rid, v in rates.items():
-            con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)",
+            con.execute("INSERT OR REPLACE INTO metric_values(metric_id,region_code,region_level,year,value,estimated) VALUES(?,?,?,?,?,?)",
                         (mid, rid, "district", 2013, float(v), 0))
             n += 1
         return n
