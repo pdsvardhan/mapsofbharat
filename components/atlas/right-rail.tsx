@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-export type Entry = { code: string; name: string; sub: string; kind: "state" | "district"; value: number };
+export type Entry = { code: string; name: string; sub: string; kind: "state" | "district"; value: number; estimated?: number };
 export type CohortDef = { key: string; name: string; note: string; codes: Set<string> | null };
 export type RegionMetricRow = {
   id: string; name: string; category: string; unit: string; year: number;
@@ -317,7 +317,17 @@ export function RankingRail({
                     />
                   </span>
                 </span>
-                <span className="flex-none font-mono text-[11.5px] text-bright">{fmtVal(r.entry.value)}</span>
+                <span className="flex-none whitespace-nowrap font-mono text-[11.5px] text-bright">
+                  {fmtVal(r.entry.value)}
+                  {r.entry.estimated ? (
+                    <span
+                      className="ml-1 text-[9px] text-accent"
+                      title="Inherited from the parent district — this district formed after the source's survey, so this value is its parent's, not its own measurement"
+                    >
+                      est.
+                    </span>
+                  ) : null}
+                </span>
               </button>
             ) : null
           )}

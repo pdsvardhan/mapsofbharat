@@ -594,6 +594,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const entries = useMemo<Entry[]>(() => {
     if (!data) return [];
     const f = focusActive && focus ? String(Number(focus.code)) + "_" : null;
+    // An inherited value carries its parent's number, not this district's own
+    // measurement, so the ranking list must be able to mark it (item 611).
+    const est = data.estimated ?? {};
     const out: Entry[] = [];
     for (const [code, value] of Object.entries(data.values)) {
       if (f && !code.startsWith(f) && !code.startsWith((focus?.code ?? "") + "_")) continue;
@@ -604,6 +607,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         sub: level === "district" ? idx?.state ?? "" : "",
         kind: level === "district" ? "district" : "state",
         value,
+        estimated: est[code] === 1 ? 1 : 0,
       });
     }
     out.sort((a, b) => b.value - a.value);
