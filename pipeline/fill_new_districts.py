@@ -11,8 +11,14 @@ This pass fills them with an ESTIMATE inherited from the district's 2011 lineage
 "sibling": the current districts a single 2011 district split into are siblings;
 a child that lacks a metric inherits the value of the largest-population sibling
 that has it (the retained parent district, which the survey actually covered).
-The inherited value is written with estimated=1 so the app can render it distinctly
-and cite the parent (Part C). This is applied ONLY to INTENSIVE metrics
+The inherited value is written with estimated=1 and its donor is recorded in
+district_estimate_source, keyed (region_code, metric_id, year) — the same key the
+fill uses. Two separate reasons for that key, neither of which one-row-per-district
+survives: (1) four districts inherit from two different siblings depending on the
+metric — Mancherial takes crime from Nirmal and ASER from Adilabad — and one row
+cannot hold two donors; (2) deriving the citation by a rule of its own, rather than
+recording the donor the fill used, misstates where the number came from. See
+adr-020. This is applied ONLY to INTENSIVE metrics
 (percentages, rates, per-capita, densities, indices) — absolute COUNTS
 (population, livestock head, crop tonnes, area, GST crore, tourist visits) are
 NOT inherited, because a new district does not carry its parent's total.
@@ -67,16 +73,12 @@ def main():
     # 5. clear our own prior district estimates (state estimates untouched)
     con.execute("DELETE FROM metric_values WHERE region_level='district' AND estimated=1")
 
-    # 6. per sibling group, per (metric, year): fill children from the parent
-    source_of = {}   # child rid -> parent rid (largest-pop sibling), for the note
-    for parent_code, rs in groups.items():
-        parent = max(rs, key=lambda r: pop.get(r, 0.0))
-        for r in rs:
-            if r != parent:
-                source_of[r] = parent
-
+    # 6. per sibling group, per (metric, year): fill children from the parent.
+    #    source_of is recorded HERE, from the same `src` the fill used, so the
+    #    citation cannot drift from the value it explains (adr-020).
     fills = 0
     filled_metrics = collections.Counter()
+    source_of = {}   # (child rid, metric, year) -> donor rid that supplied the value
     for (mid, yr), vals in real.items():
         for parent_code, rs in groups.items():
             holders = [r for r in rs if r in vals]
@@ -87,23 +89,41 @@ def main():
                 if r not in vals:      # this sibling has no real value for (mid, yr)
                     con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)",
                                 (mid, r, "district", yr, vals[src], 1))
+                    source_of[(r, mid, yr)] = src
                     fills += 1
                     filled_metrics[mid] += 1
 
-    # 7. persist the parent-district lineage for the estimate note (Part C)
-    con.execute("""CREATE TABLE IF NOT EXISTS district_estimate_source (
-        region_code TEXT PRIMARY KEY, source_code TEXT, source_name TEXT)""")
-    con.execute("DELETE FROM district_estimate_source")
-    for r, src in source_of.items():
-        con.execute("INSERT OR REPLACE INTO district_estimate_source VALUES(?,?,?)",
-                    (r, src, name.get(src, "")))
+    # 7. persist the donor of every estimate, keyed exactly as the fill was.
+    #    Keyed (region, metric, year) — NOT one row per district — because four
+    #    districts inherit from TWO different siblings depending on the metric:
+    #    Mancherial takes crime from Nirmal and ASER from Adilabad (likewise
+    #    Komaram Bheem, Jangaon, Mulugu). Surveys cover different district sets, so
+    #    the pool of siblings holding a real value differs per metric. A
+    #    region_code PRIMARY KEY holds one donor per district and so cannot state
+    #    that, whatever donor rule is chosen.
+    #
+    #    (Reciprocal pairs — Warangal Urban <- Warangal Rural for ASER while
+    #    Warangal Rural <- Warangal Urban for crime, 6 such pairs — are a cycle in
+    #    the donor graph, NOT a reason for this key: each member has one donor and
+    #    fits a region_code PK fine. Noted so nobody re-derives it as a second
+    #    justification; it isn't one.)
+    con.execute("DROP TABLE IF EXISTS district_estimate_source")
+    con.execute("""CREATE TABLE district_estimate_source (
+        region_code TEXT, metric_id TEXT, year INTEGER,
+        source_code TEXT, source_name TEXT,
+        PRIMARY KEY (region_code, metric_id, year))""")
+    for (r, mid, yr), src in source_of.items():
+        con.execute("INSERT OR REPLACE INTO district_estimate_source VALUES(?,?,?,?,?)",
+                    (r, mid, yr, src, name.get(src, "")))
 
     con.commit()
-    filled_dists = len({r for (mid, yr), vals in real.items()
-                        for grp in groups.values() for r in grp if r not in vals
-                        and any(h in vals for h in grp)})
+    filled_dists = len({r for (r, _mid, _yr) in source_of})
+    multi = {r for (r, _m, _y) in source_of
+             if len({s for (rr, _mm, _yy), s in source_of.items() if rr == r}) > 1}
     print(f"sibling groups (2011 districts that split): {len(groups)}")
-    print(f"estimated fills written: {fills} across ~{len(source_of)} child districts")
+    print(f"estimated fills written: {fills} across {filled_dists} child districts")
+    print(f"citations written: {len(source_of)} (one per filled value, keyed region+metric+year)")
+    print(f"districts inheriting from >1 donor: {len(multi)} — unrepresentable before adr-020")
     print(f"metrics filled: {len(filled_metrics)}")
     top = filled_metrics.most_common(6)
     print("most-filled metrics:", [(m, n) for m, n in top])
@@ -113,9 +133,40 @@ def main():
           SELECT 1 FROM metric_values b WHERE b.metric_id=a.metric_id
           AND b.region_code=a.region_code AND b.region_level='district'
           AND b.year=a.year AND b.estimated=0)""").fetchone()[0]
+
+    # Regression tripwires, NOT correctness proofs. Now that the citation is
+    # recorded from the fill's own `src`, these cannot catch a wrong donor — both
+    # sides are written from the same dict in the same loop. They exist to fail
+    # loudly if anyone reintroduces a separate derivation, which is precisely what
+    # produced the adr-020 defect: 16 estimates uncited (the panel rendered
+    # "estimated from ____") and 17 citations for districts that inherit nothing.
+    # Correctness is established by re-deriving the donors independently (the
+    # iter-15 verifier did exactly that), not by these asserts.
+    uncited = con.execute("""SELECT COUNT(*) FROM metric_values v
+        WHERE v.estimated=1 AND v.region_level='district' AND NOT EXISTS (
+          SELECT 1 FROM district_estimate_source s WHERE s.region_code=v.region_code
+          AND s.metric_id=v.metric_id AND s.year=v.year)""").fetchone()[0]
+    orphan = con.execute("""SELECT COUNT(*) FROM district_estimate_source s
+        WHERE NOT EXISTS (
+          SELECT 1 FROM metric_values v WHERE v.region_code=s.region_code
+          AND v.metric_id=s.metric_id AND v.year=s.year
+          AND v.region_level='district' AND v.estimated=1)""").fetchone()[0]
+    self_cite = con.execute(
+        "SELECT COUNT(*) FROM district_estimate_source WHERE region_code = source_code"
+    ).fetchone()[0]
     con.close()
+
+    # Without this, every check below passes vacuously on an empty crosswalk or an
+    # unloaded metric_values: 0 fills, 0 citations, four cheerful OKs, no data.
+    assert fills > 0, "no fills written — crosswalk or metric_values empty; the checks below would pass vacuously"
     assert dup == 0, f"{dup} estimates collide with a real value"
     print("OK — no estimate overwrites a real value")
+    assert uncited == 0, f"{uncited} estimates have no citation (the adr-020 defect)"
+    print("OK — every estimate cites the donor that supplied it")
+    assert orphan == 0, f"{orphan} citations explain no estimate"
+    print("OK — no citation without a matching estimate")
+    assert self_cite == 0, f"{self_cite} districts cite themselves"
+    print("OK — no district cites itself")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,9 @@ export type RegionMetricRow = {
   id: string; name: string; category: string; unit: string; year: number;
   source: string; source_url: string; decimals: number; value: number; rank: number; count: number;
   estimated?: number;
+  /** District that supplied this specific number. Per-metric: one district can
+   *  inherit different metrics from different siblings (adr-020). */
+  estimated_from?: string | null;
 };
 
 const BINS = 9;
@@ -59,8 +62,8 @@ export function RegionProfile({
 }) {
   const [allOpen, setAllOpen] = useState(false);
   const [allRows, setAllRows] = useState<RegionMetricRow[] | null>(null);
-  const [estFrom, setEstFrom] = useState<string | null>(null);
-  useEffect(() => { setAllOpen(false); setAllRows(null); setEstFrom(null); }, [sel.code]);
+  const [estParents, setEstParents] = useState<string[]>([]);
+  useEffect(() => { setAllOpen(false); setAllRows(null); setEstParents([]); }, [sel.code]);
 
   const { bins, sentence } = useMemo(() => {
     if (!hasMetric || sel.value == null || !entries.length) return { bins: [] as { h: number; on: boolean }[], sentence: "" };
@@ -88,7 +91,7 @@ export function RegionProfile({
     if (allRows === null)
       fetch(`/api/region/${encodeURIComponent(sel.code)}`)
         .then((r) => r.json())
-        .then((d) => { setAllRows(d.metrics ?? []); setEstFrom(d.estimated_from ?? null); })
+        .then((d) => { setAllRows(d.metrics ?? []); setEstParents(d.estimated_parents ?? []); })
         .catch(() => setAllRows([]));
   };
 
@@ -159,16 +162,30 @@ export function RegionProfile({
                     <span className="whitespace-nowrap font-mono text-[11px] text-bright">
                       {m.value.toLocaleString("en-IN", { maximumFractionDigits: m.decimals ?? 0 })}
                       {m.estimated
-                        ? <span className="ml-1 text-[9px] text-accent" title="Inherited from the parent district — this district formed after the source's survey">est.</span>
+                        ? <span
+                            className="ml-1 text-[9px] text-accent"
+                            title={m.estimated_from
+                              ? `Inherited from ${m.estimated_from} — this district formed after the survey, so this number is ${m.estimated_from}'s, not its own measurement`
+                              : "Inherited from the parent district — this district formed after the source's survey"}
+                          >est.</span>
                         : <span className="ml-1 text-[9px] text-dim">#{m.rank}/{m.count}</span>}
                     </span>
                   </div>
                 ))}
               </div>
             ))}
-          {estFrom && (
+          {estParents.length > 0 && (
             <div className="mt-1 border-t border-border-faint pt-2 text-[10px] leading-snug text-dim">
-              <span className="text-accent">est.</span> = estimated from <span className="text-muted">{estFrom}</span>, the parent district this one was carved out of (its value stands in until a survey covers this district directly).
+              <span className="text-accent">est.</span> = inherited from{" "}
+              <span className="text-muted">
+                {estParents.length === 1
+                  ? estParents[0]
+                  : `${estParents.slice(0, -1).join(", ")} and ${estParents[estParents.length - 1]}`}
+              </span>
+              {estParents.length === 1
+                ? ", the district this one was carved out of"
+                : " — different surveys covered different districts, so these values come from different siblings"}
+              . Hover any <span className="text-accent">est.</span> to see which. Each stands in until a survey covers this district directly.
             </div>
           )}
         </div>
