@@ -70,7 +70,11 @@ def main():
         if mid in intensive:
             real[(mid, yr)][rc] = val
 
-    # 5. clear our own prior district estimates (state estimates untouched)
+    # 5. clear prior district estimates (state estimates untouched). Scope is every
+    #    district estimate, not just estimate_kind='inherited': ingest_pca.py's
+    #    nearest-neighbour copies are cruder guesses that this lineage-based pass
+    #    supersedes, and they are cleared here exactly as they were before adr-021
+    #    named the kinds. Narrowing this to our own kind would leave those alive.
     con.execute("DELETE FROM metric_values WHERE region_level='district' AND estimated=1")
 
     # 6. per sibling group, per (metric, year): fill children from the parent.
@@ -87,8 +91,10 @@ def main():
             src = max(holders, key=lambda r: pop.get(r, 0.0))   # representative holder
             for r in rs:
                 if r not in vals:      # this sibling has no real value for (mid, yr)
-                    con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)",
-                                (mid, r, "district", yr, vals[src], 1))
+                    con.execute("INSERT OR REPLACE INTO metric_values"
+                                "(metric_id,region_code,region_level,year,value,estimated,estimate_kind) "
+                                "VALUES(?,?,?,?,?,?,?)",
+                                (mid, r, "district", yr, vals[src], 1, "inherited"))
                     source_of[(r, mid, yr)] = src
                     fills += 1
                     filled_metrics[mid] += 1

@@ -172,12 +172,12 @@ if ok and ok_st:
     for rid, vals in results.items():
         for mid, v in vals.items():
             if v is None: continue
-            con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)", (mid, rid, "district", 2011, v, 0)); n += 1
+            con.execute("INSERT OR REPLACE INTO metric_values(metric_id,region_code,region_level,year,value,estimated) VALUES(?,?,?,?,?,?)", (mid, rid, "district", 2011, v, 0)); n += 1
     n_st = 0
     for st, vals in results_st.items():
         for mid, v in vals.items():
             if v is None: continue
-            con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)", (mid, st, "state", 2011, v, 0)); n_st += 1
+            con.execute("INSERT OR REPLACE INTO metric_values(metric_id,region_code,region_level,year,value,estimated) VALUES(?,?,?,?,?,?)", (mid, st, "state", 2011, v, 0)); n_st += 1
 
     # persist the geometric crosswalk actually used (within / nearest / instate-nearest)
     con.execute("DELETE FROM crosswalk")

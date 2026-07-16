@@ -9,14 +9,27 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-export type Entry = { code: string; name: string; sub: string; kind: "state" | "district"; value: number; estimated?: number };
+import { ESTIMATE_BADGE, estimateNote, estimateShort, notRankedNote } from "@/lib/estimate-kind";
+
+export type Entry = {
+  code: string; name: string; sub: string; kind: "state" | "district"; value: number;
+  estimated?: number;
+  /** Which kind of estimate — 'inherited' | 'projected' | 'aggregated' (adr-021). */
+  estimate_kind?: string | null;
+  /** District that supplied this number; 'inherited' only — a projected figure has
+   *  no donor (item 640). */
+  estimated_from?: string | null;
+};
 export type CohortDef = { key: string; name: string; note: string; codes: Set<string> | null };
 export type RegionMetricRow = {
   id: string; name: string; category: string; unit: string; year: number;
   source: string; source_url: string; decimals: number; value: number; rank: number; count: number;
   estimated?: number;
+  /** Which kind of estimate this row is, since `estimated` alone cannot say (adr-021). */
+  estimate_kind?: string | null;
   /** District that supplied this specific number. Per-metric: one district can
-   *  inherit different metrics from different siblings (adr-020). */
+   *  inherit different metrics from different siblings (adr-020). Only ever set
+   *  for estimate_kind='inherited' — a projected figure has no donor. */
   estimated_from?: string | null;
 };
 
@@ -69,18 +82,25 @@ export function RegionProfile({
     if (!hasMetric || sel.value == null || !entries.length) return { bins: [] as { h: number; on: boolean }[], sentence: "" };
     const span = max - min || 1;
     const counts = new Array(BINS).fill(0);
-    let selBin = 0;
+    // Bin REAL values only (item 641). Counting inherited copies made bin 1 read
+    // 83% where the surveyed districts are 40% — three copies of West Siang's 55.4
+    // stood in as three districts. Same denominator as the rank sentence below.
+    let selBin: number | null = null;
     for (const e of entries) {
+      if (e.estimated) continue;
       const bi = Math.min(BINS - 1, Math.floor(((e.value - min) / span) * BINS));
       counts[bi]++;
       if (e.code === sel.code) selBin = bi;
     }
     const mc = Math.max(...counts) || 1;
+    // No highlighted bar when the selection is itself an estimate: it holds no
+    // place in this distribution, and the sentence below says exactly that.
     const bins = counts.map((c, i) => ({ h: Math.max(8, Math.round((c / mc) * 100)), on: i === selBin }));
-    // A null rank means this district's value was inherited from its parent, so
-    // it has no standing of its own to report. Never fall back to a number here:
+    // A null rank means the value is not this region's own measurement, so it has
+    // no standing of its own to report. Never fall back to a number here:
     // `rank ?? 1` would announce a copied value as the top of the table.
-    if (rank == null) return { bins, sentence: "Value inherited from the parent district — not ranked." };
+    const selEntry = entries.find((e) => e.code === sel.code);
+    if (rank == null) return { bins, sentence: notRankedNote(selEntry?.estimate_kind) };
     const N = entries.reduce((n, e) => n + (e.estimated ? 0 : 1), 0);
     const pct = N > 1 ? Math.round(((N - rank) / (N - 1)) * 100) : 100;
     return { bins, sentence: `Rank ${rank} of ${N} — ahead of ${pct}% of ${scopeNoun}.` };
@@ -153,21 +173,32 @@ export function RegionProfile({
                 <div className="mb-1 text-[9px] font-bold uppercase tracking-[.14em] text-dim">{cat}</div>
                 {allRows.filter((m) => m.category === cat).map((m) => (
                   <div key={m.id} className="flex items-baseline justify-between gap-2 border-b border-border-faint py-1">
-                    <a
-                      href={m.source_url} target="_blank" rel="noopener noreferrer" title={`${m.source} · ${m.year}`}
-                      className="min-w-0 truncate text-[11px] text-muted hover:text-foreground"
-                    >
-                      {m.name}
-                    </a>
+                    <span className="min-w-0 flex-1">
+                      <a
+                        href={m.source_url} target="_blank" rel="noopener noreferrer" title={`${m.source} · ${m.year}`}
+                        className="block truncate text-[11px] text-muted hover:text-foreground"
+                      >
+                        {m.name}
+                      </a>
+                      {/* Why this number is an estimate, inline rather than hover-only
+                          (item 642). A title attr never fires on touch, and
+                          target_devices=both — so on a phone the footnote named every
+                          parent but never which metric came from which. Reads "estimated
+                          from Nirmal" for inherited, "Budget/Revised Estimate" for
+                          projected, which has no donor to name. */}
+                      {m.estimated ? (
+                        <span className="block truncate text-[9px] text-dim">
+                          {estimateShort(m.estimate_kind, m.estimated_from)}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="whitespace-nowrap font-mono text-[11px] text-bright">
                       {m.value.toLocaleString("en-IN", { maximumFractionDigits: m.decimals ?? 0 })}
                       {m.estimated
                         ? <span
                             className="ml-1 text-[9px] text-accent"
-                            title={m.estimated_from
-                              ? `Inherited from ${m.estimated_from} — this district formed after the survey, so this number is ${m.estimated_from}'s, not its own measurement`
-                              : "Inherited from the parent district — this district formed after the source's survey"}
-                          >est.</span>
+                            title={estimateNote(m.estimate_kind, m.estimated_from)}
+                          >{ESTIMATE_BADGE}</span>
                         : <span className="ml-1 text-[9px] text-dim">#{m.rank}/{m.count}</span>}
                     </span>
                   </div>
@@ -176,7 +207,7 @@ export function RegionProfile({
             ))}
           {estParents.length > 0 && (
             <div className="mt-1 border-t border-border-faint pt-2 text-[10px] leading-snug text-dim">
-              <span className="text-accent">est.</span> = inherited from{" "}
+              <span className="text-accent">{ESTIMATE_BADGE}</span> = inherited from{" "}
               <span className="text-muted">
                 {estParents.length === 1
                   ? estParents[0]
@@ -185,7 +216,7 @@ export function RegionProfile({
               {estParents.length === 1
                 ? ", the district this one was carved out of"
                 : " — different surveys covered different districts, so these values come from different siblings"}
-              . Hover any <span className="text-accent">est.</span> to see which. Each stands in until a survey covers this district directly.
+              . Each row names its own source above; each stands in until a survey covers this district directly.
             </div>
           )}
         </div>
@@ -230,7 +261,12 @@ export function RankingRail({
         .map((e) => ({ entry: e, rank: rankOf[e.code] }));
     }
     if (districtsAll) {
-      const slice = rankView === "bottom" ? entries.slice(-25) : entries.slice(0, 25);
+      // Slice over RANKED entries only (item 645). Slicing all entries made
+      // nationwide "Bottom 25" show 25 rows holding 23 ranked districts — 37_750
+      // and 14_770 are estimated and carry no rank, so the list was coherent but
+      // did not contain what its label promised.
+      const ranked = entries.filter((e) => !e.estimated);
+      const slice = rankView === "bottom" ? ranked.slice(-25) : ranked.slice(0, 25);
       const out: Row[] = slice.map((e) => ({ entry: e, rank: rankOf[e.code] }));
       if (selectedCode) {
         const inSlice = slice.some((e) => e.code === selectedCode);
@@ -319,8 +355,12 @@ export function RankingRail({
                   className="h-[26px] w-[3px] flex-none transition-colors"
                   style={{ background: r.entry.code === selectedCode ? "#d1502f" : r.entry.code === hoveredCode ? "#8a8477" : "transparent" }}
                 />
-                <span className="w-[22px] flex-none font-mono text-[10px] text-dim">
-                  {r.entry.estimated ? "—" : String(r.rank ?? 0).padStart(2, "0")}
+                <span data-testid="rail-rank" className="w-[22px] flex-none font-mono text-[10px] text-dim">
+                  {/* Branch on the rank itself, not on `estimated` (item 645). The old
+                      `?? 0` could only ever fire for a rankless row, which the
+                      estimated check had already caught — so it was dead, and had it
+                      ever fired it would have printed "00" as a rank. */}
+                  {r.rank == null ? "—" : String(r.rank).padStart(2, "0")}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-semibold" style={{ color: r.entry.code === selectedCode ? "#f0e9db" : "#ccc4b2" }}>
@@ -341,10 +381,14 @@ export function RankingRail({
                   {fmtVal(r.entry.value)}
                   {r.entry.estimated ? (
                     <span
+                      data-testid="est-badge"
                       className="ml-1 text-[9px] text-accent"
-                      title="Inherited from the parent district — this district formed after the source's survey, so this value is its parent's, not its own measurement"
+                      // Names the actual donor now that /api/metrics carries it
+                      // (item 640). This said "the parent district" while the region
+                      // panel said "Nirmal" for the same cell, both on screen at once.
+                      title={estimateNote(r.entry.estimate_kind, r.entry.estimated_from)}
                     >
-                      est.
+                      {ESTIMATE_BADGE}
                     </span>
                   ) : null}
                 </span>

@@ -474,8 +474,14 @@ def main():
         for code, (fy, val) in code_to_fyval.items():
             yr = fy_end_year(fy)
             est = est_flag(fy) if use_est else 0
-            con.execute("INSERT OR REPLACE INTO metric_values VALUES(?,?,?,?,?,?)",
-                        (mid, code, "state", yr, round(float(val), 4), est))
+            # 'projected', never 'inherited': a BE/RE figure is the state's own
+            # projection for a fiscal year that has not closed. Nothing is copied
+            # from another region and there is no donor to cite (adr-021).
+            con.execute("INSERT OR REPLACE INTO metric_values"
+                        "(metric_id,region_code,region_level,year,value,estimated,estimate_kind) "
+                        "VALUES(?,?,?,?,?,?,?)",
+                        (mid, code, "state", yr, round(float(val), 4), est,
+                         "projected" if est else None))
             n += 1
         return n
 

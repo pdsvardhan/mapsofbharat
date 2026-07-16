@@ -76,7 +76,7 @@ verifier APPROVE. Commit fc507ba + docker-compose port rebind.
   (Aizawl pop 411,735, crime 615.0, national total exact, pytest 8/8); AC2 (Saitual standalone rows)
   accepted-as-attribution — Saitual is a 2019 district absent from 2011 geometry, its population folds
   into the 2011 parent (adr-013). Items 166 & 168 deferred-with-reason (todos 112/113). Canonical
-  adr-020 ci.yml landed on main (todo 4). Re-picked 6 component slots; 1 (rankings-table) honest-skip (todo 105).
+  standard-CI-template ci.yml landed on main (todo 4). Re-picked 6 component slots; 1 (rankings-table) honest-skip (todo 105).
 - **iter-50 — economy + labour expansion (26 → 36 metrics):**
   - `ingest_plfs.py` — 3 state labour metrics (unemployment 2023-24, WPR 2022-23, LFPR 2020-21) via data.gov.in OGD.
   - `ingest_rbi_fiscal.py` — 5 state fiscal metrics (per-capita NSDP FY24-25 + gsdp_growth + deficit/own-tax/debt %GSDP), ratios computed with ₹Lakh↔₹Crore alignment.
