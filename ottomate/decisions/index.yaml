@@ -220,3 +220,16 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/2026-07-16-fill-new-districts.md
+  - id: adr-019-estimate-disclosure-point-of-use
+    project_slug: mapsofbharat
+    title: Estimated districts are disclosed where you read the number, not painted
+      across the map
+    status: accepted
+    date: 2026-07-16T00:00:00.000Z
+    tags:
+      - data
+      - ux
+      - honesty
+      - curated
+      - cat:product
+    body_path: decisions/2026-07-16-estimate-disclosure.md

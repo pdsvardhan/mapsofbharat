@@ -186,7 +186,10 @@ features:
     size: M
     test_status: passing
     acceptance_criteria:
-      - content: Selecting a region shows its rank and percentile for the metric
+      - content: Selecting a region shows its rank and percentile for the metric,
+          computed over the districts the source actually surveyed. A district
+          whose value was inherited from its parent (estimated=1) has no rank of
+          its own and reports the inheritance instead (adr-019).
         test_status: not-tested
         linked_test: null
       - content: A vs national/state average diverging view can be toggled
