@@ -61,6 +61,13 @@ gate; kept short and enforced by CI (`.gitea/workflows/ci.yml`).
 
 - Write code locally, **SCP to the server** — never paste code through an SSH
   heredoc (it corrupts files).
+- **One commit per iteration item.** Each locked Ottomate item lands as its own
+  commit, message prefixed `iter-<N> item <id>:`, so per-item attribution and
+  verifier scoping stay clean even when two iterations share a session
+  (to-do 252: iter-93's "removal only" item rode in an iter-91 bundle commit).
+  Cross-item mechanical changes (lockfile, generated mirrors) ride with the
+  item that caused them; iteration-log/bookkeeping edits may share a final
+  housekeeping commit.
 - `git add -A && git commit && git push` **before** `docker compose up --build`.
 - CI must pass: `npm run lint`, `npm run typecheck`, `npm run build`, and
   `pytest pipeline/test_pipeline.py`.
