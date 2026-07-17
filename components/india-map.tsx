@@ -639,17 +639,20 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const realCount = useMemo(() => entries.reduce((n, e) => n + (e.estimated ? 0 : 1), 0), [entries]);
   const estCount = entries.length - realCount;
 
-  const scopeMin = entries.length ? entries[entries.length - 1].value : 0;
-  const scopeMax = entries.length ? entries[0].value : 1;
-  // The legend's average must be the average of the scale that coloured the map,
-  // or it contradicts the picture it labels (item 639): recolor() takes its mean
-  // over countsInStats, and averaging ALL entries here put Arunachal at ~66.485
-  // under a legend reading "avg 64.9", and 77.42 nationwide against the API's
-  // 77.68 — the inherited copies counted as extra districts.
+  // The legend's floor, ceiling and average must describe the scale that coloured
+  // the map, or the legend contradicts the picture it labels (item 639): recolor()
+  // builds its breaks over countsInStats values only. Averaging ALL entries here
+  // put Arunachal at ~66.485 under a legend reading "avg 64.9" — and min/max over
+  // all entries (item 655) could likewise print a range no colour on the map
+  // spans, once an estimate falls outside the real values' envelope. One
+  // membership rule for all three; entries stay sorted desc, so first/last of the
+  // filtered list are max/min.
   const statsEntries = useMemo(
     () => entries.filter((e) => countsInStats(e.estimated, e.estimate_kind)),
     [entries]
   );
+  const scopeMin = statsEntries.length ? statsEntries[statsEntries.length - 1].value : 0;
+  const scopeMax = statsEntries.length ? statsEntries[0].value : 1;
   const scopeMean = statsEntries.length
     ? statsEntries.reduce((a, e) => a + e.value, 0) / statsEntries.length
     : 0;
