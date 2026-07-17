@@ -245,3 +245,26 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/2026-07-16-estimate-citation-key.md
+  - id: adr-021-estimate-kind-discriminator
+    project_slug: mapsofbharat
+    title: Every estimate records what kind of estimate it is
+    status: accepted
+    date: 2026-07-16T00:00:00.000Z
+    tags:
+      - data
+      - provenance
+      - schema
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-07-16-estimate-kind.md
+  - id: adr-022-stats-exclude-copies
+    project_slug: mapsofbharat
+    title: Statistics exclude copies, not projections
+    status: accepted
+    date: 2026-07-16T00:00:00.000Z
+    tags:
+      - data
+      - correctness
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-07-16-stats-exclude-copies.md
