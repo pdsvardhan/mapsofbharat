@@ -4,7 +4,7 @@
 // the Instagram-ready card with preset (4:5 / 1:1), theme (ink / paper) and
 // an editable headline. Download renders full-res (2x) via lib/social-export.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   renderSocialCard, presetSize, SocialCardSpec, SocialFeature, SocialPreset, SocialTheme,
 } from "@/lib/social-export";
@@ -29,13 +29,32 @@ export function SocialExportDialog({
   const [preset, setPreset] = useState<SocialPreset>("portrait");
   const [theme, setTheme] = useState<SocialTheme>("ink");
   const [headline, setHeadline] = useState(metric.name);
+  const [rows, setRows] = useState<3 | 5 | 7 | 10>(7);
+  const [markers, setMarkers] = useState<"none" | "extremes" | "top3" | "table">("none");
+  // null → default (last word); explicit [] → no accent (iter-101 item 684)
+  const [accentSel, setAccentSel] = useState<number[] | null>(null);
   const [busy, setBusy] = useState(false);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const renderT = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // rank tables + markers only exist on dense cards (mirror of the renderer rule)
+  const dense = level === "district" || entries.length > 40;
+  const headWords = useMemo(() => headline.trim().split(/\s+/).filter(Boolean), [headline]);
+  const accents = useMemo(
+    () => accentSel ?? (headWords.length ? [headWords.length - 1] : []),
+    [accentSel, headWords],
+  );
+  const toggleWord = (i: number) => {
+    const cur = new Set(accents);
+    if (cur.has(i)) cur.delete(i); else cur.add(i);
+    setAccentSel([...cur].sort((a, b) => a - b));
+  };
+
   const spec = useCallback((): SocialCardSpec => ({
     preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn,
-  }), [preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn]);
+    tableN: rows, markerMode: markers, accentWords: accents,
+  }), [preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn,
+    rows, markers, accents]);
 
   // debounced live preview
   useEffect(() => {
@@ -98,11 +117,11 @@ export function SocialExportDialog({
         </div>
 
         {/* controls */}
-        <div className="flex w-[300px] flex-col gap-4 p-5">
+        <div className="flex w-[300px] flex-col gap-4 overflow-y-auto p-5">
           <div>
             <div className="text-[14px] font-bold text-bright">Social card</div>
             <div className="mt-1 text-[11px] leading-snug text-faint">
-              Mainland + island insets, value labels, 5-class jenks legend, source + brand block.
+              High/low tables, island insets, 5-class jenks legend, source + brand block.
             </div>
           </div>
 
@@ -135,13 +154,52 @@ export function SocialExportDialog({
           </div>
 
           <div>
+            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">TABLE ROWS</div>
+            <div className={`flex overflow-hidden rounded-sm border border-border ${dense ? "" : "pointer-events-none opacity-40"}`}
+              title={dense ? undefined : "Rank tables appear on district cards; state cards label the map directly"}>
+              {([3, 5, 7, 10] as const).map((n) => (
+                <button key={n} onClick={() => setRows(n)} aria-pressed={rows === n}
+                  className="flex-1 px-2 py-2 text-[11.5px] font-semibold" style={seg(rows === n)}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">MAP MARKERS</div>
+            <div className={`flex overflow-hidden rounded-sm border border-border ${dense ? "" : "pointer-events-none opacity-40"}`}
+              title={dense ? undefined : "State cards label every state on the map already"}>
+              {([["none", "None"], ["extremes", "#1s"], ["top3", "Top 3"], ["table", "Match"]] as const).map(([v, lab]) => (
+                <button key={v} onClick={() => setMarkers(v)} aria-pressed={markers === v}
+                  className="flex-1 px-1.5 py-2 text-[11px] font-semibold" style={seg(markers === v)}>
+                  {lab}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
             <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">HEADLINE</div>
             <input
-              value={headline} onChange={(e) => setHeadline(e.target.value)}
+              value={headline}
+              onChange={(e) => { setHeadline(e.target.value); setAccentSel(null); }}
               maxLength={90} aria-label="Card headline"
               className="w-full border border-border bg-elevated px-2.5 py-2 text-[12.5px] text-foreground"
             />
-            <div className="mt-1 text-[10px] text-dim">Last word gets the accent highlight.</div>
+            {headWords.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1" aria-label="Pick accent words">
+                {headWords.map((w, i) => (
+                  <button key={`${i}-${w}`} onClick={() => toggleWord(i)}
+                    aria-pressed={accents.includes(i)}
+                    className="rounded-sm border border-border px-1.5 py-0.5 text-[10.5px] font-semibold"
+                    style={seg(accents.includes(i))}>
+                    {w}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="mt-1 text-[10px] text-dim">Tap words to move the accent. None selected = no highlight.</div>
           </div>
 
           <div className="mt-auto flex flex-col gap-2">

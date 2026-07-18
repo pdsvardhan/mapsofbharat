@@ -40,6 +40,12 @@ export type SocialCardSpec = {
   /** Value key for a feature — states: String(Number(st_code)); districts: rid. */
   codeOf: (f: SocialFeature) => string;
   paletteFn: (t: number) => string;
+  /** Rows in each HIGHEST/LOWEST header table (dense cards only). Default 7. */
+  tableN?: 3 | 5 | 7 | 10;
+  /** On-map rank markers for dense cards. Default "none" (owner decision, iter-101 item 683). */
+  markerMode?: "none" | "extremes" | "top3" | "table";
+  /** Global word indices of the headline carrying the accent. Default: last word. Empty = none. */
+  accentWords?: number[];
 };
 
 // Logical layout is 1080-wide; everything renders at 2x for print quality.
@@ -48,7 +54,7 @@ const W = 1080;
 const MARGIN = 52;
 const SANS = "'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'IBM Plex Mono', ui-monospace, monospace";
-const HANDLE = "@mapsofbharat";
+const HANDLE = "@maps_of_bharat";
 
 // Island UTs pulled out of the mainland frame into insets (st_code keyed).
 const INSET_STATES: Record<string, string> = { "35": "Andaman & Nicobar", "31": "Lakshadweep" };
@@ -287,38 +293,116 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const breaks = computeBreaks(vals, vals.length >= 5 ? "jenks" : "quantile", k);
   const fill = (v: number) => colorFor(v, min, max, breaks, spec.paletteFn);
 
-  // ── header: headline (accent-highlighted last word) + subtitle + anchor ──
+  // ── shared rank helpers (header tables + optional map markers, iter-101) ──
+  const dense = spec.level === "district" || spec.entries.length > 40;
+  const tableW = 232, tableGap = 12;
+  const tablesW = tableW * 2 + tableGap;
+  const N = Math.max(3, Math.min(10, spec.tableN ?? 7));
+  const tops = spec.entries.slice(0, N);
+  // worst-first; when the scope is tiny (drilled state), never re-list top rows
+  const bots = spec.entries.length > N
+    ? spec.entries.slice(-Math.min(N, spec.entries.length - N)).reverse()
+    : [];
+
+  const marker = (x: number, yy: number, n: string, top: boolean, r = 11) => {
+    ctx.beginPath();
+    ctx.arc(x, yy, r, 0, Math.PI * 2);
+    if (top) {
+      ctx.fillStyle = P.accent;
+      ctx.fill();
+    } else {
+      ctx.fillStyle = P.plate;
+      ctx.fill();
+      ctx.strokeStyle = P.text;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.fillStyle = top ? P.accentInk : P.text;
+    ctx.font = `700 ${Math.round(r * 1.05)}px ${SANS}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(n, x, yy + 0.5);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  };
+
+  // header rank table; HIGHEST gets the accent frame + filled dots, LOWEST a plain
+  // frame + outlined dots — the "enough visual difference" ask (iter-101 item 682)
+  const drawTable = (px: number, py: number, title: string, top: boolean,
+    rows: { code: string; name: string; value: number }[]): number => {
+    const headH = 26, rowH = 26;
+    const ph = headH + rows.length * rowH + 8;
+    ctx.fillStyle = P.plate;
+    ctx.fillRect(px, py, tableW, ph);
+    ctx.strokeStyle = top ? P.accent : P.border;
+    ctx.lineWidth = top ? 1.5 : 1;
+    ctx.strokeRect(px, py, tableW, ph);
+    ctx.fillStyle = top ? P.accent : P.muted;
+    ctx.font = `600 11.5px ${MONO}`;
+    ctx.fillText(title, px + 12, py + 17);
+    const clip = (s: string, maxW: number): string => {
+      if (ctx.measureText(s).width <= maxW) return s;
+      let t = s;
+      while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+      return t + "…";
+    };
+    rows.forEach((e, i) => {
+      const ry = py + headH + i * rowH + 15;
+      marker(px + 21, ry - 4, String(i + 1), top, 8.5);
+      const valStr = fmtIndianShort(e.value, spec.metric.decimals, spec.metric.unit);
+      ctx.textAlign = "right";
+      ctx.font = `700 14px ${SANS}`;
+      ctx.fillStyle = P.text;
+      const vw = ctx.measureText(valStr).width;
+      ctx.fillText(valStr, px + tableW - 12, ry);
+      ctx.textAlign = "left";
+      ctx.font = `500 13px ${SANS}`;
+      ctx.fillStyle = P.muted;
+      ctx.fillText(clip(e.name, tableW - 58 - vw), px + 36, ry);
+    });
+    return ph;
+  };
+
+  // ── header: headline + subtitle + anchor (left) · brand + rank tables (right) ──
+  // iter-101 item 682: the anchor stat lives under the headline (box 3) and the
+  // HIGHEST/LOWEST tables live top-right (boxes 1-2) — the map frame starts below
+  // both, so panels can never overlap India again.
   const anchor = anchorStat(spec);
   const anchorW = 236;
-  const headMaxW = LW - MARGIN * 2 - anchorW - 28;
+  const headMaxW = LW - MARGIN * 2 - (dense ? tablesW : 260) - 28;
+  const headText = spec.headline.trim() || spec.metric.name;
+  const headWords = headText.split(/\s+/).filter(Boolean);
+  // accent words are user-picked (iter-101 item 684); default stays last-word,
+  // explicit [] means no highlight at all
+  const accentSet = new Set(
+    (spec.accentWords ?? [headWords.length - 1]).filter((i) => i >= 0 && i < headWords.length),
+  );
   let hSize = spec.preset === "portrait" ? 54 : 46;
   ctx.font = `800 ${hSize}px ${SANS}`;
-  let lines = wrap(ctx, spec.headline.trim() || spec.metric.name, headMaxW, 2);
+  let lines = wrap(ctx, headText, headMaxW, 2);
   if (lines.length === 2 && hSize > 40) {
     hSize -= 6;
     ctx.font = `800 ${hSize}px ${SANS}`;
-    lines = wrap(ctx, spec.headline.trim() || spec.metric.name, headMaxW, 2);
+    lines = wrap(ctx, headText, headMaxW, 2);
   }
   const lineH = Math.round(hSize * 1.14);
   let y = MARGIN + hSize;
-  lines.forEach((line, li) => {
-    const isLast = li === lines.length - 1;
-    const words = line.split(" ");
-    const hi = isLast && words.length >= 1 ? words.pop()! : null;
-    const head = words.join(" ");
+  let gw = 0; // global word index across wrapped lines
+  lines.forEach((line) => {
     let x = MARGIN;
     ctx.font = `800 ${hSize}px ${SANS}`;
-    if (head) {
-      ctx.fillStyle = P.text;
-      ctx.fillText(head, x, y);
-      x += ctx.measureText(head + " ").width;
-    }
-    if (hi) {
-      const hw = ctx.measureText(hi).width;
-      ctx.fillStyle = P.accent;
-      ctx.fillRect(x - 7, y - hSize * 0.82, hw + 14, hSize * 1.06);
-      ctx.fillStyle = P.accentInk;
-      ctx.fillText(hi, x, y);
+    for (const word of line.split(" ")) {
+      const wpx = ctx.measureText(word).width;
+      if (accentSet.has(gw)) {
+        ctx.fillStyle = P.accent;
+        ctx.fillRect(x - 7, y - hSize * 0.82, wpx + 14, hSize * 1.06);
+        ctx.fillStyle = P.accentInk;
+      } else {
+        ctx.fillStyle = P.text;
+      }
+      ctx.fillText(word, x, y);
+      x += ctx.measureText(word + " ").width;
+      gw++;
     }
     y += lineH;
   });
@@ -335,43 +419,13 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const sub = `${customHead ? spec.metric.name + " · " : ""}${spec.entries.length} ${scopeNoun}`;
   ctx.fillText(sub, MARGIN, y + 34);
 
-  // brand block top-right: mark + wordmark + handle (iter-74 item 575; the real
-  // MB disc replaces the typographic "MB" box in iter-100, text fallback kept)
-  const bxr = LW - MARGIN;
-  const markSz = 36;
-  if (mark) {
-    ctx.drawImage(mark, bxr - markSz, MARGIN - 9, markSz, markSz);
-    // faint ring so the dark disc keeps an edge on the ink theme
-    ctx.beginPath();
-    ctx.arc(bxr - markSz / 2, MARGIN - 9 + markSz / 2, markSz / 2 - 0.5, 0, Math.PI * 2);
-    ctx.strokeStyle = P.border;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = P.text;
-    ctx.fillRect(bxr - 34, MARGIN - 8, 34, 34);
-    ctx.fillStyle = P.bg;
-    ctx.font = `800 15px ${SANS}`;
-    ctx.textAlign = "center";
-    ctx.fillText("MB", bxr - 17, MARGIN + 15);
-  }
-  const wordX = bxr - (mark ? markSz + 10 : 44);
-  ctx.textAlign = "right";
-  ctx.fillStyle = P.text;
-  ctx.font = `700 16px ${SANS}`;
-  ctx.fillText("Maps of Bharat", wordX, MARGIN + 6);
-  ctx.fillStyle = P.muted;
-  ctx.font = `500 12px ${MONO}`;
-  ctx.fillText(HANDLE, wordX, MARGIN + 23);
-  ctx.textAlign = "left";
-
-  // anchor stat callout below the brand (iter-74 item 575)
-  const ax = LW - MARGIN - anchorW;
-  const ay = MARGIN + 40;
+  // anchor stat under the subtitle (box 3 — iter-101 item 682)
+  const ax = MARGIN;
+  const ay = y + 34 + 18;
+  const ah = 78;
   ctx.fillStyle = P.plate;
   ctx.strokeStyle = P.accent;
   ctx.lineWidth = 1.5;
-  const ah = 78;
   ctx.fillRect(ax, ay, anchorW, ah);
   ctx.strokeRect(ax, ay, anchorW, ah);
   ctx.fillStyle = P.accent;
@@ -380,7 +434,50 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   ctx.fillStyle = P.muted;
   ctx.font = `600 12.5px ${SANS}`;
   ctx.fillText(anchor.label.toUpperCase(), ax + 16, ay + 58);
-  const headerBottom = Math.max(y + 34, ay + ah) + 10;
+  const leftBottom = ay + ah;
+
+  // brand block top-right: mark + wordmark + handle (iter-74 item 575; real MB
+  // disc since iter-100; sized up per iter-101 item 685, text fallback kept)
+  const bxr = LW - MARGIN;
+  const markSz = 46;
+  if (mark) {
+    ctx.drawImage(mark, bxr - markSz, MARGIN - 10, markSz, markSz);
+    // faint ring so the dark disc keeps an edge on the ink theme
+    ctx.beginPath();
+    ctx.arc(bxr - markSz / 2, MARGIN - 10 + markSz / 2, markSz / 2 - 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = P.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = P.text;
+    ctx.fillRect(bxr - markSz, MARGIN - 10, markSz, markSz);
+    ctx.fillStyle = P.bg;
+    ctx.font = `800 19px ${SANS}`;
+    ctx.textAlign = "center";
+    ctx.fillText("MB", bxr - markSz / 2, MARGIN + 19);
+  }
+  const wordX = bxr - markSz - 12;
+  ctx.textAlign = "right";
+  ctx.fillStyle = P.text;
+  ctx.font = `700 19px ${SANS}`;
+  ctx.fillText("Maps of Bharat", wordX, MARGIN + 9);
+  ctx.fillStyle = P.muted;
+  ctx.font = `500 13.5px ${MONO}`;
+  ctx.fillText(HANDLE, wordX, MARGIN + 29);
+  ctx.textAlign = "left";
+
+  // twin rank tables top-right (boxes 1-2 — HIGHEST left, LOWEST right; owner
+  // pick at the iter-101 lock-in gate). Dense cards only; state cards keep
+  // their on-map value labels instead.
+  let rightBottom = MARGIN + markSz - 6;
+  if (dense) {
+    const tby = MARGIN + markSz + 6;
+    const tx1 = LW - MARGIN - tablesW;
+    const h1 = tops.length ? drawTable(tx1, tby, "HIGHEST", true, tops) : 0;
+    const h2 = bots.length ? drawTable(tx1 + tableW + tableGap, tby, "LOWEST", false, bots) : 0;
+    rightBottom = tby + Math.max(h1, h2);
+  }
+  const headerBottom = Math.max(leftBottom, rightBottom) + 12;
 
   // ── frame bottom-up: footer, legend, then the map gets the rest ──────────
   const footerH = 46;
@@ -472,8 +569,8 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
 
   // ── region callouts ──────────────────────────────────────────────────────
   // National state view labels everything on-map; dense views (districts /
-  // >40 regions) use numbered rank markers + list panels (iter-76 item 579).
-  const dense = spec.level === "district" || spec.entries.length > 40;
+  // >40 regions) carry ranks in the header tables (iter-101), with optional
+  // decluttered map markers. `dense` is defined with the rank helpers above.
   const nameByCode = new Map(spec.entries.map((e) => [e.code, e.name]));
   const mapCx = mapRect.x + mapRect.w / 2, mapCy = mapRect.y + mapRect.h / 2;
 
@@ -578,85 +675,51 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   }
   ctx.textAlign = "left";
   } else {
-    // ── dense mode: numbered rank markers + list panels (iter-76 item 579) ──
-    const tops = spec.entries.slice(0, 8);
-    const bots = spec.entries.slice(-3).reverse(); // lowest first
-    const want = new Set([...tops, ...bots].map((e) => e.code));
-    const centroids = new Map<string, { x: number; y: number }>();
-    for (const f of mainland) {
-      const code = spec.codeOf(f);
-      if (!want.has(code)) continue;
-      const c = centroidPx(f, proj);
-      centroids.set(code, { x: c.x, y: c.y });
-    }
-    // markers on inset islands are skipped — the panels still list them
-    const marker = (x: number, yy: number, n: string, top: boolean, r = 11) => {
-      ctx.beginPath();
-      ctx.arc(x, yy, r, 0, Math.PI * 2);
-      if (top) {
-        ctx.fillStyle = P.accent;
-        ctx.fill();
-      } else {
-        ctx.fillStyle = P.plate;
-        ctx.fill();
-        ctx.strokeStyle = P.text;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+    // ── dense mode: ranks live in the header tables (iter-101 item 682); map
+    // markers are opt-in (item 683 — default none, owner decision) and dodge
+    // each other so clustered extremes (Kerala, Mizoram) stay legible.
+    const mm = spec.markerMode ?? "none";
+    if (mm !== "none") {
+      const mtops = tops.slice(0, mm === "extremes" ? 1 : mm === "top3" ? 3 : tops.length);
+      const mbots = bots.slice(0, mm === "table" ? bots.length : 1);
+      const want = new Set([...mtops, ...mbots].map((e) => e.code));
+      const centroids = new Map<string, { x: number; y: number }>();
+      for (const f of mainland) {
+        const code = spec.codeOf(f);
+        if (!want.has(code)) continue;
+        const c = centroidPx(f, proj);
+        centroids.set(code, { x: c.x, y: c.y });
       }
-      ctx.fillStyle = top ? P.accentInk : P.text;
-      ctx.font = `700 ${Math.round(r * 1.05)}px ${SANS}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(n, x, yy + 0.5);
-      ctx.textAlign = "left";
-      ctx.textBaseline = "alphabetic";
-    };
-    tops.forEach((e, i) => {
-      const c = centroids.get(e.code);
-      if (c) marker(c.x, c.y, String(i + 1), true);
-    });
-    bots.forEach((e, i) => {
-      const c = centroids.get(e.code);
-      if (c) marker(c.x, c.y, String(i + 1), false);
-    });
-
-    const clip = (s: string, maxW: number): string => {
-      if (ctx.measureText(s).width <= maxW) return s;
-      let t = s;
-      while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
-      return t + "…";
-    };
-    const panelW = 236, rowH = 26, headH = 26;
-    const panel = (px: number, py: number, title: string, top: boolean, rows: { code: string; name: string; value: number }[]) => {
-      const ph = headH + rows.length * rowH + 8;
-      ctx.globalAlpha = 0.94;
-      ctx.fillStyle = P.plate;
-      ctx.fillRect(px, py, panelW, ph);
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = P.border;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(px, py, panelW, ph);
-      ctx.fillStyle = P.muted;
-      ctx.font = `600 11.5px ${MONO}`;
-      ctx.fillText(title, px + 12, py + 17);
-      rows.forEach((e, i) => {
-        const ry = py + headH + i * rowH + 15;
-        marker(px + 21, ry - 4, String(i + 1), top, 8.5);
-        ctx.font = `500 13px ${SANS}`;
-        ctx.fillStyle = P.text;
-        const valStr = fmtIndianShort(e.value, spec.metric.decimals, spec.metric.unit);
-        ctx.textAlign = "right";
-        ctx.font = `700 14px ${SANS}`;
-        const vw = ctx.measureText(valStr).width;
-        ctx.fillText(valStr, px + panelW - 12, ry);
-        ctx.textAlign = "left";
-        ctx.font = `500 13px ${SANS}`;
-        ctx.fillStyle = P.muted;
-        ctx.fillText(clip(e.name, panelW - 58 - vw), px + 36, ry);
+      // markers on inset islands are skipped — the header tables still list them
+      type Mk = { x: number; y: number; ox: number; oy: number; n: string; top: boolean };
+      const mks: Mk[] = [];
+      mtops.forEach((e, i) => {
+        const c = centroids.get(e.code);
+        if (c) mks.push({ x: c.x, y: c.y, ox: c.x, oy: c.y, n: String(i + 1), top: true });
       });
-    };
-    panel(MARGIN, headerBottom + 16, "HIGHEST", true, tops);
-    panel(LW - MARGIN - panelW, ay + ah + 16, "LOWEST", false, bots);
+      mbots.forEach((e, i) => {
+        const c = centroids.get(e.code);
+        if (c) mks.push({ x: c.x, y: c.y, ox: c.x, oy: c.y, n: String(i + 1), top: false });
+      });
+      // pairwise dodge: push overlapping markers down until every pair clears
+      for (let pass = 0; pass < 6; pass++)
+        for (let i = 1; i < mks.length; i++)
+          for (let j = 0; j < i; j++)
+            if (Math.hypot(mks[i].x - mks[j].x, mks[i].y - mks[j].y) < 26)
+              mks[i].y = mks[j].y + 26;
+      for (const m of mks) {
+        m.y = Math.max(mapRect.y + 14, Math.min(mapRect.y + mapRect.h - 14, m.y));
+        if (Math.hypot(m.x - m.ox, m.y - m.oy) > 6) {
+          ctx.strokeStyle = P.leader;
+          ctx.lineWidth = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(m.ox, m.oy);
+          ctx.lineTo(m.x, m.y);
+          ctx.stroke();
+        }
+        marker(m.x, m.y, m.n, m.top);
+      }
+    }
   }
 
   // ── discrete legend (mobile-legible sizes — iter-74 item 574) ───────────
