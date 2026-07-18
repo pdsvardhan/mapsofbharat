@@ -153,7 +153,7 @@ features:
           measured/derived), served by the metrics API and shown in the trust
           surface
         test_status: not-tested
-        linked_test: null
+        linked_test: tests/methodology.spec.ts
       - content: Source metadata (source, year, license, methodology, coverage) is
           stored per-metric in the canonical DB rather than hardcoded in the UI,
           so it stays correct across re-ingests
@@ -191,10 +191,10 @@ features:
           whose value was inherited from its parent (estimated=1) has no rank of
           its own and reports the inheritance instead (adr-019).
         test_status: not-tested
-        linked_test: null
+        linked_test: tests/estimates.spec.ts
       - content: A vs national/state average diverging view can be toggled
         test_status: not-tested
-        linked_test: null
+        linked_test: tests/rankings.spec.ts
     dependencies: []
   - id: feat-region-detail
     title: Region detail panel
@@ -212,11 +212,11 @@ features:
       - content: The region panel shows the value against the national/state average
           (vs-average) and the region's rank or percentile position
         test_status: not-tested
-        linked_test: null
+        linked_test: tests/rankings.spec.ts
       - content: The detail panel works at both state and district drill levels, always
           reflecting the currently selected region
         test_status: not-tested
-        linked_test: null
+        linked_test: tests/rankings.spec.ts
     dependencies: []
   - id: feat-export-share
     title: Export and shareable/embeddable views

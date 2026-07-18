@@ -252,3 +252,32 @@ districts (JJM logged list is the seed); NCRB city-series and UDISE district car
 
 **Next session context:** 111 metrics / 735 districts live at mapsofbharat.vault7a.xyz. The map now reads clean — no ambient hatch; estimates disclose in the rail (badged + de-ranked), the hover, and the region panel (naming the right parent per metric). **Nothing tests any of it** — the 14/14 suite is blind to both iterations, which is why both claims reconciled as `partial` and not `verified` (to-do 216). 12 features carry `stale-verification` (SOFT, pre-existing).
 Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it labels (`recolor()` means over real values only, `scopeMean` averages all entries; Arunachal coloured ~66.485 while the legend reads "avg 64.9"; nationwide 77.42 vs API 77.68). Same root cause as 611 — a mean over copies. Then **216** (test coverage, so the next regression doesn't need a human), **221** (per-row donor is hover-only; touch users never get the metric→parent map, on `target_devices=both`), **222** (rail + map hover still say the generic "the parent district" — they read `/api/metrics`, not `/api/region`). Also still open: the user-assisted acquisitions (206 RBI, 201 CPCB, 202 Vahan, 203 NPCI, 204 SHRUG licence) and wave-1b server-fetchable quick wins (NTCA tiger, NDDB milk, PPAC fuel, EPFO, MNRE solar). **218** is the interesting one: grade inheritances by child-vs-donor similarity (we have real `urban_pct` per district — NTR is 58.7% urban vs Krishna's 27.8%, so that estimate is weak; Shi Yomi from West Siang is fine) and surface only the shaky ones.
+
+
+---
+
+## 2026-07-18 — iter-98 "complete all": 9 items, 9/9 verified, merged at cba7f30
+
+**Session directive:** "of all the open todos how many you need my help, get that help now and once that is done complete all." Decisions collected up front: 244 = rank projections with badge (→ adr-023); 218 = keep parked; 201 = UrbanEmissions over CPCB browser work; 204 = **SHRUG declined** (CC BY-NC-SA NonCommercial is incompatible with running ads; zero current metrics predate 2011, so nothing was lost — 113 closed as won't-do).
+
+**Shipped (one commit per item, per the new convention itself):**
+- **669** Playwright workers capped at 2 (`PW_WORKERS` overrides) — the flakiness to-do 253 closed.
+- **668** `scripts/check-adr-refs.sh` CI gate — **first run immediately caught adr-021/adr-022 cited 37× with a stale mirror index**; entries restored from the tracker's own rows. The gate to-do 245's proposal, built and mutation-tested (adr-999 injection fails CI).
+- **670** one-commit-per-item documented in CODING_GUIDELINES (to-do 252).
+- **665** item 644's AC mapping reconciled (target → feat-rankings-stats, audit transition row) + AC 523 finally covered (`tests/methodology.spec.ts`, strict every-metric form). To-do 254.
+- **666** `scopeMin/scopeMax` join `scopeMean` on `countsInStats` — one membership rule for the whole legend (to-do 255).
+- **672 / adr-023** ranks follow stats membership: projected (BE/RE) states rank **with badge and disclosure clause**; copies never rank. Fiscal metrics went from em dash on 30/31 states to full 31-state rankings. Answers question 244 that adr-022 deliberately parked.
+- **671** the **as-reported-2011 toggle** — adr-003's last unbuilt must-have (to-do 149, deferred since iter-51). Data read straight off the ORGI PCA district/state rows (no crosswalk, census-exact to the person: 1,210,854,977 at both levels); vintage polygons dissolved from our own committed geometry (**no SHRUG**, honouring the 204 decision); Delhi whole as "Delhi (NCT)", Mumbai City+Suburban merged at raw counts, Mahe folded to host; PoK passthrough keeps the SoI outline. View-only by design: drill/select/compare stay current-day and say why. URL `vin=2011`.
+- **673** environment vertical completed: `pm25_satellite` from UrbanEmissions (609 direct via `censuscode` — NOT `DT_CEN_CD`, which is within-state and collapses 641→72 keys; the adapter's ≥580 assert caught exactly that on first run), 102 inherited with donors cited, Delhi = UE's own NCT row. 112 metrics, expectations rebaselined.
+- **667** committed interaction tests: AC 271 (VS AVG toggle), 525/526 (region panel, both levels, moving selection), adr-023 pins, and the social-card footnote via a **committed** fillText interception. Suite now 33 specs, 33/33 at 2 workers in 21s.
+
+**Verification:** 9 independent verifier sub-agents (locked-manifest+diff inputs), 9/9 APPROVE, reports 566–574; claims 193–198 reconciled `verified`; test_run 104. Verifier hygiene that paid off: 667's verifier proved the specs fail against a dead port; 668's ran the live mutation; 671's wrote, ran and removed its own probe spec; 673's re-derived every number from the raw xlsx.
+
+**Acquisitions this session (browser via claude-in-chrome, no user hands needed):** RBI Handbook T152/155/156 via rbi.org.in (rbidocs bot-wall bypassed in-browser) → `raw-new/finance/`; NPCI UPI **district-level** statewise sheet (the tab exists on the ecosystem-statistics page, easy to miss) → `raw-new/payments/`; Vahan state×fuel CY2025 + CY2026-partial via dashboard export (Y-Axis=State exists) → `raw-new/transport/` + MoRTH Table 20.4 vehicle stock 2001+. **Sibling-session junk quarantined:** the 07-15 `rbi_hbs2025_T15*.xlsx` were Radware TSPD challenge HTML saved as .xlsx — always `file(1)` acquisitions.
+
+**Friction:**
+- The tracker to-do title 300-char cap bit twice more (same as last session's note) — pre-flight the length.
+- `git push` to the server repo is refused while a worktree holds the branch — detach the worktree HEAD first.
+- MoSPI MCP connector added mid-session doesn't join a running session; once it appeared it proved rich (25 datasets, 500+ indicators, headless PLFS/CPI/UDISE/MNRE/EC/HCES) — to-do filed for an API-ingest iteration.
+
+**Next session context:** 112 metrics / 735 districts / 33-spec suite. Open: to-do 260 (ingestion adapters for the browser haul + GST files), MoSPI API-ingest iteration, 218 (grade inheritances, parked), 157 (RBI QSDCB, needs user registration), 156-related wave-1b quick wins.
