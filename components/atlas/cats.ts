@@ -11,9 +11,9 @@ export type Metric = {
 };
 
 export const CAT_ORDER = [
-  "demographics", "society", "economy", "payments", "poverty", "health", "lifestyle",
-  "education", "labour", "livelihood", "agriculture", "crime", "safety", "infrastructure",
-  "elections",
+  "demographics", "society", "economy", "payments", "finance", "poverty", "health",
+  "lifestyle", "education", "labour", "livelihood", "agriculture", "crime", "safety",
+  "infrastructure", "transport", "elections",
 ];
 
 export const CAT_ACCENT: Record<string, string> = {
@@ -21,6 +21,7 @@ export const CAT_ACCENT: Record<string, string> = {
   society: "#c2708f",
   economy: "#c8a24a",
   payments: "#7d5bbe",
+  finance: "#3f8f6f",
   poverty: "#9c5b6b",
   health: "#5fa88a",
   lifestyle: "#c98a4b",
@@ -31,6 +32,7 @@ export const CAT_ACCENT: Record<string, string> = {
   crime: "#b0574f",
   safety: "#cd7f43",
   infrastructure: "#4d93a8",
+  transport: "#4a7d9e",
   elections: "#9b6bb3",
 };
 
@@ -39,6 +41,7 @@ export const CAT_DESC: Record<string, string> = {
   society: "Religious composition — Census 2011",
   economy: "Output, spending, enterprise & tourism",
   payments: "Digital payments — UPI district flows (NPCI, Jun 2026)",
+  finance: "Banking — deposits, credit & GST (RBI / GSTN)",
   poverty: "Multidimensional poverty — NITI MPI (NFHS-5)",
   health: "Wellbeing, nutrition & healthcare — NFHS-5",
   lifestyle: "Alcohol, tobacco, obesity & more — NFHS-5",
@@ -49,6 +52,7 @@ export const CAT_DESC: Record<string, string> = {
   crime: "Safety & justice — NCRB 2022",
   safety: "Road & self-harm risk — MoRTH / NCRB",
   infrastructure: "Power, water & connectivity",
+  transport: "Vehicles & mobility — Vahan / MoRTH",
   elections: "Democracy & turnout — ECI 2024",
 };
 
@@ -58,6 +62,7 @@ export const CAT_ICON: Record<string, string> = {
   society: "M8 10a2 2 0 100-4 2 2 0 000 4z M16 10a2 2 0 100-4 2 2 0 000 4z M4 18c0-2.2 1.8-4 4-4s4 1.8 4 4 M12 18c0-2.2 1.8-4 4-4s4 1.8 4 4",
   economy: "M4 6h16v12H4z M4 10h16 M7 15h4",
   payments: "M7 2h10v20H7z M10 20h4 M9.5 6h5 M9.5 8.5h5 M14.5 6c0 2-2 2.6-3.6 2.6l3.6 4.4",
+  finance: "M4 10l8-5 8 5 M5 10v8 M9 10v8 M15 10v8 M19 10v8 M3 21h18",
   poverty: "M3 21h18 M6 21v-6 M10 21v-9 M14 21v-5 M18 21v-8",
   health: "M3 12h4l2-5 3 10 2-5h5",
   lifestyle: "M8 3h8 M12 3v5 M12 8c-3 0-5 2.5-5 5.5S9 21 12 21s5-4.5 5-7.5S15 8 12 8z",
@@ -68,6 +73,7 @@ export const CAT_ICON: Record<string, string> = {
   crime: "M12 3l8 3v5c0 5-4 8-8 10-4-2-8-5-8-10V6z",
   safety: "M12 4l9 16H3z M12 11v4 M12 17.5v.5",
   infrastructure: "M13 3L6 13h5l-1 8 7-10h-5z",
+  transport: "M3 13l2-5h14l2 5v5H3z M7.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z M16.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z M3 13h18",
   elections: "M4 10h16v10H4z M4 14h16 M10 10l1-5h2l1 5",
 };
 
