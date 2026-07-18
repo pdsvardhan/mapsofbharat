@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="130 138 262 254" role="img" aria-label="Maps of Bharat mark">
+  <!-- Standalone MB mark on transparent background (no disc) -->
+  <path d="M166 360 L166 172 L256 300 L302 190" fill="none" stroke="#DE5626"
+        stroke-width="56" stroke-linecap="butt" stroke-linejoin="round"/>
+  <path d="M300 186 L300 360" fill="none" stroke="#E9E1D2" stroke-width="46" stroke-linecap="round"/>
+  <path d="M300 190 q58 2 58 42 q0 40 -58 42" fill="none" stroke="#E9E1D2"
+        stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M300 272 q66 2 66 44 q0 42 -66 44" fill="none" stroke="#E9E1D2"
+        stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M236 306 L270 342 L236 342 Z" fill="#DE5626"/>
+  <path d="M236 342 L270 342 L250 378 Z" fill="#39414F"/>
+  <path d="M270 342 L292 322 L292 358 Z" fill="#8C8A85"/>
+</svg>
