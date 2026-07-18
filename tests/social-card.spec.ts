@@ -95,4 +95,30 @@ test.describe("feat-social-export", () => {
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: /export a social media card/i })).toBeDisabled();
   });
+
+  test("the card draws the estimate footnote (item 667; adr-019 follow-up 643)", async ({ page }) => {
+    // The footnote lives INSIDE the canvas, so this assertion previously existed
+    // only as a verifier's ad-hoc interception — meaning no committed test would
+    // fail if the disclosure silently vanished from the one surface that travels
+    // with no rail, tooltip or methodology. Commit the interception.
+    test.setTimeout(120_000);
+    await page.addInitScript(() => {
+      const w = window as unknown as { __fills: string[] };
+      w.__fills = [];
+      const orig = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (...args) {
+        w.__fills.push(String(args[0]));
+        return orig.apply(this, args as Parameters<typeof orig>);
+      };
+    });
+    await page.goto("/?m=aser_govt_school&lvl=district"); // 74 inherited districts
+    await waitForMapReady(page);
+    await page.getByRole("button", { name: /export a social media card/i }).click();
+    await expect(page.getByRole("dialog", { name: /social media card/i })).toBeVisible();
+    await page.waitForTimeout(1500); // preview render draws the card once
+
+    const fills = await page.evaluate(() => (window as unknown as { __fills: string[] }).__fills);
+    const note = fills.find((t) => /\d+ of \d+ districts estimated from a parent region/.test(t));
+    expect(note, "estimate footnote must be drawn on the card canvas").toBeTruthy();
+  });
 });
