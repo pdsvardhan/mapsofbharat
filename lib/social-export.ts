@@ -239,12 +239,32 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLine
   return lines;
 }
 
+// ── brand mark (drawn into the card's brand block) ──────────────────────────
+// The dark MB disc (public/brand/badge-disc.png) reads on both the ink and paper
+// themes. Loaded once and cached; same-origin so the canvas stays untainted for
+// toDataURL export. Resolves null on failure — the brand block keeps a text fallback.
+let brandMark: HTMLImageElement | null = null;
+let brandMarkLoad: Promise<HTMLImageElement | null> | null = null;
+function loadBrandMark(): Promise<HTMLImageElement | null> {
+  if (brandMark) return Promise.resolve(brandMark);
+  if (brandMarkLoad) return brandMarkLoad;
+  if (typeof Image === "undefined") return Promise.resolve(null);
+  brandMarkLoad = new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { brandMark = img; resolve(img); };
+    img.onerror = () => resolve(null);
+    img.src = "/brand/badge-disc.png";
+  });
+  return brandMarkLoad;
+}
+
 // ── main renderer ───────────────────────────────────────────────────────────
 
 export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvasElement> {
   if (typeof document !== "undefined" && document.fonts?.ready) {
     try { await document.fonts.ready; } catch { /* draw with fallbacks */ }
   }
+  const mark = await loadBrandMark();
   const P = THEMES[spec.theme];
   const { w: LW, h: LH } = presetSize(spec.preset);
   const canvas = document.createElement("canvas");
@@ -315,21 +335,34 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const sub = `${customHead ? spec.metric.name + " · " : ""}${spec.entries.length} ${scopeNoun}`;
   ctx.fillText(sub, MARGIN, y + 34);
 
-  // brand block top-right: mark + wordmark + handle (iter-74 item 575)
+  // brand block top-right: mark + wordmark + handle (iter-74 item 575; the real
+  // MB disc replaces the typographic "MB" box in iter-100, text fallback kept)
   const bxr = LW - MARGIN;
-  ctx.fillStyle = P.text;
-  ctx.fillRect(bxr - 34, MARGIN - 8, 34, 34);
-  ctx.fillStyle = P.bg;
-  ctx.font = `800 15px ${SANS}`;
-  ctx.textAlign = "center";
-  ctx.fillText("MB", bxr - 17, MARGIN + 15);
+  const markSz = 36;
+  if (mark) {
+    ctx.drawImage(mark, bxr - markSz, MARGIN - 9, markSz, markSz);
+    // faint ring so the dark disc keeps an edge on the ink theme
+    ctx.beginPath();
+    ctx.arc(bxr - markSz / 2, MARGIN - 9 + markSz / 2, markSz / 2 - 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = P.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = P.text;
+    ctx.fillRect(bxr - 34, MARGIN - 8, 34, 34);
+    ctx.fillStyle = P.bg;
+    ctx.font = `800 15px ${SANS}`;
+    ctx.textAlign = "center";
+    ctx.fillText("MB", bxr - 17, MARGIN + 15);
+  }
+  const wordX = bxr - (mark ? markSz + 10 : 44);
   ctx.textAlign = "right";
   ctx.fillStyle = P.text;
   ctx.font = `700 16px ${SANS}`;
-  ctx.fillText("Maps of Bharat", bxr - 44, MARGIN + 6);
+  ctx.fillText("Maps of Bharat", wordX, MARGIN + 6);
   ctx.fillStyle = P.muted;
   ctx.font = `500 12px ${MONO}`;
-  ctx.fillText(HANDLE, bxr - 44, MARGIN + 23);
+  ctx.fillText(HANDLE, wordX, MARGIN + 23);
   ctx.textAlign = "left";
 
   // anchor stat callout below the brand (iter-74 item 575)
