@@ -281,3 +281,27 @@ Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it
 - MoSPI MCP connector added mid-session doesn't join a running session; once it appeared it proved rich (25 datasets, 500+ indicators, headless PLFS/CPI/UDISE/MNRE/EC/HCES) — to-do filed for an API-ingest iteration.
 
 **Next session context:** 112 metrics / 735 districts / 33-spec suite. Open: to-do 260 (ingestion adapters for the browser haul + GST files), MoSPI API-ingest iteration, 218 (grade inheritances, parked), 157 (RBI QSDCB, needs user registration), 156-related wave-1b quick wins.
+
+## Session 2026-07-18 (pm) — brand identity + card redesign + capacity hardening
+
+**Stage:** Stage 4 — three iterations (100, 101, 102), all integrated + deployed.
+**Duration:** ~multi-part (user reviewing between tasks).
+
+**What changed:**
+- **iter-100 (items 676–681) — brand identity.** The site was on 100% create-next-app scaffold branding. Wired the user's 3 Canva brand assets (MB circular badge, wordmark lockup, mark) into: real favicon.ico (25931B default → 6235B) + `app/icon.png`; apple-icon 180 + `app/manifest.ts` (192/512 any+maskable); 1200×630 `opengraph-image`/`twitter-image` + full openGraph/twitter/metadataBase in `layout.tsx`; masthead `<span>MB</span>` → real mark; social-card typographic MB box → dark disc via drawImage (theme-safe, both ink+paper); removed 5 scaffold SVGs. Assets derived with Pillow (circular-mask disc, black→transparent mark, seamless OG). Correction logged: header + cards were NOT "unbranded" — they used a typographic MB placeholder (reported to user, framing fixed). Deferred (documented, not silent): true-vector `icon.svg` → to-do 268.
+- **iter-101 (items 682–686) — social card redesign** from user voice feedback + annotated screenshot. LOWEST panel overlap fixed: national-average moved under the headline; HIGHEST/LOWEST became twin top-right tables (accent vs plain frame); map frame now starts below the header band (overlap impossible). Always-on top-8/bottom-3 rank bubbles removed → opt-in markers (none/extremes/top3/match, **default none**) with pairwise dodge + leader lines. Dialog gained TABLE ROWS 3/5/7/10 (**default 7**, picked by user from live 5/7/10 comparison renders), MAP MARKERS control, tap-to-toggle accent-word chips (any word, not just last). Brand block sized up (mark 36→46, wordmark 16→19). Handle changed **@mapsofbharat → @maps_of_bharat** in card + twitter metadata.
+- **iter-102 (items 687–689) — capacity trio** (from the morning's capacity review). Container caps `cpus:4 mem_limit:2g` in compose (uncapped on shared 47-container box); `Cache-Control public max-age=300 s-maxage=86400 swr=604800` on GET /api/(metrics|region|regions) in middleware (health/log uncached); regex guard `^\d{1,2}(_\d{1,5})?$` on the region-code param before the DB. Closed to-dos 269/270/271.
+
+**Also delivered (not a code iteration):** full data-audit page — `data-audit-2026-07-18.html` in the project desktop folder (118 live metrics across 18 categories + 9 pending raw-new sources + 6 blocked, with fidelity grades A/A-/B+/B and public-interest ratings 1/2/3). And a capacity/security review (i5-14600K/62GB origin behind Cloudflare → hardware is not the constraint).
+
+**Decisions:** no ADRs (all three iterations were asset/feature/infra modifications, not re-wires/revamps).
+
+**Verification:** 3 independent verifier sub-agents (locked-manifest+diff inputs), **14/14 items APPROVE** across the three iterations — reports 576–589; claims 199 (iter-100) + 200 (iter-101) reconciled `verified`; deploy artifacts 47/48. e2e 33/33 held green across all rebuilds. Verifier hygiene that paid off: iter-101's verifier drove the live dialog headless (confirmed default 7 / None / accent chips); iter-102's hammered the rate limiter live (96×429, confirmed 429s stay uncacheable).
+
+**Friction:**
+- `scp` to a bracketed path `app/api/region/[code]/route.ts` fails from Git-Bash (glob/escape) — first iter-102 rebuild silently shipped without item 689. Fix: stage to `/tmp` then `mv` on the server. **Recurring-risk: pre-check bracketed paths land before rebuilding.**
+- Chrome extension refuses `file://` (rewrites to `https://file://…` → falls back to a live tab). Serve local HTML over `python -m http.server` instead.
+- A zombie `next start` held port 3999 across headless-render runs (identical chunk hashes gave it away; MIME errors + disabled buttons downstream). `fuser -k 3999/tcp` before re-launching; prefer `next dev` for one-off renders.
+- MoSPI + design MCP servers connect/disconnect mid-session — ambient, ignorable.
+
+**Next session context:** 112 metrics / 735 districts / 33-spec suite, all green. Live at mapsofbharat.vault7a.xyz with full brand chrome + redesigned social cards. Open to-dos: **260** (ingestion adapters for the UPI/Vahan/RBI/GST browser haul — most concrete), **261** (MoSPI API-ingest wave — biggest unlock, district UDISE/PLFS/CPI/NFHS), 268 (vector icon.svg), 218 (grade inheritances — parked), 157 (RBI QSDCB — needs user registration). User-side follow-up from iter-102: add a Cloudflare dashboard Cache Rule so the edge actually caches /api JSON (origin is ready).
