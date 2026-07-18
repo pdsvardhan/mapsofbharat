@@ -1,6 +1,6 @@
 {
   "district_coverage": 735,
-  "metric_count": 111,
+  "metric_count": 112,
   "per_metric_district_count": {
     "agri_cropped_area": 425,
     "agri_labourers_pct": 733,
@@ -67,6 +67,7 @@
     "nfhs5_women_obese": 710,
     "nonfarm_emp_per_1000": 733,
     "other_workers_pct": 733,
+    "pm25_satellite": 711,
     "pop_density": 733,
     "pop_total": 733,
     "poverty_intensity": 708,
