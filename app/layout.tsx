@@ -43,8 +43,8 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: TITLE,
     description: DESCRIPTION,
-    site: "@mapsofbharat",
-    creator: "@mapsofbharat",
+    site: "@maps_of_bharat",
+    creator: "@maps_of_bharat",
   },
 };
 
