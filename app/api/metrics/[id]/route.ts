@@ -5,9 +5,14 @@ import { countsInStats } from "@/lib/estimate-kind";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// The two vintage levels are the as-reported-2011 view (adr-003, item 671):
+// same rows, same shape, different region key space (2011 census codes).
+const LEVELS = new Set(["state", "district", "district2011", "state2011"]);
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const level = new URL(req.url).searchParams.get("level") === "state" ? "state" : "district";
+  const raw = new URL(req.url).searchParams.get("level") ?? "district";
+  const level = LEVELS.has(raw) ? raw : "district";
   const d = db();
   if (!d) return NextResponse.json({ error: "no-data" }, { status: 404 });
 

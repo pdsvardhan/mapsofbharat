@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ESTIMATE_BADGE, estimateNote, estimateShort, notRankedNote } from "@/lib/estimate-kind";
+import { ESTIMATE_BADGE, countsInStats, estimateNote, estimateShort, notRankedNote } from "@/lib/estimate-kind";
 
 export type Entry = {
   code: string; name: string; sub: string; kind: "state" | "district"; value: number;
@@ -82,28 +82,35 @@ export function RegionProfile({
     if (!hasMetric || sel.value == null || !entries.length) return { bins: [] as { h: number; on: boolean }[], sentence: "" };
     const span = max - min || 1;
     const counts = new Array(BINS).fill(0);
-    // Bin REAL values only (item 641). Counting inherited copies made bin 1 read
-    // 83% where the surveyed districts are 40% — three copies of West Siang's 55.4
-    // stood in as three districts. Same denominator as the rank sentence below.
+    // Bin stats members only (item 641, adr-023): an inherited copy stood in as
+    // an extra district (bin 1 read 83% where the surveyed districts are 40% —
+    // three copies of West Siang's 55.4), but a projection is its state's only
+    // figure and holds a real place in this distribution. Same membership as the
+    // class breaks, the legend and the ranks: countsInStats.
     let selBin: number | null = null;
     for (const e of entries) {
-      if (e.estimated) continue;
+      if (!countsInStats(e.estimated, e.estimate_kind)) continue;
       const bi = Math.min(BINS - 1, Math.floor(((e.value - min) / span) * BINS));
       counts[bi]++;
       if (e.code === sel.code) selBin = bi;
     }
     const mc = Math.max(...counts) || 1;
-    // No highlighted bar when the selection is itself an estimate: it holds no
+    // No highlighted bar when the selection is an unranked copy: it holds no
     // place in this distribution, and the sentence below says exactly that.
     const bins = counts.map((c, i) => ({ h: Math.max(8, Math.round((c / mc) * 100)), on: i === selBin }));
-    // A null rank means the value is not this region's own measurement, so it has
-    // no standing of its own to report. Never fall back to a number here:
-    // `rank ?? 1` would announce a copied value as the top of the table.
+    // A null rank means the value is a copy with no standing of its own. Never
+    // fall back to a number here: `rank ?? 1` would announce a copied value as
+    // the top of the table.
     const selEntry = entries.find((e) => e.code === sel.code);
     if (rank == null) return { bins, sentence: notRankedNote(selEntry?.estimate_kind, selEntry?.estimated_from) };
-    const N = entries.reduce((n, e) => n + (e.estimated ? 0 : 1), 0);
+    const N = entries.reduce((n, e) => n + (countsInStats(e.estimated, e.estimate_kind) ? 1 : 0), 0);
     const pct = N > 1 ? Math.round(((N - rank) / (N - 1)) * 100) : 100;
-    return { bins, sentence: `Rank ${rank} of ${N} — ahead of ${pct}% of ${scopeNoun}.` };
+    // A ranked projection still is not this state's own audited number — the
+    // rank sentence carries the disclosure with it (adr-023 keeps the badge).
+    const estClause = selEntry?.estimated
+      ? ` · ${estimateShort(selEntry.estimate_kind, selEntry.estimated_from)}`
+      : "";
+    return { bins, sentence: `Rank ${rank} of ${N} — ahead of ${pct}% of ${scopeNoun}.${estClause}` };
   }, [hasMetric, sel.code, sel.value, entries, min, max, rank, scopeNoun]);
 
   const loadAll = () => {

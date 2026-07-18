@@ -11,6 +11,10 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
+  // VAULT7A flakes under unbounded parallelism: verifiers reproduced failures
+  // on untouched specs that all pass at 1-2 workers (iter-91 verifier reports,
+  // to-do 253). Cap here so green means green; PW_WORKERS overrides.
+  workers: Number(process.env.PW_WORKERS || 2),
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: {
