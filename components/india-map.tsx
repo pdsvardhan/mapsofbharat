@@ -41,6 +41,9 @@ type MetricData = {
 };
 type Sel = { code: string; name: string; state: string; kind: "state" | "district" };
 type Focus = { code: string; name: string };
+/** Boundary vintage: current-day (default, adr-003 main path) or the
+ *  as-reported Census 2011 view (adr-003's toggle, iter-98 item 671). */
+type Vintage = "current" | "2011";
 
 function bbox(geom: { coordinates: unknown }): [number, number, number, number] {
   let minX = 180, minY = 90, maxX = -180, maxY = -90;
@@ -58,7 +61,7 @@ function bbox(geom: { coordinates: unknown }): [number, number, number, number] 
 
 function readUrl() {
   if (typeof window === "undefined")
-    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false };
+    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false, vin: "current" as Vintage };
   const p = new URLSearchParams(window.location.search);
   const m = p.get("m") || "";
   // Jenks is the global default (iter-53 item 404); explicit URL param wins
@@ -78,6 +81,7 @@ function readUrl() {
     rev: p.get("rev") === "1",
     brkPinned: !!brkParam,
     palPinned: !!p.get("pal"),
+    vin: (p.get("vin") === "2011" ? "2011" : "current") as Vintage,
   };
 }
 
@@ -116,6 +120,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [cohortSets, setCohortSets] = useState<{ pop: Set<string> | null; nsdp: Set<string> | null; area: Set<string> | null }>({ pop: null, nsdp: null, area: null });
   const [rankView, setRankView] = useState<"top" | "bottom">("top");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [vintage, setVintage] = useState<Vintage>(init.vin);
+  // bumped when the lazily-added 2011 layers finish loading, so visibility
+  // and entries recompute once the sources exist
+  const [vintageTick, setVintageTick] = useState(0);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
@@ -125,6 +133,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [ready, setReady] = useState(false);
 
   const levelRef = useRef(level);
+  const vintageRef = useRef(vintage);
+  // 2011 sources are added lazily on first toggle; these hold their FCs + a
+  // code -> {name, state} index (vintage codes are 2011 census codes, which the
+  // /api/regions palette index does not and should not carry).
+  const vintageLoadedRef = useRef(false);
+  const d2011FCRef = useRef<any>(null);
+  const vintageIdxRef = useRef<Map<string, { name: string; state: string | null }>>(new Map());
   const focusRef = useRef<Focus | null>(null);
   const compareRef = useRef(compare);
   const pinsRef = useRef<Sel[]>([]);
@@ -142,6 +157,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const palTouchedRef = useRef(init.palPinned);
 
   useEffect(() => { levelRef.current = level; }, [level]);
+  useEffect(() => { vintageRef.current = vintage; }, [vintage]);
   useEffect(() => { focusRef.current = focus; }, [focus]);
   useEffect(() => { compareRef.current = compare; }, [compare]);
   useEffect(() => { pinsRef.current = pins; }, [pins]);
@@ -350,6 +366,73 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
+  // ── vintage (as-reported 2011) sources — added lazily on first toggle ────
+  // View-only by design: hover + legend + ranking read the vintage entries,
+  // but drill/select/compare stay current-day features (their region panel and
+  // crosswalk citations have no 2011 counterpart). Clicks are not wired here.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || vintage !== "2011" || vintageLoadedRef.current) return;
+    let cancelled = false;
+    (async () => {
+      const [d2011, s2011] = await Promise.all([
+        fetch("/geo/districts-2011.geojson").then((r) => r.json()),
+        fetch("/geo/states-2011.geojson").then((r) => r.json()),
+      ]);
+      if (cancelled || vintageLoadedRef.current) return;
+      d2011FCRef.current = d2011;
+      const idx = vintageIdxRef.current;
+      (d2011.features as any[]).forEach((f) => {
+        idx.set(String(f.properties?.rid), { name: String(f.properties?.district ?? "—"), state: String(f.properties?.st_nm ?? "") });
+      });
+      (s2011.features as any[]).forEach((f) => {
+        idx.set(String(Number(f.properties?.st_code)), { name: String(f.properties?.st_nm ?? "—"), state: null });
+      });
+      map.addSource("districts2011", { type: "geojson", data: d2011, promoteId: "rid" });
+      map.addSource("states2011", { type: "geojson", data: s2011, promoteId: "st_code" });
+      const fillPaint = {
+        "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
+        "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0.9],
+        "fill-color-transition": { duration: 400 },
+      };
+      const linePaint = (w: number) => ({
+        "line-color": ["case", ["boolean", ["feature-state", "hover"], false], "#e9e3d5", "rgba(233,227,213,0.10)"],
+        "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.1, w],
+      });
+      map.addLayer({ id: "d2011-fill", type: "fill", source: "districts2011", layout: { visibility: "none" }, paint: fillPaint } as any);
+      map.addLayer({ id: "d2011-line", type: "line", source: "districts2011", layout: { visibility: "none" }, paint: linePaint(0.3) as any });
+      map.addLayer({ id: "s2011-fill", type: "fill", source: "states2011", layout: { visibility: "none" }, paint: fillPaint } as any);
+      map.addLayer({ id: "s2011-line", type: "line", source: "states2011", layout: { visibility: "none" }, paint: linePaint(0.4) as any });
+      const wireHover = (layer: string, source: "districts2011" | "states2011", kind: "district" | "state") => {
+        let hov: string | number | undefined;
+        map.on("mousemove", layer, (e: any) => {
+          if (!e.features?.length) return;
+          map.getCanvas().style.cursor = "";
+          const f = e.features[0];
+          if (hov !== undefined) map.setFeatureState({ source, id: hov }, { hover: false });
+          hov = f.id as string;
+          map.setFeatureState({ source, id: hov }, { hover: true });
+          setHovered({
+            code: String(f.id),
+            name: String((kind === "state" ? f.properties?.st_nm : f.properties?.district) ?? "—"),
+            state: kind === "state" ? "" : String(f.properties?.st_nm ?? ""),
+            kind,
+          });
+        });
+        map.on("mouseleave", layer, () => {
+          if (hov !== undefined) map.setFeatureState({ source, id: hov }, { hover: false });
+          hov = undefined; setHovered(null);
+        });
+      };
+      wireHover("d2011-fill", "districts2011", "district");
+      wireHover("s2011-fill", "states2011", "state");
+      vintageLoadedRef.current = true;
+      setVintageTick((t) => t + 1); // re-run visibility + entries now that layers exist
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vintage, ready]);
+
   // ── selection / compare click routing ───────────────────────────────────
   function clickFeature(s: Sel, source: "districts" | "states") {
     const map = mapRef.current; if (!map) return;
@@ -432,7 +515,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         setLevel(m.levels.includes("district") ? "district" : "state");
         return;
       }
-      const md: MetricData = await fetch(`/api/metrics/${sel}?level=${level}`).then((r) => r.json());
+      // The as-reported view only exists for metrics ingested at 2011 vintage
+      // (the census set). Fall back rather than show an empty map.
+      const effLevel = vintage === "2011" ? (level === "state" ? "state2011" : "district2011") : level;
+      if (vintage === "2011" && m?.levels?.length && !m.levels.includes(effLevel)) {
+        setVintage("current");
+        return;
+      }
+      const md: MetricData = await fetch(`/api/metrics/${sel}?level=${effLevel}`).then((r) => r.json());
       if (cancelled || !md.values) return;
       setData(md); dataRef.current = md; valuesRef.current = md.values;
       estimatedRef.current = md.estimated || {};
@@ -446,32 +536,49 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, ready, level, metrics]);
+  }, [sel, ready, level, metrics, vintage, vintageTick]);
 
   useEffect(() => {
     if (dataRef.current) recolor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets]);
 
-  // level switch: layer visibility; on real change reset drill/pins/selection
+  // level/vintage switch: layer visibility; on real change reset drill/pins/selection
   const prevLevelRef = useRef(init.lvl);
+  const prevVintageRef = useRef(init.vin);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     const changed = prevLevelRef.current !== level;
+    const vinChanged = prevVintageRef.current !== vintage;
     prevLevelRef.current = level;
+    prevVintageRef.current = vintage;
     const showState = level === "state";
-    map.setLayoutProperty("state-fill", "visibility", showState ? "visible" : "none");
-    map.setLayoutProperty("state-line", "visibility", showState ? "visible" : "none");
-    map.setLayoutProperty("district-fill", "visibility", showState ? "none" : "visible");
-    map.setLayoutProperty("district-line", "visibility", showState ? "none" : "visible");
+    const vin = vintage === "2011" && vintageLoadedRef.current;
+    map.setLayoutProperty("state-fill", "visibility", !vin && showState ? "visible" : "none");
+    map.setLayoutProperty("state-line", "visibility", !vin && showState ? "visible" : "none");
+    map.setLayoutProperty("district-fill", "visibility", !vin && !showState ? "visible" : "none");
+    map.setLayoutProperty("district-line", "visibility", !vin && !showState ? "visible" : "none");
+    // keep the current-day state outline as national context only outside vintage
+    if (map.getLayer("state-outline")) map.setLayoutProperty("state-outline", "visibility", vin ? "none" : "visible");
+    for (const [lyr, on] of [["d2011-fill", vin && !showState], ["d2011-line", vin && !showState],
+                             ["s2011-fill", vin && showState], ["s2011-line", vin && showState]] as const) {
+      if (map.getLayer(lyr)) map.setLayoutProperty(lyr, "visibility", on ? "visible" : "none");
+    }
+    if (vinChanged) {
+      // vintage is view-only: drop every current-day interaction artefact so
+      // the panel/compare never describe a region the map no longer shows
+      clearPins(); clearSelected(); setHovered(null); setCompare(false);
+      if (focusRef.current) exitFocus(false);
+      return;
+    }
     if (!changed) return;
     if (drillingRef.current) { drillingRef.current = false; return; }
     clearPins(); clearSelected(); setHovered(null);
     if (focusRef.current) exitFocus(false);
     if (showState) { map.setFilter("state-outline", null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [level, ready]);
+  }, [level, ready, vintage, vintageTick]);
 
   // URL sync (shareable views)
   useEffect(() => {
@@ -484,13 +591,21 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (reverse) p.set("rev", "1");
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
     if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
+    if (vintage === "2011") p.set("vin", "2011");
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
-  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal]);
+  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage]);
 
   // ── colouring ────────────────────────────────────────────────────────────
-  function allCodes(source: "districts" | "states"): string[] {
+  type PaintSource = "districts" | "states" | "districts2011" | "states2011";
+  function allCodes(source: PaintSource): string[] {
     if (source === "states") return Object.keys(statesRef.current).map((c) => String(c));
+    if (source === "states2011")
+      return [...vintageIdxRef.current.keys()].filter((c) => !c.includes("_"));
+    if (source === "districts2011") {
+      const fc = d2011FCRef.current;
+      return fc ? (fc.features as any[]).map((f) => String(f.properties?.rid)) : [];
+    }
     const fc = districtsFCRef.current;
     return fc ? (fc.features as any[]).map((f) => String(f.properties?.rid)) : [];
   }
@@ -507,17 +622,21 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   function paintNeutral() {
     const map = mapRef.current; if (!map) return;
-    map.removeFeatureState({ source: "districts" });
-    map.removeFeatureState({ source: "states" });
+    for (const s of ["districts", "states", "districts2011", "states2011"])
+      if (map.getSource(s)) map.removeFeatureState({ source: s });
   }
 
   function recolor() {
     const map = mapRef.current;
     const md = dataRef.current;
     if (!map || !md) return;
-    const source = levelRef.current === "state" ? "states" : "districts";
-    map.removeFeatureState({ source: "districts" });
-    map.removeFeatureState({ source: "states" });
+    const vin = vintageRef.current === "2011" && vintageLoadedRef.current;
+    const source: PaintSource = vin
+      ? (levelRef.current === "state" ? "states2011" : "districts2011")
+      : (levelRef.current === "state" ? "states" : "districts");
+    if (!map.getSource(source)) return; // vintage layers still loading
+    for (const s of ["districts", "states", "districts2011", "states2011"])
+      if (map.getSource(s)) map.removeFeatureState({ source: s });
     // re-apply persistent highlight states
     pinsRef.current.forEach((p) => map.setFeatureState({ source: p.kind === "state" ? "states" : "districts", id: p.code }, { pinned: true }));
     const s = selectedRef.current;
@@ -545,7 +664,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // cohort dimming (states level only)
     const ck = cohortRef.current;
     const cs = cohortSetsRef.current;
-    const cohortSet = levelRef.current === "state" && ck !== "all"
+    // cohort sets are current-day state codes; the 2011 view has AP-undivided,
+    // no Telangana/Ladakh — dimming by today's cohorts would lie there
+    const cohortSet = !vin && levelRef.current === "state" && ck !== "all"
       ? (ck === "pop" ? cs.pop : ck === "nsdp" ? cs.nsdp : cs.area)
       : null;
 
@@ -607,7 +728,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const out: Entry[] = [];
     for (const [code, value] of Object.entries(data.values)) {
       if (f && !code.startsWith(f) && !code.startsWith((focus?.code ?? "") + "_")) continue;
-      const idx = nameIdx.get(code);
+      // vintage codes are 2011 census codes named by the vintage geojson, not
+      // the /api/regions palette index (same code can mean a different region)
+      const idx = vintage === "2011" ? vintageIdxRef.current.get(code) : nameIdx.get(code);
       out.push({
         code,
         name: idx?.name ?? code,
@@ -621,7 +744,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     }
     out.sort((a, b) => b.value - a.value);
     return out;
-  }, [data, nameIdx, level, focusActive, focus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, nameIdx, level, focusActive, focus, vintage, vintageTick]);
 
   // Rank membership follows stats membership (adr-023): a value ranks iff it
   // counts in the stats. An inherited COPY holds its donor's number — ranking it
@@ -718,6 +842,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // search: pick a place
   const onSearchRegion = useCallback((r: RegionIdx) => {
     const map = mapRef.current; if (!map) return;
+    // search targets current-day regions; a pick pops the vintage view
+    if (vintageRef.current === "2011") setVintage("current");
     if (r.level === "state") {
       if (levelRef.current === "state") {
         const f = statesRef.current[String(Number(r.code))] || statesRef.current[r.code];
@@ -898,6 +1024,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               <LevelColourCard
                 level={level} onLevel={(l) => setLevel(l)} levelLock={levelLock}
                 palette={palette} onPalette={(p) => { palTouchedRef.current = true; setPalette(p); }}
+                vintage={vintage} onVintage={setVintage}
+                vintageAvailable={!!meta?.levels?.some((l) => l === "district2011" || l === "state2011")}
               />
             </div>
 
@@ -935,8 +1063,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 onClick={() => {
                   setCompare((c) => { const n = !c; if (!n) clearPins(); else clearSelected(); return n; });
                 }}
-                aria-pressed={compare}
-                className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors"
+                aria-pressed={compare} disabled={vintage === "2011"}
+                title={vintage === "2011" ? "Compare works on current-day boundaries — switch BOUNDARIES back to TODAY" : undefined}
+                className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 style={{ background: compare ? "#d1502f" : "transparent", color: compare ? "#16110b" : "#d8ccbe" }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
@@ -948,7 +1077,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               <ShareMenu disabled={false} onCopyLink={copyLink} onCopyEmbed={copyEmbed} copied={copied} />
               <span className="w-px flex-none" style={{ background: "#2a2619" }} />
               <button
-                onClick={() => setSocialOpen(true)} disabled={!data}
+                onClick={() => setSocialOpen(true)} disabled={!data || vintage === "2011"}
+                title={vintage === "2011" ? "Cards render current-day boundaries — switch BOUNDARIES back to TODAY" : undefined}
                 aria-label="Export a social media card"
                 className="flex items-center gap-2 bg-accent px-[17px] py-2.5 text-[11.5px] font-bold tracking-[.06em] text-accent-ink transition-colors hover:bg-accent-hover disabled:opacity-40"
               >

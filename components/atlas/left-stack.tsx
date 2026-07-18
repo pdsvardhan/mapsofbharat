@@ -65,12 +65,17 @@ export function IndicatorCard({
 }
 
 export function LevelColourCard({
-  level, onLevel, levelLock, palette, onPalette,
+  level, onLevel, levelLock, palette, onPalette, vintage, onVintage, vintageAvailable,
 }: {
   level: "state" | "district";
   onLevel: (l: "state" | "district") => void;
   levelLock: "state" | "district" | null; // metric only exists at this level
   palette: PaletteId; onPalette: (p: PaletteId) => void;
+  /** as-reported-2011 boundary vintage (adr-003 toggle, item 671); row hidden
+   *  when the metric has no 2011-vintage rows */
+  vintage?: "current" | "2011";
+  onVintage?: (v: "current" | "2011") => void;
+  vintageAvailable?: boolean;
 }) {
   const lockMsg = (l: "state" | "district") =>
     levelLock && levelLock !== l ? "This indicator is only available at the " + levelLock + " level" : undefined;
@@ -95,6 +100,38 @@ export function LevelColourCard({
           })}
         </div>
       </div>
+      {vintageAvailable && onVintage && (
+        <>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-[.12em] text-faint">BOUNDARIES</span>
+            <div className="flex border border-border">
+              {([["current", "TODAY"], ["2011", "2011 AS REPORTED"]] as const).map(([v, label]) => {
+                const on = (vintage ?? "current") === v;
+                return (
+                  <button
+                    key={v} onClick={() => onVintage(v)} aria-pressed={on}
+                    title={v === "2011"
+                      ? "Render this census metric on the districts the 2011 census actually reported"
+                      : "Render on current-day districts (2011 counts reaggregated via the crosswalk)"}
+                    className="px-2.5 py-1 text-[10.5px] font-bold"
+                    style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {vintage === "2011" && (
+            <div className="mt-1.5 text-[9.5px] leading-snug text-dim">
+              As the 2011 census reported it — no crosswalk, no estimates. Delhi is
+              drawn whole (nine 2011 districts) and Mumbai City sits with Suburban,
+              matching this map&apos;s current-day polygons. View-only: drill,
+              selection and compare use today&apos;s boundaries.
+            </div>
+          )}
+        </>
+      )}
       <div className="mt-3 flex items-center justify-between">
         <span className="text-[10px] font-bold tracking-[.12em] text-faint">MAP COLOUR</span>
         <span className="text-[10.5px] font-semibold text-muted">{PALETTES[palette].name}</span>
