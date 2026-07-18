@@ -36,7 +36,21 @@ export function middleware(req: NextRequest) {
     if (buckets.size > 5000) {
       for (const [k, v] of buckets) if (now > v.reset) buckets.delete(k);
     }
-    return NextResponse.next();
+
+    // Cache headers on the public read APIs (todo 270, iter-102). The canonical
+    // store only changes at ingestion waves, so short browser caching + a CDN
+    // directive are safe; stale-while-revalidate papers over origin blips.
+    // /api/health and /api/log deliberately stay uncached. NOTE: Cloudflare
+    // only edge-caches /api JSON once a dashboard Cache Rule exists — until
+    // then this buys browser caching and readiness.
+    const res = NextResponse.next();
+    if (req.method === "GET" && /^\/api\/(metrics|region|regions)(\/|$)/.test(pathname)) {
+      res.headers.set(
+        "Cache-Control",
+        "public, max-age=300, s-maxage=86400, stale-while-revalidate=604800"
+      );
+    }
+    return res;
   }
 
   // clickjacking (risk #58): pages refuse framing, except the purpose-built

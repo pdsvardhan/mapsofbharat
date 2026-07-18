@@ -9,6 +9,12 @@ export const dynamic = "force-dynamic";
 // Rank honours higher_is_better: rank 1 is the "best" region for that metric.
 export async function GET(_req: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
+  // Defense-in-depth (todo 271, iter-102): canonical codes are "NN" states or
+  // "NN_NNNNN" district rids. The query below is parameterized and read-only,
+  // but junk input should never reach the DB at all.
+  if (!/^\d{1,2}(_\d{1,5})?$/.test(code)) {
+    return NextResponse.json({ error: "bad-region-code" }, { status: 400 });
+  }
   const level = code.includes("_") ? "district" : "state";
   const d = db();
   if (!d) return NextResponse.json({ error: "no-data" }, { status: 404 });
