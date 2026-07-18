@@ -1,6 +1,6 @@
 {
   "district_coverage": 735,
-  "metric_count": 112,
+  "metric_count": 124,
   "per_metric_district_count": {
     "agri_cropped_area": 425,
     "agri_labourers_pct": 733,
@@ -25,7 +25,6 @@
     "crime_murder_rate": 706,
     "crime_women_rate": 706,
     "cultivators_pct": 733,
-    "estab_per_1000": 733,
     "female_literacy_rate": 733,
     "forest_change_km2": 699,
     "forest_cover_pct": 712,
@@ -65,7 +64,6 @@
     "nfhs5_women_anaemia": 710,
     "nfhs5_women_bmi_low": 710,
     "nfhs5_women_obese": 710,
-    "nonfarm_emp_per_1000": 733,
     "other_workers_pct": 733,
     "pm25_satellite": 711,
     "pop_density": 733,
