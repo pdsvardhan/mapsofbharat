@@ -976,7 +976,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       {/* MASTHEAD */}
       <header className="relative z-10 flex h-16 flex-none items-center border-b px-5" style={{ borderColor: "#2a2619" }}>
         <div className="flex w-[300px] flex-none items-center gap-3">
-          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-sm bg-bright text-[13px] font-extrabold" style={{ color: "#14120d" }}>MB</span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark; next/image adds no value for a 30px inline logo */}
+          <img src="/brand/mark.png" alt="" aria-hidden="true" width={30} height={30} className="h-[30px] w-[30px] flex-none object-contain" />
           <span className="text-[17px] font-bold leading-none tracking-tight text-bright">Maps of Bharat</span>
         </div>
         <div className="flex flex-1 justify-center">
