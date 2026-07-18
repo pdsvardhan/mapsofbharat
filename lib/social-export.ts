@@ -40,7 +40,7 @@ export type SocialCardSpec = {
   /** Value key for a feature — states: String(Number(st_code)); districts: rid. */
   codeOf: (f: SocialFeature) => string;
   paletteFn: (t: number) => string;
-  /** Rows in each HIGHEST/LOWEST header table (dense cards only). Default 5. */
+  /** Rows in each HIGHEST/LOWEST header table (dense cards only). Default 7. */
   tableN?: 3 | 5 | 7 | 10;
   /** On-map rank markers for dense cards. Default "none" (owner decision, iter-101 item 683). */
   markerMode?: "none" | "extremes" | "top3" | "table";
@@ -297,7 +297,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const dense = spec.level === "district" || spec.entries.length > 40;
   const tableW = 232, tableGap = 12;
   const tablesW = tableW * 2 + tableGap;
-  const N = Math.max(3, Math.min(10, spec.tableN ?? 5));
+  const N = Math.max(3, Math.min(10, spec.tableN ?? 7));
   const tops = spec.entries.slice(0, N);
   // worst-first; when the scope is tiny (drilled state), never re-list top rows
   const bots = spec.entries.length > N

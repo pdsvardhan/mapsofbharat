@@ -29,7 +29,7 @@ export function SocialExportDialog({
   const [preset, setPreset] = useState<SocialPreset>("portrait");
   const [theme, setTheme] = useState<SocialTheme>("ink");
   const [headline, setHeadline] = useState(metric.name);
-  const [rows, setRows] = useState<3 | 5 | 7 | 10>(5);
+  const [rows, setRows] = useState<3 | 5 | 7 | 10>(7);
   const [markers, setMarkers] = useState<"none" | "extremes" | "top3" | "table">("none");
   // null → default (last word); explicit [] → no accent (iter-101 item 684)
   const [accentSel, setAccentSel] = useState<number[] | null>(null);
