@@ -623,21 +623,28 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     return out;
   }, [data, nameIdx, level, focusActive, focus]);
 
-  // Inherited values carry no rank — the same rule /api/region/[code] already
-  // applies (it ranks over estimated=0 only). A district that was never surveyed
-  // holds its parent's number, so ranking it would assert a standing it never
-  // earned. Real districts rank 1..N consecutively; estimated codes are absent
-  // from this map and render as "—".
+  // Rank membership follows stats membership (adr-023): a value ranks iff it
+  // counts in the stats. An inherited COPY holds its donor's number — ranking it
+  // would assert a standing it never earned, and its donor already occupies that
+  // slot. A projected (BE/RE) value is its state's only figure, copied from
+  // nobody: excluding it left fiscal metrics with an em dash on 30 of 31 states
+  // (question 244, resolved 2026-07-18 — ranked, badge kept). /api/region/[code]
+  // applies the same rule; unranked codes are absent here and render as "—".
   const rankOf = useMemo(() => {
     const m: Record<string, number> = {};
     let r = 0;
-    for (const e of entries) if (!e.estimated) m[e.code] = ++r;
+    for (const e of entries) if (countsInStats(e.estimated, e.estimate_kind)) m[e.code] = ++r;
     return m;
   }, [entries]);
 
-  // Denominator for every rank sentence: only districts the source surveyed.
-  const realCount = useMemo(() => entries.reduce((n, e) => n + (e.estimated ? 0 : 1), 0), [entries]);
-  const estCount = entries.length - realCount;
+  // Denominator for every rank sentence: exactly the rank-eligible rows above.
+  const rankedCount = useMemo(
+    () => entries.reduce((n, e) => n + (countsInStats(e.estimated, e.estimate_kind) ? 1 : 0), 0),
+    [entries]
+  );
+  // Disclosure count stays over ALL estimates — a ranked projection is still
+  // not this region's own measurement, and the "N estimated" line must say so.
+  const estCount = entries.reduce((n, e) => n + (e.estimated ? 1 : 0), 0);
 
   // The legend's floor, ceiling and average must describe the scale that coloured
   // the map, or the legend contradicts the picture it labels (item 639): recolor()
@@ -993,11 +1000,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 <span className="text-[12px] font-bold text-bright">{hovered.name}</span>
                 {data && <span className="ml-2 font-mono text-[10.5px] text-muted">{fmtHover(hoverValue)}</span>}
                 <div className="mt-px text-[9.5px] text-dim">
-                  {hovered.kind === "district"
-                    ? `${hovered.state}${hoverEst ? ` · ${hoverEstNote}` : hoverRank != null ? ` · #${hoverRank} of ${realCount}` : ""}`
-                    : hoverEst
-                      ? hoverEstNote
-                      : hoverRank != null ? `#${hoverRank} of ${realCount} ${scopeNoun}` : ""}
+                  {/* Rank and estimate note are independent since adr-023: a
+                      projected state is ranked AND badged, so neither line may
+                      swallow the other. Unranked estimates keep note-only. */}
+                  {[
+                    hovered.kind === "district" ? hovered.state : "",
+                    hoverRank != null ? `#${hoverRank} of ${rankedCount}${hovered.kind === "district" ? "" : ` ${scopeNoun}`}` : "",
+                    hoverEst ? hoverEstNote : "",
+                  ].filter(Boolean).join(" · ")}
                 </div>
               </div>
             )}

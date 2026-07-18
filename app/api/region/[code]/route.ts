@@ -13,10 +13,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
   const d = db();
   if (!d) return NextResponse.json({ error: "no-data" }, { status: 404 });
 
-  // Ranks and counts are computed over REAL values only (estimated=0): an
-  // inherited value carries no rank, and the "of N" denominator reflects only
-  // districts the source actually surveyed. The region's own value may itself
-  // be estimated, so it is fetched separately and left rankless when so.
+  // Rank membership follows stats membership (adr-023): a value ranks iff
+  // countsInStats says it counts — real rows, plus 'projected' (a state's only
+  // figure, copied from nobody) and 'aggregated' (an exact sum of real rows).
+  // Inherited COPIES stay rankless: the donor already occupies that slot, and the
+  // "of N" denominator counts only rank-eligible rows. The SQL predicate mirrors
+  // lib/estimate-kind.ts countsInStats — keep the two in lockstep.
   const rows = d
     .prepare(
       `WITH ranked AS (
@@ -25,7 +27,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
                 RANK() OVER (PARTITION BY metric_id ORDER BY value ASC)  AS rank_asc,
                 COUNT(*) OVER (PARTITION BY metric_id) AS cnt
          FROM metric_values
-         WHERE region_level = ? AND value IS NOT NULL AND estimated = 0
+         WHERE region_level = ? AND value IS NOT NULL
+           AND (estimated = 0 OR estimate_kind IN ('projected','aggregated'))
        ),
        cnts AS (SELECT metric_id, MAX(cnt) AS cnt FROM ranked GROUP BY metric_id),
        mine AS (
@@ -35,7 +38,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
        SELECT m.id, m.name, m.category, m.unit, m.year, m.source, m.source_url,
               m.decimals, m.higher_is_better, m.methodology, m.last_updated,
               mine.value, mine.estimated, mine.estimate_kind, mine.year AS value_year, c.cnt,
-              CASE WHEN mine.estimated = 1 THEN NULL
+              CASE WHEN mine.estimated = 1
+                        AND COALESCE(mine.estimate_kind,'') NOT IN ('projected','aggregated')
+                   THEN NULL
                    WHEN m.higher_is_better = 0 THEN r.rank_asc ELSE r.rank_desc END AS rank
        FROM mine
        JOIN metrics m ON m.id = mine.metric_id

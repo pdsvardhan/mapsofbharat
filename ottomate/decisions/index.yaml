@@ -268,3 +268,14 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/2026-07-16-stats-exclude-copies.md
+  - id: adr-023-ranks-follow-stats-membership
+    project_slug: mapsofbharat
+    title: Ranks follow stats membership — projections rank with their badge, copies never
+    status: accepted
+    date: 2026-07-18T00:00:00.000Z
+    tags:
+      - data
+      - correctness
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-07-18-ranks-follow-stats-membership.md
