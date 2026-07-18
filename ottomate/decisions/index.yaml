@@ -280,3 +280,15 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/2026-07-18-ranks-follow-stats-membership.md
+  - id: adr-024-drop-shrug-ec13
+    project_slug: mapsofbharat
+    title: Dropped the Economic-Census metrics rather than ship
+      non-commercially-licensed data
+    status: accepted
+    date: 2026-07-18T00:00:00.000Z
+    tags:
+      - data
+      - reliability
+      - curated
+      - cat:reliability
+    body_path: decisions/2026-07-18-drop-shrug-ec13.md
