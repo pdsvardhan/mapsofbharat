@@ -11,14 +11,16 @@ export type Metric = {
 };
 
 export const CAT_ORDER = [
-  "demographics", "society", "economy", "poverty", "health", "lifestyle", "education",
-  "labour", "livelihood", "agriculture", "crime", "safety", "infrastructure", "elections",
+  "demographics", "society", "economy", "payments", "poverty", "health", "lifestyle",
+  "education", "labour", "livelihood", "agriculture", "crime", "safety", "infrastructure",
+  "elections",
 ];
 
 export const CAT_ACCENT: Record<string, string> = {
   demographics: "#d1502f",
   society: "#c2708f",
   economy: "#c8a24a",
+  payments: "#7d5bbe",
   poverty: "#9c5b6b",
   health: "#5fa88a",
   lifestyle: "#c98a4b",
@@ -36,6 +38,7 @@ export const CAT_DESC: Record<string, string> = {
   demographics: "People, density & settlement — Census 2011",
   society: "Religious composition — Census 2011",
   economy: "Output, spending, enterprise & tourism",
+  payments: "Digital payments — UPI district flows (NPCI, Jun 2026)",
   poverty: "Multidimensional poverty — NITI MPI (NFHS-5)",
   health: "Wellbeing, nutrition & healthcare — NFHS-5",
   lifestyle: "Alcohol, tobacco, obesity & more — NFHS-5",
@@ -54,6 +57,7 @@ export const CAT_ICON: Record<string, string> = {
   demographics: "M12 8a3 3 0 100-6 3 3 0 000 6z M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6",
   society: "M8 10a2 2 0 100-4 2 2 0 000 4z M16 10a2 2 0 100-4 2 2 0 000 4z M4 18c0-2.2 1.8-4 4-4s4 1.8 4 4 M12 18c0-2.2 1.8-4 4-4s4 1.8 4 4",
   economy: "M4 6h16v12H4z M4 10h16 M7 15h4",
+  payments: "M7 2h10v20H7z M10 20h4 M9.5 6h5 M9.5 8.5h5 M14.5 6c0 2-2 2.6-3.6 2.6l3.6 4.4",
   poverty: "M3 21h18 M6 21v-6 M10 21v-9 M14 21v-5 M18 21v-8",
   health: "M3 12h4l2-5 3 10 2-5h5",
   lifestyle: "M8 3h8 M12 3v5 M12 8c-3 0-5 2.5-5 5.5S9 21 12 21s5-4.5 5-7.5S15 8 12 8z",
