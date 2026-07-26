@@ -20,11 +20,14 @@ type Props = {
   features: SocialFeature[];
   codeOf: (f: SocialFeature) => string;
   paletteFn: (t: number) => string;
+  /** The explorer's live class edges — passed straight through so the exported
+   *  card classes the data exactly as the map does (item 759). */
+  breaks?: number[];
   fileBase: string;
 };
 
 export function SocialExportDialog({
-  onClose, metric, level, focusName, entries, features, codeOf, paletteFn, fileBase,
+  onClose, metric, level, focusName, entries, features, codeOf, paletteFn, breaks, fileBase,
 }: Props) {
   const [preset, setPreset] = useState<SocialPreset>("portrait");
   const [theme, setTheme] = useState<SocialTheme>("ink");
@@ -51,10 +54,10 @@ export function SocialExportDialog({
   };
 
   const spec = useCallback((): SocialCardSpec => ({
-    preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn,
+    preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn, breaks,
     tableN: rows, markerMode: markers, accentWords: accents,
   }), [preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn,
-    rows, markers, accents]);
+    breaks, rows, markers, accents]);
 
   // debounced live preview
   useEffect(() => {

@@ -834,6 +834,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (g.fellBackFrom && g.method !== brkMethod) setBrkMethod(g.method);
   }, [statsEntries, mode, brkMethod]);
 
+  /** The exact class edges the map is painting with — same rows, same rule as the
+   *  paint (adr-022 stats membership). Handed to the social card so an export can
+   *  never class the data differently from the map it was taken from (item 759). */
+  const mapBreaks = useMemo(
+    () => (mode === "value" ? computeBreaks(statsEntries.map((e) => e.value), brkMethod) : []),
+    [statsEntries, mode, brkMethod],
+  );
+
   const fmtVal = useCallback((v: number) =>
     v.toLocaleString("en-IN", { maximumFractionDigits: data?.decimals ?? 0 }), [data]);
   const fmtFull = useCallback((v: number) =>
@@ -1295,6 +1303,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           codeOf={(f) =>
             level === "state" ? String(f.properties?.st_code) : String(f.properties?.rid)}
           paletteFn={reverse ? (t: number) => PALETTES[palette].fn(1 - t) : PALETTES[palette].fn}
+          breaks={mapBreaks}
           fileBase={`mapsofbharat-${sel}`}
         />
       )}

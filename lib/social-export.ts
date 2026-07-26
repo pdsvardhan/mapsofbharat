@@ -40,6 +40,16 @@ export type SocialCardSpec = {
   /** Value key for a feature — states: String(Number(st_code)); districts: rid. */
   codeOf: (f: SocialFeature) => string;
   paletteFn: (t: number) => string;
+  /**
+   * The class edges the explorer is currently painting with. Supplied so the card
+   * and the map cannot disagree (item 759): before this the card always cut its
+   * own jenks-5 while the map honoured the user's method, so the same metric came
+   * out differently coloured on screen and in the exported PNG.
+   *
+   * Omitted (or empty) when the map is on SMOOTH — a card is always classed, so it
+   * falls back to jenks-5 there. That divergence is deliberate and stated, not silent.
+   */
+  breaks?: number[];
   /** Rows in each HIGHEST/LOWEST header table (dense cards only). Default 7. */
   tableN?: 3 | 5 | 7 | 10;
   /** On-map rank markers for dense cards. Default "none" (owner decision, iter-101 item 683). */
@@ -288,9 +298,13 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const vals = spec.entries.map((e) => e.value);
   const min = vals.length ? Math.min(...vals) : 0;
   const max = vals.length ? Math.max(...vals) : 1;
-  // Social cards are always classed — jenks 5 (AC: never a continuous ramp).
+  // Social cards are always classed (AC: never a continuous ramp). Inherit the
+  // explorer's own edges when it has them, so screen and PNG agree (item 759);
+  // fall back to jenks-5 only when the map is unclassed (SMOOTH).
   const k = Math.min(5, Math.max(1, vals.length));
-  const breaks = computeBreaks(vals, vals.length >= 5 ? "jenks" : "quantile", k);
+  const breaks = spec.breaks?.length
+    ? spec.breaks
+    : computeBreaks(vals, vals.length >= 5 ? "jenks" : "quantile", k);
   const fill = (v: number) => colorFor(v, min, max, breaks, spec.paletteFn);
 
   // ── shared rank helpers (header tables + optional map markers, iter-101) ──
