@@ -28,7 +28,16 @@ export function useDismiss(
       if (ignoreSelector && t?.closest?.(ignoreSelector)) return;
       closeRef.current();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeRef.current(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Escape dismisses the TOPMOST layer only. india-map registers its own
+      // Escape handler on window, which clears the map selection; document
+      // precedes window in the bubble path, so without this the popover closes
+      // AND the user's selected region is silently discarded behind it. The
+      // chooser and search modals already honour this contract.
+      e.stopPropagation();
+      closeRef.current();
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
