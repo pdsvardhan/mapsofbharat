@@ -35,27 +35,32 @@ export function ChooserModal({
           <button onClick={onClose} className="text-[11px] font-semibold text-dim hover:text-foreground">✕ ESC</button>
         </div>
         <div className="flex min-h-0 flex-1">
-          {/* left topic index */}
-          <div className="relative w-[262px] flex-none border-r border-border-faint py-4">
-            <div className="px-6 pb-3 font-mono text-[10px] tracking-[.14em] text-faint">TOPICS</div>
-            <div
-              className="absolute left-0 w-[3px] transition-transform duration-300"
-              style={{ height: 58, background: accent, transform: `translateY(${catIdx * 58}px)`, transitionTimingFunction: "cubic-bezier(.4,0,.2,1)" }}
-            />
-            {cats.map((c) => {
-              const on = c === cat;
-              const count = metrics.filter((m) => m.category === c).length;
-              return (
-                <button
-                  key={c} onMouseEnter={() => setCat(c)} onClick={() => setCat(c)}
-                  className="block h-[58px] w-full px-6 text-left transition-colors"
-                  style={{ background: on ? "#17130e" : "transparent" }}
-                >
-                  <div className="text-[18px] font-bold capitalize tracking-tight" style={{ color: on ? "#eae4d6" : "#8a8477" }}>{c}</div>
-                  <div className="text-[11px] text-faint">{count} indicator{count === 1 ? "" : "s"}</div>
-                </button>
-              );
-            })}
+          {/* left topic index — scrolls: the live taxonomy is 20 categories and
+              only ~9 fit the modal, so without this everything from labour down
+              (crime, transport, elections, environment…) was unreachable (item 750) */}
+          <div className="flex w-[262px] flex-none flex-col border-r border-border-faint py-4">
+            <div className="flex-none px-6 pb-3 font-mono text-[10px] tracking-[.14em] text-faint">TOPICS</div>
+            <div className="atl-scroll relative min-h-0 flex-1 overflow-y-auto">
+              {/* inside the scroller so it tracks the rows instead of drifting off them */}
+              <div
+                className="absolute left-0 w-[3px] transition-transform duration-300"
+                style={{ height: 58, background: accent, transform: `translateY(${catIdx * 58}px)`, transitionTimingFunction: "cubic-bezier(.4,0,.2,1)" }}
+              />
+              {cats.map((c) => {
+                const on = c === cat;
+                const count = metrics.filter((m) => m.category === c).length;
+                return (
+                  <button
+                    key={c} onMouseEnter={() => setCat(c)} onClick={() => setCat(c)}
+                    className="block h-[58px] w-full px-6 text-left transition-colors"
+                    style={{ background: on ? "#17130e" : "transparent" }}
+                  >
+                    <div className="text-[18px] font-bold capitalize tracking-tight" style={{ color: on ? "#eae4d6" : "#8a8477" }}>{c}</div>
+                    <div className="text-[11px] text-faint">{count} indicator{count === 1 ? "" : "s"}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
           {/* right metric list */}
           <div className="flex min-w-0 flex-1 flex-col">
