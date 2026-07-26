@@ -168,7 +168,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // and wrote it into every share link, which is how a heavily skewed metric
   // ended up rendered on equal-interval with 93% of districts in one class.
   const pickedForMetricRef = useRef(init.brkPinned);
+  /** Persisted across sessions (localStorage) — what this browser remembers. */
   const methodByMetricRef = useRef<Record<string, BreakMethod>>({});
+  /** Picked BY HAND during this session. Kept separate from the persisted map
+   *  because the two rank differently against a URL pin: a pin should outrank a
+   *  stale stored preference, but must never outrank a choice the user just made
+   *  (`init` is frozen at mount, so a pin that wins unconditionally keeps winning
+   *  all session and silently undoes every later pick on that metric). */
+  const sessionPickRef = useRef<Record<string, BreakMethod>>({});
   /** The metric a URL `brk` pin belongs to — the pin must not follow the user
    *  to the next metric they open. */
   const pinnedMetricRef = useRef(init.m);
@@ -233,19 +240,29 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // override a URL pin, a persisted pref, or a manual pick this session
   useEffect(() => {
     if (!meta) return;
-    // Per-metric memory wins over the metric's suggested default; a URL pin wins
-    // over both (init.brkPinned seeds pickedForMetricRef true for the first metric).
+    // Four sources, ranked — two-way ordering is what produced two separate leaks
+    // in this item (memory-over-pin, then pin-over-live-pick):
+    //   1. what the user picked BY HAND this session   — always wins, it is the
+    //      most recent thing they actually said
+    //   2. a URL pin for this metric                   — the sender's instruction
+    //   3. this browser's stored pick                  — a preference, not an order
+    //   4. the metric's own default_scale              — else jenks
+    const sessionPick = sessionPickRef.current[sel];
     const remembered = methodByMetricRef.current[sel];
     const ds = (meta as { default_scale?: string | null }).default_scale;
-    if (init.brkPinned && sel === pinnedMetricRef.current) {
+    if (sessionPick) {
+      setBrkMethod(sessionPick);
+      pickedForMetricRef.current = true;
+    } else if (init.brkPinned && sel === pinnedMetricRef.current) {
       // The URL pinned a method for THIS metric. Re-APPLY it, don't just flag it as
       // picked: on a return visit brkMethod still holds whatever the metric we came
       // from left there, and flagging that as "picked" stamped a method the user
       // never chose into the share link.
       //
-      // Checked BEFORE per-metric memory: a pin is the sender's explicit instruction
-      // about what the link should show, so a recipient's own stored pick for the same
-      // metric must not silently override it (and then overwrite it in the address bar).
+      // Checked BEFORE stored memory: a pin is the sender's explicit instruction
+      // about what the link should show, so a recipient's stale stored pick must not
+      // silently override it (and then overwrite it in the address bar). It is checked
+      // AFTER the session pick for the mirror-image reason.
       setBrkMethod(init.brk);
       pickedForMetricRef.current = true;
     } else if (remembered) {
@@ -1128,7 +1145,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               <ScalePopover
                 method={brkMethod} onMethod={(m) => {
                   pickedForMetricRef.current = true;
-                  if (sel) methodByMetricRef.current = { ...methodByMetricRef.current, [sel]: m };
+                  if (sel) {
+                    // session ref drives precedence, persisted map drives localStorage
+                    sessionPickRef.current = { ...sessionPickRef.current, [sel]: m };
+                    methodByMetricRef.current = { ...methodByMetricRef.current, [sel]: m };
+                  }
                   setBrkMethod(m);
                   setPickTick((t) => t + 1); // re-picking the active method is still a pick
                 }}

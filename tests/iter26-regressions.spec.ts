@@ -151,6 +151,32 @@ test.describe("scale method is scoped per metric (item 756)", () => {
     expect(new URL(page.url()).searchParams.get("brk")).toBe("continuous");
   });
 
+  test("your own pick outranks the link's pin, and survives a round trip", async ({ page }) => {
+    // The mirror of the case below. `init` is frozen at mount, so a pin that wins
+    // unconditionally keeps winning all session: pick a method on a pinned link, hop
+    // away and back, and the map silently reverts and rewrites the address bar —
+    // a method the user did not choose, stamped into the share link, which is this
+    // item's own defect family.
+    await page.goto("/?m=literacy_rate&lvl=district&brk=continuous");
+    await waitForMapReady(page);
+    await page.waitForTimeout(900);
+    expect(await activeMethod(page)).toBe("SMOOTH");
+
+    await page.locator("[data-scale-toggle]").click();
+    const popover = page.getByRole("dialog", { name: /Scale options/i });
+    await expect(popover).toBeVisible();
+    await popover.getByRole("button", { name: "JENKS" }).click();
+    await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
+    expect(await activeMethod(page)).toBe("JENKS");
+
+    await switchMetric(page, "sex ratio", /^Sex ratio/i);
+    await switchMetric(page, "literacy", /^Literacy rate/i);
+
+    expect(await activeMethod(page)).toBe("JENKS");
+    expect(new URL(page.url()).searchParams.get("brk")).toBe("jenks");
+  });
+
   test("a URL pin outranks the recipient's own stored pick for that metric", async ({ page }) => {
     // A pin is the sender's instruction about what the link shows. A stored pick
     // silently overriding it — and then overwriting it in the address bar — is the
