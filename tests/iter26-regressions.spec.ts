@@ -177,6 +177,35 @@ test.describe("scale method is scoped per metric (item 756)", () => {
     expect(new URL(page.url()).searchParams.get("brk")).toBe("jenks");
   });
 
+  test("a restored pick reaches the share link, even when it equals the default", async ({ page, context }) => {
+    // readUrl() defaults to "jenks", so restoring a stored pick of jenks is a no-op
+    // state write: React bails out, the URL effect never re-runs, and the link the
+    // sender copies renders the metric's automatic default to everyone else. A
+    // stored pick of quantile did reach the URL, which is why this hid for so long.
+    await page.addInitScript(() => {
+      localStorage.setItem("mapsofbharat-atlas-v1",
+        JSON.stringify({ methodByMetric: { literacy_rate: "jenks" }, reverse: false }));
+    });
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    await page.waitForTimeout(900);
+
+    expect(await activeMethod(page)).toBe("JENKS");
+    expect(new URL(page.url()).searchParams.get("brk")).toBe("jenks");
+
+    // and the copied link must render the same thing for someone else
+    const copied = page.url();
+    const recipient = await context.newPage();
+    await recipient.goto(copied);
+    await waitForMapReady(recipient);
+    await recipient.waitForTimeout(900);
+    await recipient.locator("[data-scale-toggle]").click();
+    const pop = recipient.getByRole("dialog", { name: /Scale options/i });
+    await expect(pop).toBeVisible();
+    expect((await pop.locator('button[aria-pressed="true"]').first().innerText()).trim()).toBe("JENKS");
+    await recipient.close();
+  });
+
   test("a URL pin outranks the recipient's own stored pick for that metric", async ({ page }) => {
     // A pin is the sender's instruction about what the link shows. A stored pick
     // silently overriding it — and then overwriting it in the address bar — is the

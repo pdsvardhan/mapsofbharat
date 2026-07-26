@@ -250,9 +250,17 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const sessionPick = sessionPickRef.current[sel];
     const remembered = methodByMetricRef.current[sel];
     const ds = (meta as { default_scale?: string | null }).default_scale;
+    // Restoring a deliberate method can be a NO-OP state write — a stored pick of
+    // "jenks" equals readUrl()'s default, so React bails out, no re-render happens,
+    // and the URL-sync effect never learns the choice was deliberate. The sender
+    // then sees JENKS while the link they copy renders the metric's default to
+    // everyone else. Nudge the tick in the three DELIBERATE branches only: bumping
+    // it in the else branch would stamp every automatic default into every share
+    // link, which is the original item-756 bug restored.
     if (sessionPick) {
       setBrkMethod(sessionPick);
       pickedForMetricRef.current = true;
+      setPickTick((t) => t + 1);
     } else if (init.brkPinned && sel === pinnedMetricRef.current) {
       // The URL pinned a method for THIS metric. Re-APPLY it, don't just flag it as
       // picked: on a return visit brkMethod still holds whatever the metric we came
@@ -265,9 +273,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // AFTER the session pick for the mirror-image reason.
       setBrkMethod(init.brk);
       pickedForMetricRef.current = true;
+      setPickTick((t) => t + 1);
     } else if (remembered) {
       setBrkMethod(remembered);
       pickedForMetricRef.current = true;
+      setPickTick((t) => t + 1);
     } else {
       // no deliberate pick for this metric: clear the flag so the previous
       // metric's choice cannot follow the user around (the item-756 latch)
