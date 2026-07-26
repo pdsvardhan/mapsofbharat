@@ -305,3 +305,38 @@ Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it
 - MoSPI + design MCP servers connect/disconnect mid-session — ambient, ignorable.
 
 **Next session context:** 112 metrics / 735 districts / 33-spec suite, all green. Live at mapsofbharat.vault7a.xyz with full brand chrome + redesigned social cards. Open to-dos: **260** (ingestion adapters for the UPI/Vahan/RBI/GST browser haul — most concrete), **261** (MoSPI API-ingest wave — biggest unlock, district UDISE/PLFS/CPI/NFHS), 268 (vector icon.svg), 218 (grade inheritances — parked), 157 (RBI QSDCB — needs user registration). User-side follow-up from iter-102: add a Cloudflare dashboard Cache Rule so the edge actually caches /api JSON (origin is ready).
+
+---
+
+## Session 2026-07-26/27 — Stage 4 iteration 26 (visual-QA batch → bug wave + first design round)
+
+**Stage:** Stage 4 — iteration 112 (#26). 19 items locked from a DOM-commenter batch; 6 built + verified, 13 not started.
+**Duration:** ~11h (overnight, user reviewing between waves).
+
+**Intake:** first **visual-QA batch** through the Task-1 path — 15 DOM comments imported as report 127 (`source='visual-qa'`, per-comment screenshots on the asset volume) and classified into 19 items. The extension's "Send to Ottomate" push had failed silently, so the owner fell back to the zip export; logged against the ottomate project as to-do 333.
+
+**What changed (6 items, 13 commits on `iter-26-2026-07-26`):**
+- **750 — chooser topic column had no scroll.** 20 live categories × 58px in a 640px modal meant only ~9 were reachable; everything from labour down (crime, transport, elections, environment, assets, language — ~55 metrics) could not be reached by browsing at all, only via Ctrl-K. Accent bar moved inside the scroller so it tracks the rows.
+- **751 — three live categories missing from the taxonomy.** environment/assets/language existed in the metrics table but not in `CAT_ORDER`/`ICON`/`ACCENT`/`DESC`, so each fell back to the demographics person icon with no description. Verifier caught a source misattribution in my own new copy (`air` credited to IMD/FSI when it is UrbanEmissions/APnA) and, extending the same test to the 17 untouched descriptions, found three pre-existing ones → to-dos 336–338.
+- **756 — sticky break-method preference.** One click pinned a method globally forever and wrote it into every share link; stuck on equal-interval, `upi_value_per_capita` (skew 4.37) put 682 of 731 districts in class 1. Now scoped per metric, with a degeneracy guard on the automatic path. **Took five fixes and six verifier passes** — see Friction.
+- **759 — card and map disagreed.** `social-export.ts` always cut its own jenks-5 while the explorer classed by the live method, so the same metric came out differently coloured on screen and in the exported PNG. The card now inherits the map's actual edges (same adr-022 stats rows).
+- **760 — boundary treatment**, via the **first real design round through the variant harness** (see below).
+- **764 — popovers had no dismissal.** Cohort dropdown had neither outside-click nor Escape; the scale popover had the same gap. Shared `lib/use-dismiss.ts`; the trigger-outside-the-panel case needed an `ignoreSelector` to avoid a dead toggle.
+
+**Design round (Task 2, first real use):** three boundary treatments — knockout seam / adaptive contrast / ground gap — built on real India geometry and real UPI values, published to a stable Artifact URL. Isolation gate passed first time; the **constraint checker blocked** a genuine defect (all three panels declared the same CSS class names in one document, so the last panel's styles would have silently restyled the others — the set would have differed by more than its declared axis). Owner picked adaptive contrast. Tooling findings → ottomate to-dos 342/343.
+
+**Decisions:** no ADRs (all six were bug fixes or a locked component modification; no re-wire or revamp).
+
+**Verification:** 11 independent verifier passes. 750/759 APPROVE first pass; 751 took 2; 764 took 3; **756 took 6**. Every code fix was ultimately correct; **what kept failing was my own regression tests** — three of them were provably inert (asserting on a locator that is always visible; on a URL param that is null on both code paths). Adopted mid-session and now the rule for this project: **build the broken version, run the test against it, require red.** That control found two more tests that could not fail, and one that still cannot, which is labelled in the spec as a forward guard rather than counted as coverage.
+
+**Friction:**
+- **Item 756 produced three successive variants of its own defect, each introduced by the fix for the last.** Root cause of the pattern: four inputs (session pick / URL pin / stored memory / metric default) compete to set one value, and I kept resolving them two at a time. Explicit ranking is what finally held. **Recurring-risk: when a fix relocates a defect twice, stop fixing the instance and enumerate the inputs.**
+- **A test that cannot fail is worse than none** — it reads as coverage to the next reader. Negative controls are now mandatory here for any regression guard.
+- Research sub-agents that spawn their own children exhausted the 20-agent concurrency budget and then the session limit, killing two of three briefs (animated dataviz, data landscape). Only the choropleth brief survived. **Fix applied: verifier and research prompts now say "do NOT spawn sub-agents".**
+- Control trees need `DB_PATH` set explicitly — `data/` is gitignored and `lib/db.ts` defaults to the container path, so a control server returns `[]` from `/api/metrics` and every test dies in `waitForMapReady` at 20s, which looks like a failing test and proves nothing. Cost one invalid control run. → ottomate to-do 343.
+- `next dev --turbopack` refuses an out-of-root `node_modules` symlink; plain webpack `next dev` accepts it.
+- Python's default text mode on Windows wrote CRLF into a staged file, turning a 71-line diff into a 1379-line whole-file rewrite. Caught before it reached a verifier; commits rebuilt with LF.
+- Full-suite runs structurally exceed the 120-req/60s middleware limiter, producing ~1 false failure per run in a different spec each time. Two verifiers independently had to re-classify it. → to-do 341.
+- The container is built from the working tree and committed afterwards, so the image can predate its own commit object; a verifier had to bind its conclusions to a `git archive` tree to be sure what it was testing. → to-do 344.
+
+**Next session context:** 13 locked items remain in iteration 112 — 9 UI/card, 3 research, 1 approach question. The natural next cluster is the card work (**762** poster redesign is a `revamp` and wants its own design round; **763** labels-beside-states instead of leader lines; **761** default rows 7→5), and the variant harness is warm now so a second round is much cheaper than the first. Highest-value loose bug found in passing: **to-do 346** — the as-reported-2011 toggle (an adr-003 must-have) paints every state as no-data at state level because the API returns zero-padded st_codes and the app normalises them; district-2011 is fine. The two dead research briefs are worth re-running with the no-grandchildren rule.
