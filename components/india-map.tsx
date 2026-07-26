@@ -11,7 +11,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   BreakMethod, PaletteId, PALETTES, DEFAULT_PALETTE, SUGGESTED_PALETTE, normalizePalette,
-  computeBreaks, computeBreaksGuarded, colorFor, interpolateRdBu,
+  computeBreaks, computeBreaksGuarded, colorFor, strokeForFill, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
 import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
@@ -353,7 +353,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           ["boolean", ["feature-state", "selected"], false], "#d1502f",
           ["boolean", ["feature-state", "pinned"], false], "#e6b34a",
           ["boolean", ["feature-state", "hover"], false], "#e9e3d5",
-          "rgba(233,227,213,0.10)"],
+          // item 760: per-region seam, falling back to the old flat hairline
+          // before any metric is picked (no feature-state has been set yet)
+          ["coalesce", ["feature-state", "stroke"], "rgba(233,227,213,0.10)"]],
         "line-width": ["case",
           ["boolean", ["feature-state", "selected"], false], 2,
           ["boolean", ["feature-state", "pinned"], false], 2,
@@ -637,7 +639,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     map.setLayoutProperty("district-fill", "visibility", !vin && !showState ? "visible" : "none");
     map.setLayoutProperty("district-line", "visibility", !vin && !showState ? "visible" : "none");
     // keep the current-day state outline as national context only outside vintage
-    if (map.getLayer("state-outline")) map.setLayoutProperty("state-outline", "visibility", vin ? "none" : "visible");
+    // state-outline is national CONTEXT over the district map. At state level
+    // state-line already draws the same geometry, so leaving both on stacked two
+    // strokes on every boundary — half the reason they read as heavy white (760).
+    if (map.getLayer("state-outline"))
+      map.setLayoutProperty("state-outline", "visibility", !vin && !showState ? "visible" : "none");
     for (const [lyr, on] of [["d2011-fill", vin && !showState], ["d2011-line", vin && !showState],
                              ["s2011-fill", vin && showState], ["s2011-line", vin && showState]] as const) {
       if (map.getLayer(lyr)) map.setLayoutProperty(lyr, "visibility", on ? "visible" : "none");
@@ -754,7 +760,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const v = valuesRef.current[code];
       const inScope = scope.has(code);
       if (v == null || !inScope) {
-        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false });
+        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA) });
         continue;
       }
       const color = modeRef.current === "vs_avg"
@@ -763,7 +769,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const dim = cohortSet ? !cohortSet.has(code) : false;
       // No `estimated` feature-state: adr-019 dropped ambient hatching, so nothing
       // consumes it. Estimates are disclosed where the number is read.
-      map.setFeatureState({ source, id: code }, { color, dim });
+      // `stroke` is the item-760 boundary: derived from this region's own fill so
+      // the seam stays legible at both ends of every ramp instead of reading as
+      // harsh white over the saturated end.
+      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color) });
     }
   }
 

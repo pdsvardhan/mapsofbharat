@@ -127,6 +127,32 @@ function jenksBreaks(sorted: number[], k: number): number[] {
   return breaks;
 }
 
+/** Relative luminance of an "rgb(r,g,b)" or "#rrggbb" colour, 0..1 (Rec. 709). */
+function luminance(c: string): number {
+  let r: number, g: number, b: number;
+  const m = c.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  if (m) { r = +m[1]; g = +m[2]; b = +m[3]; }
+  else {
+    const h = c.replace("#", "");
+    if (h.length < 6) return 0;
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+  }
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+/** Boundary stroke derived from the fill it borders (iter-26 item 760).
+ *
+ *  A single fixed light stroke reads as harsh white wherever the ramp is
+ *  saturated, and vanishes wherever it is pale — the owner's complaint was the
+ *  first case, on the Red-Blue state map. Deriving the stroke per region keeps
+ *  the seam legible at both ends of every ramp. Chosen from three treatments in
+ *  the iter-26 design round; the alphas are that variant's, unchanged. */
+export function strokeForFill(fill: string): string {
+  return luminance(fill) > 0.55
+    ? "rgba(13,15,20,0.75)"        // dark seam cut into a pale fill
+    : "rgba(233,227,213,0.41)";    // soft light seam over a saturated one
+}
+
 /** How many values land in each class. Mirrors colorFor's binning exactly, so a
  *  legend built from this can never disagree with the colours on the map. */
 export function classCounts(values: number[], edges: number[]): number[] {
