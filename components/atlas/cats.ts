@@ -59,7 +59,10 @@ export const CAT_DESC: Record<string, string> = {
   agriculture: "Crops, area & production — APY 2014",
   crime: "Safety & justice — NCRB 2022",
   safety: "Road & self-harm risk — MoRTH / NCRB",
-  environment: "Rainfall, heat, forest & air — IMD / FSI",
+  // all three sources named: the air metric is satellite PM2.5 from UrbanEmissions
+  // (APnA), not IMD or FSI — on a site whose promise is exact attribution, the
+  // source line must not imply otherwise
+  environment: "Rainfall, heat, forest & air — IMD / FSI / APnA",
   infrastructure: "Power, water & connectivity",
   transport: "Vehicles & mobility — Vahan / MoRTH",
   elections: "Democracy & turnout — ECI 2024",
