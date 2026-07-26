@@ -33,8 +33,14 @@ export function useDismiss(
       // Escape dismisses the TOPMOST layer only. india-map registers its own
       // Escape handler on window, which clears the map selection; document
       // precedes window in the bubble path, so without this the popover closes
-      // AND the user's selected region is silently discarded behind it. The
-      // chooser and search modals already honour this contract.
+      // AND the user's selected region is silently discarded behind it.
+      //
+      // The chooser and search modals reach the same outcome by a DIFFERENT
+      // mechanism — they have no Escape handler of their own and survive only
+      // because that window handler guards on (searchOpen || chooserOpen ||
+      // scaleOpen) before touching the selection. Anything new that listens for
+      // Escape on window while a popover can sit above it will be starved here,
+      // and nothing enforces that contract but this comment.
       e.stopPropagation();
       closeRef.current();
     };

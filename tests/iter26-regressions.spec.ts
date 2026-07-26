@@ -115,16 +115,22 @@ test.describe("scale method is scoped per metric (item 756)", () => {
 });
 
 test.describe("popover dismissal (item 764)", () => {
-  test("Escape closes the scale popover without discarding the map selection", async ({ page }) => {
+  // The selection probe MUST be something that is absent when nothing is selected.
+  // A first draft used getByText(/percentile|rank/i).first(), which silently resolved
+  // to the always-present rail heading "Ranked by <metric>" — so the assertion passed
+  // with the selection destroyed, and the guard could not fail. A test that cannot
+  // fail is worse than no test: the next reader counts it as coverage.
+  const selectionProbe = (page: Page) => page.getByRole("button", { name: "Clear selection" });
+
+  async function selectARegion(page: Page) {
     await page.goto("/?m=literacy_rate&lvl=state");
     await waitForMapReady(page);
+    await page.locator("aside button").filter({ hasText: /\d/ }).first().click();
+    await expect(selectionProbe(page)).toBeVisible({ timeout: 10_000 });
+  }
 
-    // select a region from the ranking rail, so there is a selection to lose
-    const firstRow = page.locator("aside button").filter({ hasText: /\d/ }).first();
-    await firstRow.click();
-    const profile = page.getByText(/percentile|rank/i).first();
-    await expect(profile).toBeVisible({ timeout: 10_000 });
-
+  test("Escape closes the scale popover without discarding the map selection", async ({ page }) => {
+    await selectARegion(page);
     await page.locator("[data-scale-toggle]").click();
     const popover = page.getByRole("dialog", { name: /Scale options/i });
     await expect(popover).toBeVisible();
@@ -132,7 +138,37 @@ test.describe("popover dismissal (item 764)", () => {
     await page.keyboard.press("Escape");
     await expect(popover).toBeHidden();
     // Escape dismisses the topmost layer ONLY — the selection must survive
-    await expect(profile).toBeVisible();
+    await expect(selectionProbe(page)).toBeVisible();
+  });
+
+  test("Escape on the cohort dropdown preserves the map selection", async ({ page }) => {
+    await selectARegion(page);
+    const toggle = page.getByRole("button", { name: /All states|Top 10/i }).first();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await page.keyboard.press("Escape");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(selectionProbe(page)).toBeVisible();
+  });
+
+  test("Escape on the share menu preserves the map selection", async ({ page }) => {
+    await selectARegion(page);
+    await page.getByRole("button", { name: /Share this view/i }).click();
+    const menu = page.getByRole("menu", { name: /Share options/i });
+    await expect(menu).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(selectionProbe(page)).toBeVisible();
+  });
+
+  test("Escape with no popover open still clears the selection", async ({ page }) => {
+    // The counterpart to the three above: stopPropagation must not starve the
+    // map's own Escape handler when there is no layer above it (item 405).
+    await selectARegion(page);
+    await page.keyboard.press("Escape");
+    await expect(selectionProbe(page)).toBeHidden();
   });
 
   test("the scale trigger is not a dead toggle", async ({ page }) => {
