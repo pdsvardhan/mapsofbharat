@@ -237,15 +237,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // over both (init.brkPinned seeds pickedForMetricRef true for the first metric).
     const remembered = methodByMetricRef.current[sel];
     const ds = (meta as { default_scale?: string | null }).default_scale;
-    if (remembered) {
-      setBrkMethod(remembered);
-      pickedForMetricRef.current = true;
-    } else if (init.brkPinned && sel === pinnedMetricRef.current) {
+    if (init.brkPinned && sel === pinnedMetricRef.current) {
       // The URL pinned a method for THIS metric. Re-APPLY it, don't just flag it as
       // picked: on a return visit brkMethod still holds whatever the metric we came
       // from left there, and flagging that as "picked" stamped a method the user
       // never chose into the share link.
+      //
+      // Checked BEFORE per-metric memory: a pin is the sender's explicit instruction
+      // about what the link should show, so a recipient's own stored pick for the same
+      // metric must not silently override it (and then overwrite it in the address bar).
       setBrkMethod(init.brk);
+      pickedForMetricRef.current = true;
+    } else if (remembered) {
+      setBrkMethod(remembered);
       pickedForMetricRef.current = true;
     } else {
       // no deliberate pick for this metric: clear the flag so the previous

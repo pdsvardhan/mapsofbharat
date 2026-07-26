@@ -75,41 +75,95 @@ test.describe("indicator chooser taxonomy (items 750, 751)", () => {
 });
 
 test.describe("scale method is scoped per metric (item 756)", () => {
-  test("a method reached by switching metrics matches a cold open of that metric", async ({ page }) => {
-    // The guard used to judge the incoming metric's default against the OUTGOING
-    // metric's rows, so the same metric classed differently depending on how you
-    // arrived at it. Cold open is the reference.
+  // These assert the ACTIVE METHOD, read from the scale popover, not the `brk` query
+  // param. A first draft read brk — which is null on both the fixed and the broken
+  // code path for every automatic switch, so all three cases passed against the very
+  // build whose defects they exist to pin. The defect is a METHOD difference
+  // (JENKS vs EQUAL); nothing that never reads the method can detect it.
+  //
+  // They also switch metrics IN-SESSION via Ctrl-K. page.goto re-seeds the whole
+  // component from the URL on mount, which is exactly the path the bugs did NOT live
+  // on — the stale-rows guard and the dropped pin both needed a live metric change.
+
+  async function activeMethod(page: Page): Promise<string> {
+    await page.locator("[data-scale-toggle]").click();
+    const popover = page.getByRole("dialog", { name: /Scale options/i });
+    await expect(popover).toBeVisible();
+    const label = (await popover.locator('button[aria-pressed="true"]').first().innerText()).trim();
+    await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
+    return label;
+  }
+
+  // `label` MUST be anchored: an unanchored /Literacy rate/ also matches
+  // "Female literacy rate", and .first() then silently switches to a different
+  // metric than the test believes — which makes every later assertion meaningless.
+  async function switchMetric(page: Page, query: string, label: RegExp) {
+    await page.keyboard.press("Control+k");
+    const search = page.getByRole("dialog", { name: "Search" });
+    await expect(search).toBeVisible();
+    await search.getByRole("textbox", { name: /Search places and indicators/i }).fill(query);
+    await search.getByRole("button", { name: label }).first().click();
+    await expect(search).toBeHidden();
+    await waitForMapReady(page);
+    await page.waitForTimeout(900); // let the degeneracy guard settle if it fires
+  }
+
+  test("the method a metric renders with does not depend on which metric you came from", async ({ page }) => {
     await page.goto("/?m=literacy_rate&lvl=district");
     await waitForMapReady(page);
-    await page.waitForTimeout(1200); // let the guard settle if it fires
-    const cold = new URL(page.url()).searchParams.get("brk");
+    await page.waitForTimeout(900);
+    const cold = await activeMethod(page);
 
+    // arrive at the same metric from two differently-shaped distributions
     await page.goto("/?m=sex_ratio&lvl=district");
     await waitForMapReady(page);
-    await page.goto("/?m=literacy_rate&lvl=district");
-    await waitForMapReady(page);
-    await page.waitForTimeout(1200);
-    const switched = new URL(page.url()).searchParams.get("brk");
+    await switchMetric(page, "literacy", /^Literacy rate/i);
+    expect(await activeMethod(page)).toBe(cold);
 
-    expect(switched).toBe(cold);
+    await page.goto("/?m=upi_value_per_capita&lvl=district");
+    await waitForMapReady(page);
+    await switchMetric(page, "literacy", /^Literacy rate/i);
+    expect(await activeMethod(page)).toBe(cold);
   });
 
-  test("an automatic method is never stamped into the share link", async ({ page }) => {
-    await page.goto("/?m=literacy_rate&lvl=district");
+  test("an automatic method is never stamped into the share link, including after a switch", async ({ page }) => {
+    await page.goto("/?m=sex_ratio&lvl=district");
     await waitForMapReady(page);
-    await page.waitForTimeout(1200);
-    // nothing was picked, so nothing may be pinned
+    await page.waitForTimeout(900);
+    expect(new URL(page.url()).searchParams.get("brk")).toBeNull();
+
+    await switchMetric(page, "literacy", /^Literacy rate/i);
+    // nothing was ever picked, so nothing may be pinned
     expect(new URL(page.url()).searchParams.get("brk")).toBeNull();
   });
 
-  test("a URL-pinned method survives leaving the metric and coming back", async ({ page }) => {
+  test("a URL-pinned method survives an in-session round trip", async ({ page }) => {
     await page.goto("/?m=literacy_rate&lvl=district&brk=continuous");
     await waitForMapReady(page);
-    await page.goto("/?m=sex_ratio&lvl=district");
-    await waitForMapReady(page);
+    await page.waitForTimeout(900);
+    expect(await activeMethod(page)).toBe("SMOOTH");
+
+    await switchMetric(page, "sex ratio", /^Sex ratio/i);
+    await switchMetric(page, "literacy", /^Literacy rate/i);
+
+    expect(await activeMethod(page)).toBe("SMOOTH");
+    expect(new URL(page.url()).searchParams.get("brk")).toBe("continuous");
+  });
+
+  test("a URL pin outranks the recipient's own stored pick for that metric", async ({ page }) => {
+    // A pin is the sender's instruction about what the link shows. A stored pick
+    // silently overriding it — and then overwriting it in the address bar — is the
+    // same class of leak as the item's own title.
+    await page.addInitScript(() => {
+      localStorage.setItem("mapsofbharat-atlas-v1",
+        JSON.stringify({ methodByMetric: { literacy_rate: "jenks" }, reverse: false }));
+    });
     await page.goto("/?m=literacy_rate&lvl=district&brk=continuous");
     await waitForMapReady(page);
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(900);
+
+    expect(await activeMethod(page)).toBe("SMOOTH");
     expect(new URL(page.url()).searchParams.get("brk")).toBe("continuous");
   });
 });
