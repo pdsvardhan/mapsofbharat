@@ -169,7 +169,10 @@ export function computeBreaksGuarded(values: number[], method: BreakMethod, k = 
     Math.max(...classCounts(values, e)) / values.length > MAX_CLASS_SHARE;
   if (!lopsided(edges)) return { edges, method, fellBackFrom: null };
 
-  // quantile is balanced by construction, so the ladder always terminates
+  // Fixed two-rung ladder, so this terminates by construction. Quantile is usually
+  // the balanced rung but NOT always: on a tie-heavy distribution it cannot split
+  // equal values, so buddhist_pct still leaves 78.3% in one class. When no rung
+  // clears the threshold the original is kept rather than a worse substitute.
   for (const alt of ["jenks", "quantile"] as BreakMethod[]) {
     if (alt === method) continue;
     const altEdges = computeBreaks(values, alt, k);

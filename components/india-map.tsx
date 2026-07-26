@@ -28,6 +28,12 @@ const NEUTRAL = "#26231c"; // no indicator picked
 const NODATA = "#2a271d"; // indicator picked, region missing a value
 
 type MetricData = {
+  /** Which metric this payload is for. The previous metric's rows stay painted
+   *  while the next one loads, so anything that reasons about the DATA (not just
+   *  paints it) must check this against `sel` first — judging one metric's
+   *  default scale against another's distribution is exactly the cross-metric
+   *  leak item 756 exists to remove. */
+  id: string;
   name: string; unit: string; year: number; source: string; license?: string; decimals: number;
   min: number; max: number; mean: number; count: number; values: Record<string, number>;
   /** How many rows min/max/mean actually rest on (adr-022). */
@@ -112,6 +118,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [hovered, setHovered] = useState<Sel | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   const [brkMethod, setBrkMethod] = useState<BreakMethod>(init.brk);
+  /** Bumped on every deliberate scale pick, including re-picking the method that is
+   *  already active — that produces no brkMethod change, so without this the URL and
+   *  localStorage never learn the choice was deliberate. */
+  const [pickTick, setPickTick] = useState(0);
   const [palette, setPalette] = useState<PaletteId>(init.pal);
   const [reverse, setReverse] = useState<boolean>(init.rev);
   const [compare, setCompare] = useState(init.cmp.length > 0);
@@ -216,7 +226,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         reverse,
       }));
     } catch { /* ignore */ }
-  }, [palette, brkMethod, reverse]);
+  }, [palette, brkMethod, reverse, pickTick]);
 
   // per-metric suggested scale + palette (iter-53 items 403/404):
   // metrics.default_scale and topic-suggested ramps apply on pick, but never
@@ -231,7 +241,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       setBrkMethod(remembered);
       pickedForMetricRef.current = true;
     } else if (init.brkPinned && sel === pinnedMetricRef.current) {
-      // the URL pinned a method for THIS metric — honour it, don't re-derive
+      // The URL pinned a method for THIS metric. Re-APPLY it, don't just flag it as
+      // picked: on a return visit brkMethod still holds whatever the metric we came
+      // from left there, and flagging that as "picked" stamped a method the user
+      // never chose into the share link.
+      setBrkMethod(init.brk);
       pickedForMetricRef.current = true;
     } else {
       // no deliberate pick for this metric: clear the flag so the previous
@@ -629,7 +643,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (vintage === "2011") p.set("vin", "2011");
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
-  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage]);
+  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick]);
 
   // ── colouring ────────────────────────────────────────────────────────────
   type PaintSource = "districts" | "states" | "districts2011" | "states2011";
@@ -830,9 +844,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // Evaluated over statsEntries — the same rows the paint classifies.
   useEffect(() => {
     if (pickedForMetricRef.current || mode !== "value" || !statsEntries.length) return;
+    // The outgoing metric's rows stay loaded while the incoming one fetches. Judging
+    // metric B's default against metric A's distribution substituted a rung that then
+    // stuck (B's data arrives, the substitute is no longer lopsided, nothing corrects
+    // it) — the same cross-metric leak this item removes, relocated into the guard.
+    if (data?.id !== sel) return;
     const g = computeBreaksGuarded(statsEntries.map((e) => e.value), brkMethod);
     if (g.fellBackFrom && g.method !== brkMethod) setBrkMethod(g.method);
-  }, [statsEntries, mode, brkMethod]);
+  }, [statsEntries, mode, brkMethod, data, sel]);
 
   /** The exact class edges the map is painting with — same rows, same rule as the
    *  paint (adr-022 stats membership). Handed to the social card so an export can
@@ -1107,6 +1126,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   pickedForMetricRef.current = true;
                   if (sel) methodByMetricRef.current = { ...methodByMetricRef.current, [sel]: m };
                   setBrkMethod(m);
+                  setPickTick((t) => t + 1); // re-picking the active method is still a pick
                 }}
                 reverse={reverse} onReverse={() => setReverse((r) => !r)}
                 onClose={() => setScaleOpen(false)}
