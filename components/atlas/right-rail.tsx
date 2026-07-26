@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ESTIMATE_BADGE, countsInStats, estimateNote, estimateShort, notRankedNote } from "@/lib/estimate-kind";
+import { useDismiss } from "@/lib/use-dismiss";
 
 export type Entry = {
   code: string; name: string; sub: string; kind: "state" | "district"; value: number;
@@ -249,6 +250,8 @@ export function RankingRail({
   onRowClick: (e: Entry) => void; onRowEnter: (e: Entry) => void; onRowLeave: () => void;
 }) {
   const [cohortOpen, setCohortOpen] = useState(false);
+  const cohortBoxRef = useRef<HTMLDivElement>(null);
+  useDismiss(cohortOpen, () => setCohortOpen(false), cohortBoxRef);
   const [q, setQ] = useState("");
   const activeCohort = cohorts.find((c) => c.key === cohort) ?? cohorts[0];
   const min = entries.length ? entries[entries.length - 1].value : 0;
@@ -293,7 +296,7 @@ export function RankingRail({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex-none border-b border-border-faint px-[18px] pb-3 pt-[15px]">
         {cohortEnabled && (
-          <div className="mb-3.5 flex items-center justify-between">
+          <div ref={cohortBoxRef} className="mb-3.5 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-[.14em] text-faint">FILTER</span>
             <button
               onClick={() => setCohortOpen((o) => !o)} aria-expanded={cohortOpen}

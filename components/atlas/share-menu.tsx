@@ -4,7 +4,9 @@
 // PNG export sits beside it as the toolbar's primary action. All three are
 // real — no stubs. CSV and Locate retired (items 395/396, adr-015).
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+
+import { useDismiss } from "@/lib/use-dismiss";
 
 export function ShareMenu({
   disabled, onCopyLink, onCopyEmbed, copied,
@@ -15,15 +17,7 @@ export function ShareMenu({
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
+  useDismiss(open, () => setOpen(false), boxRef);
 
   return (
     <div ref={boxRef} className="relative flex items-stretch">

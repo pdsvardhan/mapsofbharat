@@ -5,7 +5,10 @@
 // editorial legend with real break values + the 4-method Scale popover.
 // The value-range slider is retired (item 397, adr-015).
 
+import { useRef } from "react";
+
 import { BreakMethod, PALETTES, PaletteId, computeBreaks, fmtBin } from "@/lib/breaks";
+import { useDismiss } from "@/lib/use-dismiss";
 
 export function Crumbs({
   items, hasBack, onBack,
@@ -184,7 +187,7 @@ export function LegendCard({
               style={{ background: mode === "vs_avg" ? "#d1502f" : "transparent", color: mode === "vs_avg" ? "#16110b" : "#a49d8c" }}>VS AVG</button>
           </div>
           <button
-            onClick={onToggleScale} aria-expanded={scaleOpen}
+            onClick={onToggleScale} aria-expanded={scaleOpen} data-scale-toggle
             className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent hover:bg-elevated"
           >
             ⚙ SCALE
@@ -241,8 +244,13 @@ export function ScalePopover({
   const METHODS: [BreakMethod, string][] = [
     ["continuous", "SMOOTH"], ["quantile", "QUANTILE"], ["equal", "EQUAL"], ["jenks", "JENKS"],
   ];
+  // The ⚙ SCALE trigger lives in the legend card, outside this popover — it is
+  // exempted so the outside-press does not fight the trigger's own toggle.
+  const boxRef = useRef<HTMLDivElement>(null);
+  useDismiss(true, onClose, boxRef, "[data-scale-toggle]");
   return (
     <div
+      ref={boxRef}
       className="atl-pop absolute bottom-[10px] left-[318px] z-30 w-[280px] border border-border bg-panel-solid p-4"
       style={{ boxShadow: "0 8px 26px rgba(0,0,0,.45)" }}
       role="dialog" aria-label="Scale options"
