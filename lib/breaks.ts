@@ -127,6 +127,59 @@ function jenksBreaks(sorted: number[], k: number): number[] {
   return breaks;
 }
 
+/** How many values land in each class. Mirrors colorFor's binning exactly, so a
+ *  legend built from this can never disagree with the colours on the map. */
+export function classCounts(values: number[], edges: number[]): number[] {
+  const out = new Array(edges.length + 1).fill(0) as number[];
+  for (const v of values) {
+    let bin = 0;
+    while (bin < edges.length && v >= edges[bin]) bin++;
+    out[bin]++;
+  }
+  return out;
+}
+
+/** A class swallowing more than this share of the regions makes a map that reads
+ *  as one flat colour. Measured on upi_value_per_capita (skew 4.37): equal-interval
+ *  put 682 of 731 districts — 93% — in class 1 (iter-26 item 756). */
+export const MAX_CLASS_SHARE = 0.45;
+
+export type GuardedBreaks = {
+  edges: number[];
+  /** The method actually used to cut these edges. */
+  method: BreakMethod;
+  /** Set when the guard rejected the requested method, so the UI can say so
+   *  instead of silently showing something the user did not ask for. */
+  fellBackFrom: BreakMethod | null;
+};
+
+/** Class breaks with a degeneracy guard, for the AUTOMATIC path only.
+ *
+ *  A deliberate pick is never silently overridden — that would be exactly the
+ *  substitution this codebase exists to avoid. Call this when the method came
+ *  from a metric default rather than from the user's own click; pass a
+ *  deliberate pick to computeBreaks() and disclose the occupancy instead. */
+export function computeBreaksGuarded(values: number[], method: BreakMethod, k = 5): GuardedBreaks {
+  const edges = computeBreaks(values, method, k);
+  // continuous is unclassed — there are no classes to be lopsided
+  if (method === "continuous" || !edges.length || !values.length)
+    return { edges, method, fellBackFrom: null };
+
+  const lopsided = (e: number[]) =>
+    Math.max(...classCounts(values, e)) / values.length > MAX_CLASS_SHARE;
+  if (!lopsided(edges)) return { edges, method, fellBackFrom: null };
+
+  // quantile is balanced by construction, so the ladder always terminates
+  for (const alt of ["jenks", "quantile"] as BreakMethod[]) {
+    if (alt === method) continue;
+    const altEdges = computeBreaks(values, alt, k);
+    if (altEdges.length && !lopsided(altEdges))
+      return { edges: altEdges, method: alt, fellBackFrom: method };
+  }
+  // nothing in the ladder is better — keep the honest original
+  return { edges, method, fellBackFrom: null };
+}
+
 /** Colour for a value given breaks (binned) or min/max span (continuous). */
 export function colorFor(
   v: number, min: number, max: number, breaks: number[], palette: (t: number) => string

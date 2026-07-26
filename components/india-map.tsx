@@ -11,7 +11,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   BreakMethod, PaletteId, PALETTES, DEFAULT_PALETTE, SUGGESTED_PALETTE, normalizePalette,
-  computeBreaks, colorFor, interpolateRdBu,
+  computeBreaks, computeBreaksGuarded, colorFor, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
 import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
@@ -152,8 +152,16 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const cohortSetsRef = useRef(cohortSets);
   const dataRef = useRef<MetricData | null>(null);
   const toastT = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // manual scale/palette picks (or URL pins) suppress per-metric suggestions
-  const brkTouchedRef = useRef(init.brkPinned);
+  // A deliberate scale pick (or a URL pin) suppresses the per-metric suggestion —
+  // but only for the metric it was made on. Before iter-26 item 756 this was one
+  // global latch: a single click pinned that method across every metric forever
+  // and wrote it into every share link, which is how a heavily skewed metric
+  // ended up rendered on equal-interval with 93% of districts in one class.
+  const pickedForMetricRef = useRef(init.brkPinned);
+  const methodByMetricRef = useRef<Record<string, BreakMethod>>({});
+  /** The metric a URL `brk` pin belongs to — the pin must not follow the user
+   *  to the next metric they open. */
+  const pinnedMetricRef = useRef(init.m);
   const palTouchedRef = useRef(init.palPinned);
 
   useEffect(() => { levelRef.current = level; }, [level]);
@@ -178,24 +186,33 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     toastT.current = setTimeout(() => setToast(null), 3400);
   }, []);
 
-  // persisted display prefs (palette / method / reverse) — metric stays in URL
+  // persisted display prefs (palette / per-metric method / reverse) — metric stays in URL
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem(PREFS_STORE) || "null");
-      if (s && !new URLSearchParams(window.location.search).get("pal")) {
+      if (!s) return;
+      // The legacy global `method` key is deliberately NOT restored (item 756):
+      // it is the latch that stuck one method across every metric. Anyone
+      // carrying one keeps their palette and drops the stale global scale.
+      if (s.methodByMetric && typeof s.methodByMetric === "object")
+        methodByMetricRef.current = Object.fromEntries(
+          Object.entries(s.methodByMetric as Record<string, string>)
+            .filter(([, m]) => ["continuous", "quantile", "equal", "jenks"].includes(m)),
+        ) as Record<string, BreakMethod>;
+      if (!new URLSearchParams(window.location.search).get("pal")) {
         if (s.palette) { setPalette(normalizePalette(s.palette)); palTouchedRef.current = true; }
-        if (s.method && ["continuous", "quantile", "equal", "jenks"].includes(s.method)) { setBrkMethod(s.method); brkTouchedRef.current = true; }
         if (typeof s.reverse === "boolean") setReverse(s.reverse);
       }
     } catch { /* ignore */ }
   }, []);
   useEffect(() => {
     // persist only deliberate picks — suggested defaults stay ephemeral
-    if (!brkTouchedRef.current && !palTouchedRef.current) return;
+    const methods = methodByMetricRef.current;
+    if (!palTouchedRef.current && !Object.keys(methods).length) return;
     try {
       localStorage.setItem(PREFS_STORE, JSON.stringify({
         ...(palTouchedRef.current ? { palette } : {}),
-        ...(brkTouchedRef.current ? { method: brkMethod } : {}),
+        ...(Object.keys(methods).length ? { methodByMetric: methods } : {}),
         reverse,
       }));
     } catch { /* ignore */ }
@@ -206,13 +223,28 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // override a URL pin, a persisted pref, or a manual pick this session
   useEffect(() => {
     if (!meta) return;
+    // Per-metric memory wins over the metric's suggested default; a URL pin wins
+    // over both (init.brkPinned seeds pickedForMetricRef true for the first metric).
+    const remembered = methodByMetricRef.current[sel];
     const ds = (meta as { default_scale?: string | null }).default_scale;
-    if (!brkTouchedRef.current && ds && ["continuous", "quantile", "equal", "jenks"].includes(ds))
-      setBrkMethod(ds as BreakMethod);
+    if (remembered) {
+      setBrkMethod(remembered);
+      pickedForMetricRef.current = true;
+    } else if (init.brkPinned && sel === pinnedMetricRef.current) {
+      // the URL pinned a method for THIS metric — honour it, don't re-derive
+      pickedForMetricRef.current = true;
+    } else {
+      // no deliberate pick for this metric: clear the flag so the previous
+      // metric's choice cannot follow the user around (the item-756 latch)
+      pickedForMetricRef.current = false;
+      setBrkMethod(ds && ["continuous", "quantile", "equal", "jenks"].includes(ds)
+        ? (ds as BreakMethod) : "jenks");
+    }
     if (!palTouchedRef.current)
       setPalette(SUGGESTED_PALETTE[meta.category] ?? DEFAULT_PALETTE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel, metrics.length]);
+
 
   // metric list + region name index
   useEffect(() => {
@@ -586,7 +618,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const p = new URLSearchParams();
     if (sel) { p.set("m", sel); p.set("lvl", level); }
     if (mode !== "value") p.set("mode", mode);
-    if (brkMethod !== "jenks") p.set("brk", brkMethod);
+    // Only a deliberate pick travels in the link (item 756). An automatic method
+    // does not need pinning — the recipient derives the same one from the metric —
+    // and pinning it was how one stray click followed every share URL.
+    if (pickedForMetricRef.current) p.set("brk", brkMethod);
     if (palette !== DEFAULT_PALETTE) p.set("pal", palette);
     if (reverse) p.set("rev", "1");
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
@@ -787,6 +822,17 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const scopeMean = statsEntries.length
     ? statsEntries.reduce((a, e) => a + e.value, 0) / statsEntries.length
     : 0;
+
+  // Degeneracy guard (item 756) — AUTOMATIC path only. A metric whose own default
+  // collapses the map into one class steps down the ladder (jenks, then quantile);
+  // a deliberate pick is never silently overridden, because substituting what the
+  // user asked for is precisely the failure this codebase exists to avoid.
+  // Evaluated over statsEntries — the same rows the paint classifies.
+  useEffect(() => {
+    if (pickedForMetricRef.current || mode !== "value" || !statsEntries.length) return;
+    const g = computeBreaksGuarded(statsEntries.map((e) => e.value), brkMethod);
+    if (g.fellBackFrom && g.method !== brkMethod) setBrkMethod(g.method);
+  }, [statsEntries, mode, brkMethod]);
 
   const fmtVal = useCallback((v: number) =>
     v.toLocaleString("en-IN", { maximumFractionDigits: data?.decimals ?? 0 }), [data]);
@@ -1049,7 +1095,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             )}
             {scaleOpen && (
               <ScalePopover
-                method={brkMethod} onMethod={(m) => { brkTouchedRef.current = true; setBrkMethod(m); }}
+                method={brkMethod} onMethod={(m) => {
+                  pickedForMetricRef.current = true;
+                  if (sel) methodByMetricRef.current = { ...methodByMetricRef.current, [sel]: m };
+                  setBrkMethod(m);
+                }}
                 reverse={reverse} onReverse={() => setReverse((r) => !r)}
                 onClose={() => setScaleOpen(false)}
               />
