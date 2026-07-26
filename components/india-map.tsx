@@ -353,9 +353,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           ["boolean", ["feature-state", "selected"], false], "#d1502f",
           ["boolean", ["feature-state", "pinned"], false], "#e6b34a",
           ["boolean", ["feature-state", "hover"], false], "#e9e3d5",
-          // item 760: per-region seam, falling back to the old flat hairline
-          // before any metric is picked (no feature-state has been set yet)
-          ["coalesce", ["feature-state", "stroke"], "rgba(233,227,213,0.10)"]],
+          // item 760: per-region seam, falling back to a flat hairline before any
+          // metric is picked (no feature-state has been set yet). The fallback is
+          // 0.20, not the original 0.10: at state level state-outline used to draw
+          // a second stroke over this one, and suppressing that double-stroke left
+          // the neutral START HERE map — the only view with no derived seam to
+          // replace it — measurably fainter than before.
+          ["coalesce", ["feature-state", "stroke"], "rgba(233,227,213,0.20)"]],
         "line-width": ["case",
           ["boolean", ["feature-state", "selected"], false], 2,
           ["boolean", ["feature-state", "pinned"], false], 2,
