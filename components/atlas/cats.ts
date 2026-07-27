@@ -53,10 +53,20 @@ export const CAT_DESC: Record<string, string> = {
   health: "Wellbeing, nutrition & healthcare — NFHS-5",
   lifestyle: "Alcohol, tobacco, obesity & more — NFHS-5",
   assets: "Cars, TVs & computers at home — Census 2011",
-  education: "Schools & learning — UDISE+ 2024-25",
-  labour: "Jobs & participation — PLFS",
+  // to-dos 336/337/338: each of these named ONE source while the majority of the
+  // category's metrics came from another, on a site whose whole promise is exact
+  // attribution. Counts as at 2026-07-27 — see the CAT_DESC test in
+  // tests/iter26-regressions.spec.ts, which fails if a named source stops appearing
+  // in that category's metric sources.
+  //   education:   5 of 8 are ASER 2024 (ASER Centre / Pratham), 3 are UDISE+
+  //   labour:      6 of 9 are MGNREGA (Ministry of Rural Development), 3 are PLFS
+  //   agriculture: 5 of 8 are the 20th Livestock Census 2019 (DAHD), 3 are APY
+  // ASER is the one non-government source in the catalogue, so it is named
+  // explicitly rather than folded into a ministry label.
+  education: "Schools, learning & outcomes — UDISE+ 2024-25 / ASER 2024",
+  labour: "Jobs, participation & rural works — PLFS / MGNREGA (MoRD)",
   livelihood: "How workers earn — Census 2011",
-  agriculture: "Crops, area & production — APY 2014",
+  agriculture: "Crops & livestock — APY 2014 / Livestock Census 2019 (DAHD)",
   crime: "Safety & justice — NCRB 2022",
   safety: "Road & self-harm risk — MoRTH / NCRB",
   // all three sources named: the air metric is satellite PM2.5 from UrbanEmissions
