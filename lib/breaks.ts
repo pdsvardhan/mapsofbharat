@@ -245,6 +245,29 @@ export function strokeForFill(fill: string): string {
     : "rgba(233,227,213,0.41)";    // soft light seam over a saturated one
 }
 
+/** Relative luminance of a fill, exported for callers that need to reason about a
+ *  backdrop rather than a single bordering fill (to-do 348). */
+export function fillLuminance(c: string): number {
+  return luminance(c);
+}
+
+/** Outline colour for a boundary drawn OVER many differently-coloured fills.
+ *
+ *  item 760 derives each seam from the one fill it borders. A state outline over a
+ *  DISTRICT map has no such fill — it runs past dozens of districts with different
+ *  values — so the item-760 rule is undefined for it. This is the honest analogue:
+ *  pick from the MEAN luminance of what is actually painted underneath, so the
+ *  national context lines stop reading as harsh white over a saturated ramp without
+ *  pretending to be derived per-region.
+ *
+ *  Deliberately a single colour per repaint, not per state: a per-state value would
+ *  imply the outline encodes that state's data, which at district level it does not. */
+export function outlineForBackdrop(meanLuminance: number): string {
+  return meanLuminance > 0.55
+    ? "rgba(13,15,20,0.42)"        // dark context line over a pale map
+    : "rgba(233,227,213,0.26)";    // the original warm-white, over a dark map
+}
+
 /** How many values land in each class. Mirrors colorFor's binning exactly, so a
  *  legend built from this can never disagree with the colours on the map. */
 export function classCounts(values: number[], edges: number[]): number[] {

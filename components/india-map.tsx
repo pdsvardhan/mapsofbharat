@@ -12,7 +12,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import {
   BreakMethod, PaletteId, PALETTES, DEFAULT_PALETTE, SUGGESTED_PALETTE, normalizePalette,
   computeBreaks, selectMethod, isBreakMethod, applicableMethods, describe,
-  METRIC_REFERENCE, colorFor, strokeForFill, interpolateRdBu,
+  METRIC_REFERENCE, colorFor, strokeForFill, fillLuminance, outlineForBackdrop, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
 import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
@@ -159,6 +159,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const brkRef = useRef(brkMethod);
   // the `reference` method needs the pivot inside the imperative paint too (item 757)
   const metricRefRef = useRef<number | null>(null);
+  // to-do 348 comparison flag: ?outline=adaptive vs the fixed default
+  const outlineModeRef = useRef<"fixed" | "adaptive">("fixed");
   const palRef = useRef(palette);
   const revRef = useRef(reverse);
   const cohortRef = useRef(cohort);
@@ -193,6 +195,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { brkRef.current = brkMethod; }, [brkMethod]);
   useEffect(() => { metricRefRef.current = METRIC_REFERENCE[sel] ?? null; }, [sel]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    outlineModeRef.current =
+      new URLSearchParams(window.location.search).get("outline") === "adaptive" ? "adaptive" : "fixed";
+  }, []);
   useEffect(() => { palRef.current = palette; }, [palette]);
   useEffect(() => { revRef.current = reverse; }, [reverse]);
   useEffect(() => { cohortRef.current = cohort; }, [cohort]);
@@ -759,6 +766,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (!vals.length) { min = 0; max = 1; }
     const mean = vals.length ? sum / vals.length : 0;
     const scope = new Set(codes);
+    let lumSum = 0, lumN = 0; // backdrop mean for the state-outline overlay (to-do 348)
     const breaks = modeRef.current === "value"
       ? computeBreaks(vals, brkRef.current, 5, metricRefRef.current) : [];
     const basePal = PALETTES[palRef.current].fn;
@@ -791,7 +799,23 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // the seam stays legible at both ends of every ramp instead of reading as
       // harsh white over the saturated end.
       map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color) });
+      lumSum += fillLuminance(color);
+      lumN++;
     }
+
+    // to-do 348 — the state-outline overlay. District boundaries have been adaptive
+    // since item 760, but state-outline is a separate layer on the `states` source
+    // drawn OVER district fills, and it kept a fixed warm-white. Item 760's rule
+    // ("derive from the fill it borders") is undefined here: a state boundary runs
+    // past dozens of districts with different values. So this derives ONE colour per
+    // repaint from the mean luminance of what is actually painted underneath.
+    // Opt-in via ?outline=adaptive while the owner compares it against the fixed
+    // treatment; the default is unchanged.
+    if (map.getLayer("state-outline") && outlineModeRef.current === "adaptive")
+      map.setPaintProperty(
+        "state-outline", "line-color",
+        lumN ? outlineForBackdrop(lumSum / lumN) : "rgba(233,227,213,0.26)",
+      );
   }
 
   // ── cohorts (real top-10 lists from our own state-level metrics) ────────
