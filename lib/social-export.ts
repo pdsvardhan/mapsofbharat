@@ -5,7 +5,7 @@
 // in the dark "ink" almanac theme or its light "paper" counterpart.
 // Pure module: no React, no DB, geometry in, canvas out.
 
-import { computeBreaks, colorFor } from "@/lib/breaks";
+import { computeBreaks, colorFor, strokeForFill } from "@/lib/breaks";
 import { estimateFootnote } from "@/lib/estimate-kind";
 
 export type SocialPreset = "portrait" | "square";
@@ -513,9 +513,15 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const drawRegion = (f: SocialFeature, pr: Proj) => {
     const v = values[spec.codeOf(f)];
     tracePath(ctx, f, pr);
-    ctx.fillStyle = v == null ? nodataFill : fill(v);
+    const paint = v == null ? null : fill(v);
+    ctx.fillStyle = paint ?? nodataFill;
     ctx.fill("evenodd");
-    ctx.strokeStyle = P.mapLine;
+    // Boundary derived from the fill it borders, exactly as the on-screen map does
+    // since item 760 (to-do 347). The card had kept a single fixed light stroke, so
+    // once the explorer went adaptive the exported PNG and the map it was taken from
+    // disagreed about boundary treatment — the same screen-vs-card divergence item
+    // 759 removed for class breaks. No-data keeps the flat hatch line.
+    ctx.strokeStyle = paint ? strokeForFill(paint) : P.nodataLine;
     ctx.lineWidth = 0.75;
     ctx.stroke();
   };
