@@ -7,7 +7,7 @@
 
 import { useRef } from "react";
 
-import { BreakMethod, PALETTES, PaletteId, computeBreaks, fmtBin } from "@/lib/breaks";
+import { BreakMethod, PALETTES, PaletteId, classCounts, fmtBin } from "@/lib/breaks";
 import { useDismiss } from "@/lib/use-dismiss";
 
 export function Crumbs({
@@ -157,12 +157,18 @@ export function LevelColourCard({
 }
 
 export function LegendCard({
-  metricName, unit, decimals, min, max, values, method, paletteFn, reverse,
+  metricName, unit, decimals, min, max, values, method, mapEdges, paletteFn, reverse,
   mode, onMode, avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
-  method: BreakMethod; paletteFn: (t: number) => string; reverse: boolean;
+  method: BreakMethod;
+  /** The edges the MAP is actually painting with. Passed in rather than recomputed
+   *  here: the legend was cutting its own breaks from `entries` while the paint used
+   *  `statsEntries`, so the two could disagree about where a class started. Same
+   *  single-source rule item 759 applied to the social card. */
+  mapEdges: number[];
+  paletteFn: (t: number) => string; reverse: boolean;
   mode: "value" | "vs_avg"; onMode: (m: "value" | "vs_avg") => void;
   avgNote: string | null; scope: string; countLabel: string; source: string; license: string;
   cohortNote: string | null;
@@ -171,7 +177,11 @@ export function LegendCard({
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
   const binned = mode === "value" && method !== "continuous";
-  const edges = binned ? computeBreaks(values, method) : [];
+  const edges = binned ? mapEdges : [];
+  // Occupancy per class, disclosed beside each row. The research brief's remedy for
+  // a lopsided scale is to make the lopsidedness VISIBLE rather than to hide it
+  // behind a plausible-looking legend (item 757).
+  const counts = binned && edges.length ? classCounts(values, edges) : [];
 
   return (
     <div className="border border-border px-[15px] py-3" style={{ background: "var(--panel)", boxShadow: "0 4px 18px rgba(0,0,0,.35)" }}>
@@ -207,10 +217,13 @@ export function LegendCard({
             ))}
           </div>
           <div className="mt-1.5 space-y-px">
-            {fmtBin(edges, min, max, decimals).map((label, i, arr) => (
-              <div key={i} className="flex items-center gap-2 font-mono text-[9px] text-faint">
+            {fmtBin(edges, min, max, decimals, method).map((label, i, arr) => (
+              <div key={i} data-legend-row className="flex items-center gap-2 font-mono text-[9px] text-faint">
                 <span className="h-2 w-4 flex-none" style={{ background: fn(arr.length <= 1 ? 0 : i / (arr.length - 1)) }} />
-                {label}
+                <span data-legend-label className="flex-1">{label}</span>
+                {counts[i] != null && (
+                  <span data-legend-count className="flex-none text-dim">{counts[i]}</span>
+                )}
               </div>
             ))}
           </div>
@@ -235,15 +248,26 @@ export function LegendCard({
   );
 }
 
+const METHOD_LABEL: Record<BreakMethod, string> = {
+  continuous: "SMOOTH", quantile: "QUANTILE", equal: "EQUAL", jenks: "JENKS",
+  zeroFloor: "FLOOR", reference: "PIVOT",
+};
+
 export function ScalePopover({
-  method, onMethod, reverse, onReverse, onClose,
+  method, onMethod, reverse, onReverse, onClose, applicable, autoReason,
 }: {
   method: BreakMethod; onMethod: (m: BreakMethod) => void;
   reverse: boolean; onReverse: () => void; onClose: () => void;
+  /** Methods worth offering for THIS series. FLOOR needs a tie mass to split off and
+   *  PIVOT needs an external reference value, so neither is offered where it would be
+   *  meaningless (item 757). */
+  applicable: BreakMethod[];
+  /** Why the automatic selector chose the current method. Null once the user has
+   *  picked by hand — at that point the choice is theirs, not the selector's. */
+  autoReason: string | null;
 }) {
-  const METHODS: [BreakMethod, string][] = [
-    ["continuous", "SMOOTH"], ["quantile", "QUANTILE"], ["equal", "EQUAL"], ["jenks", "JENKS"],
-  ];
+  const METHODS: [BreakMethod, string][] =
+    applicable.map((m) => [m, METHOD_LABEL[m]] as [BreakMethod, string]);
   // The ⚙ SCALE trigger lives in the legend card, outside this popover — it is
   // exempted so the outside-press does not fight the trigger's own toggle.
   const boxRef = useRef<HTMLDivElement>(null);
@@ -259,9 +283,9 @@ export function ScalePopover({
         <span className="text-[15px] font-extrabold text-bright">Scale</span>
         <button onClick={onClose} aria-label="Close scale options" className="text-[12px] text-dim hover:text-foreground">✕</button>
       </div>
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-y-2">
         <span className="text-[10px] font-bold tracking-[.12em] text-faint">METHOD</span>
-        <div className="flex border border-border">
+        <div className="flex flex-wrap border border-border">
           {METHODS.map(([k, label]) => (
             <button
               key={k} onClick={() => onMethod(k)} aria-pressed={method === k}
@@ -283,6 +307,12 @@ export function ScalePopover({
           ↔ REVERSE {reverse ? "ON" : "OFF"}
         </button>
       </div>
+      {autoReason && (
+        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug text-dim" data-auto-reason>
+          <span className="font-bold tracking-[.1em] text-faint">CHOSEN FOR THIS METRIC — </span>
+          {autoReason}
+        </div>
+      )}
     </div>
   );
 }

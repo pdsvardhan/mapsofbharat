@@ -11,7 +11,8 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   BreakMethod, PaletteId, PALETTES, DEFAULT_PALETTE, SUGGESTED_PALETTE, normalizePalette,
-  computeBreaks, computeBreaksGuarded, colorFor, strokeForFill, interpolateRdBu,
+  computeBreaks, selectMethod, isBreakMethod, applicableMethods, describe,
+  METRIC_REFERENCE, colorFor, strokeForFill, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
 import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
@@ -72,7 +73,7 @@ function readUrl() {
   const m = p.get("m") || "";
   // Jenks is the global default (iter-53 item 404); explicit URL param wins
   const brkParam = p.get("brk");
-  const brk = (["continuous", "quantile", "equal", "jenks"].includes(brkParam || "") ? brkParam : "jenks") as BreakMethod;
+  const brk = (isBreakMethod(brkParam) ? brkParam : "jenks") as BreakMethod;
   // old Observatory links: metric set but no lvl meant the district default
   const lvl = (p.get("lvl") === "state" ? "state" : p.get("lvl") === "district" ? "district" : m ? "district" : "state") as "state" | "district";
   return {
@@ -156,6 +157,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const selectedRef = useRef<Sel | null>(null);
   const modeRef = useRef(mode);
   const brkRef = useRef(brkMethod);
+  // the `reference` method needs the pivot inside the imperative paint too (item 757)
+  const metricRefRef = useRef<number | null>(null);
   const palRef = useRef(palette);
   const revRef = useRef(reverse);
   const cohortRef = useRef(cohort);
@@ -189,6 +192,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => { selectedRef.current = selected; }, [selected]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { brkRef.current = brkMethod; }, [brkMethod]);
+  useEffect(() => { metricRefRef.current = METRIC_REFERENCE[sel] ?? null; }, [sel]);
   useEffect(() => { palRef.current = palette; }, [palette]);
   useEffect(() => { revRef.current = reverse; }, [reverse]);
   useEffect(() => { cohortRef.current = cohort; }, [cohort]);
@@ -214,7 +218,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       if (s.methodByMetric && typeof s.methodByMetric === "object")
         methodByMetricRef.current = Object.fromEntries(
           Object.entries(s.methodByMetric as Record<string, string>)
-            .filter(([, m]) => ["continuous", "quantile", "equal", "jenks"].includes(m)),
+            .filter(([, m]) => isBreakMethod(m)),
         ) as Record<string, BreakMethod>;
       if (!new URLSearchParams(window.location.search).get("pal")) {
         if (s.palette) { setPalette(normalizePalette(s.palette)); palTouchedRef.current = true; }
@@ -280,10 +284,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       setPickTick((t) => t + 1);
     } else {
       // no deliberate pick for this metric: clear the flag so the previous
-      // metric's choice cannot follow the user around (the item-756 latch)
+      // metric's choice cannot follow the user around (the item-756 latch).
+      // default_scale is only the PLACEHOLDER until this metric's own values land —
+      // the data-driven selector (item 757) refines it in the effect below, where
+      // the distribution is actually known.
       pickedForMetricRef.current = false;
-      setBrkMethod(ds && ["continuous", "quantile", "equal", "jenks"].includes(ds)
-        ? (ds as BreakMethod) : "jenks");
+      setBrkMethod(isBreakMethod(ds) ? ds : "jenks");
     }
     if (!palTouchedRef.current)
       setPalette(SUGGESTED_PALETTE[meta.category] ?? DEFAULT_PALETTE);
@@ -746,7 +752,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (!vals.length) { min = 0; max = 1; }
     const mean = vals.length ? sum / vals.length : 0;
     const scope = new Set(codes);
-    const breaks = modeRef.current === "value" ? computeBreaks(vals, brkRef.current) : [];
+    const breaks = modeRef.current === "value"
+      ? computeBreaks(vals, brkRef.current, 5, metricRefRef.current) : [];
     const basePal = PALETTES[palRef.current].fn;
     const pal = revRef.current ? (t: number) => basePal(1 - t) : basePal;
     const maxDev = Math.max(...vals.map((v) => Math.abs(v - mean))) || 1;
@@ -881,28 +888,47 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     ? statsEntries.reduce((a, e) => a + e.value, 0) / statsEntries.length
     : 0;
 
-  // Degeneracy guard (item 756) — AUTOMATIC path only. A metric whose own default
-  // collapses the map into one class steps down the ladder (jenks, then quantile);
-  // a deliberate pick is never silently overridden, because substituting what the
-  // user asked for is precisely the failure this codebase exists to avoid.
-  // Evaluated over statsEntries — the same rows the paint classifies.
+  /** External reference value for this metric, if its scale has a meaningful pivot
+   *  (sex_ratio / child_sex_ratio → 1000 = parity). Drives the `reference` method. */
+  const metricRef = METRIC_REFERENCE[sel] ?? null;
+
+  // Data-driven method selection (item 757) — AUTOMATIC path only. Replaces the
+  // item-756 degeneracy guard, which could only ladder jenks→quantile and so could
+  // not fix a tie mass: buddhist_pct left 78.3% of districts in one class, and
+  // because binning is `v >= edge`, all four collapsed edges cleared at once and the
+  // 445 districts reporting ZERO Buddhist population were painted class 4 of 5 —
+  // three-quarters up the ramp — while the three lowest colours rendered for nobody.
+  //
+  // A deliberate pick is still never silently overridden: substituting what the user
+  // asked for is precisely the failure this codebase exists to avoid. Evaluated over
+  // statsEntries — the same rows the paint classifies (adr-022).
+  const [autoReason, setAutoReason] = useState<string | null>(null);
   useEffect(() => {
-    if (pickedForMetricRef.current || mode !== "value" || !statsEntries.length) return;
+    if (pickedForMetricRef.current || mode !== "value" || !statsEntries.length) {
+      if (pickedForMetricRef.current) setAutoReason(null);
+      return;
+    }
     // The outgoing metric's rows stay loaded while the incoming one fetches. Judging
-    // metric B's default against metric A's distribution substituted a rung that then
-    // stuck (B's data arrives, the substitute is no longer lopsided, nothing corrects
-    // it) — the same cross-metric leak this item removes, relocated into the guard.
+    // metric B against metric A's distribution substituted a method that then stuck
+    // (B's data arrives, the substitute is no longer lopsided, nothing corrects it) —
+    // the same cross-metric leak item 756 removed, relocated into the selector.
     if (data?.id !== sel) return;
-    const g = computeBreaksGuarded(statsEntries.map((e) => e.value), brkMethod);
-    if (g.fellBackFrom && g.method !== brkMethod) setBrkMethod(g.method);
-  }, [statsEntries, mode, brkMethod, data, sel]);
+    const choice = selectMethod(
+      statsEntries.map((e) => e.value),
+      { isPct: data?.unit === "%", reference: metricRef },
+    );
+    setAutoReason(choice.reason);
+    if (choice.method !== brkMethod) setBrkMethod(choice.method);
+  }, [statsEntries, mode, brkMethod, data, sel, metricRef]);
 
   /** The exact class edges the map is painting with — same rows, same rule as the
    *  paint (adr-022 stats membership). Handed to the social card so an export can
    *  never class the data differently from the map it was taken from (item 759). */
   const mapBreaks = useMemo(
-    () => (mode === "value" ? computeBreaks(statsEntries.map((e) => e.value), brkMethod) : []),
-    [statsEntries, mode, brkMethod],
+    () => (mode === "value"
+      ? computeBreaks(statsEntries.map((e) => e.value), brkMethod, 5, metricRef)
+      : []),
+    [statsEntries, mode, brkMethod, metricRef],
   );
 
   const fmtVal = useCallback((v: number) =>
@@ -1153,7 +1179,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 <LegendCard
                   metricName={data.name} unit={data.unit} decimals={data.decimals}
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}
-                  method={brkMethod} paletteFn={PALETTES[palette].fn} reverse={reverse}
+                  method={brkMethod} mapEdges={mapBreaks}
+                  paletteFn={PALETTES[palette].fn} reverse={reverse}
                   mode={mode} onMode={setMode}
                   avgNote={`avg ${fmtVal(scopeMean)}${focusActive ? " (state avg)" : ""}`}
                   scope={focusActive ? "within state" : level === "district" ? "districts" : "states"}
@@ -1174,8 +1201,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                     methodByMetricRef.current = { ...methodByMetricRef.current, [sel]: m };
                   }
                   setBrkMethod(m);
+                  setAutoReason(null); // the choice is theirs now, not the selector's
                   setPickTick((t) => t + 1); // re-picking the active method is still a pick
                 }}
+                applicable={applicableMethods(
+                  describe(statsEntries.map((e) => e.value)), metricRef,
+                )}
+                autoReason={autoReason}
                 reverse={reverse} onReverse={() => setReverse((r) => !r)}
                 onClose={() => setScaleOpen(false)}
               />
