@@ -15,6 +15,18 @@ FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DB_PATH=/data/mapsofbharat.db
+# Which commit is actually running (to-do 344). The image is built from the working
+# tree and committed afterwards, so image timestamps cannot prove provenance — an
+# image can legitimately predate the commit it contains. Stamping the sha in makes
+# the question answerable instead of inferred: /api/health reports it, and
+# `docker inspect` carries the label. Empty when built without the build arg, which
+# is itself a signal the deploy ritual was skipped.
+ARG GIT_SHA=unknown
+ARG GIT_DIRTY=unknown
+ENV GIT_SHA=$GIT_SHA
+ENV GIT_DIRTY=$GIT_DIRTY
+LABEL org.opencontainers.image.revision=$GIT_SHA
+LABEL xyz.vault7a.git-dirty=$GIT_DIRTY
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static

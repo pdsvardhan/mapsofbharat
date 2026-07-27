@@ -1,6 +1,16 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # to-do 344: stamp the running commit into the image. Both default to the
+        # literal "unknown" if the deploy is run without them, which is a visible
+        # signal rather than a silent gap. Deploy with:
+        #   GIT_SHA=$(git rev-parse --short HEAD) \
+        #   GIT_DIRTY=$(git diff --quiet && echo clean || echo dirty) \
+        #   docker compose up -d --build
+        GIT_SHA: ${GIT_SHA:-unknown}
+        GIT_DIRTY: ${GIT_DIRTY:-unknown}
     container_name: mapsofbharat
     restart: unless-stopped
     # Hard isolation on the shared 47-container box (todo 269, iter-102):
