@@ -311,7 +311,8 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const dense = spec.level === "district" || spec.entries.length > 40;
   const tableW = 232, tableGap = 12;
   const tablesW = tableW * 2 + tableGap;
-  const N = Math.max(3, Math.min(10, spec.tableN ?? 7));
+  // default 5 rows per table (item 761, owner preference — was 7)
+  const N = Math.max(3, Math.min(10, spec.tableN ?? 5));
   const tops = spec.entries.slice(0, N);
   // worst-first; when the scope is tiny (drilled state), never re-list top rows
   const bots = spec.entries.length > N
