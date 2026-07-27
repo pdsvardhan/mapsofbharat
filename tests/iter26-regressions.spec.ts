@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { CAT_ORDER, CAT_DESC, CAT_ACCENT, CAT_ICON } from "@/components/atlas/cats";
 
 // iter-26 regression guards. Every case here pins a defect that actually shipped
 // or was caught by the item's verifier — none of them are hypothetical:
@@ -302,5 +303,120 @@ test.describe("popover dismissal (item 764)", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await page.mouse.click(12, 12);
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+// ── taxonomy maps + attribution (to-dos 339, 340, 336-338) ────────────────────
+// The item-751 test above walks the BROWSE path, and orderedCategories() appends
+// unknown categories, so a category missing from CAT_ORDER still renders and that
+// test still passes. CAT_DESC was asserted by neither case — which is how three
+// categories came to credit the wrong source for most of their metrics. These
+// assert the four maps directly.
+
+const STOP = new Set([
+  "data", "gov", "district", "districtwise", "wise", "table", "tables", "report",
+  "annual", "survey", "statistics", "statistical", "ministry", "department", "dept",
+  "national", "india", "indian", "state", "states", "union", "via", "from", "year",
+  "estimates", "estimate", "resource", "government", "office", "registrar", "general",
+  "directorate", "economics", "March", "march", "yearend", "book", "booklet", "school",
+  "education", "level", "levels", "with", "and", "the", "for", "per",
+]);
+
+const words = (s: string) =>
+  new Set((s.toLowerCase().match(/[a-z0-9&+]{3,}/g) ?? []).filter((w) => !STOP.has(w)));
+
+test.describe("category taxonomy maps (to-do 339)", () => {
+  test("every live category has an entry in all four maps, and none is stale", async ({ request }) => {
+    const { metrics } = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { category: string }[];
+    };
+    const live = [...new Set(metrics.map((m) => m.category))].sort();
+    expect(live.length).toBeGreaterThan(0);
+
+    for (const c of live) {
+      expect(CAT_ORDER, `${c} missing from CAT_ORDER`).toContain(c);
+      expect(CAT_DESC[c], `${c} missing from CAT_DESC`).toBeTruthy();
+      expect(CAT_ACCENT[c], `${c} missing from CAT_ACCENT`).toBeTruthy();
+      expect(CAT_ICON[c], `${c} missing from CAT_ICON`).toBeTruthy();
+    }
+    // and nothing lingers for a category that no longer exists
+    const liveSet = new Set(live);
+    for (const c of CAT_ORDER) expect(liveSet, `CAT_ORDER has stale ${c}`).toContain(c);
+    for (const c of Object.keys(CAT_DESC)) expect(liveSet, `CAT_DESC has stale ${c}`).toContain(c);
+  });
+});
+
+test.describe("category descriptions credit the right source (to-do 340)", () => {
+  // Data-driven: any source family covering a large share of a category's metrics
+  // must be NAMED in that category's description. This one assertion is what would
+  // have caught to-dos 336, 337 and 338 together — education crediting UDISE+ for
+  // five ASER metrics, labour crediting PLFS for six MGNREGA ones, agriculture
+  // crediting APY for five Livestock Census ones.
+  const SHARE = 0.4;
+
+  test(`every source family >= ${SHARE * 100}% of a category is named in its description`, async ({ request }) => {
+    const { metrics } = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { id: string; category: string; source: string }[];
+    };
+    const byCat = new Map<string, typeof metrics>();
+    for (const m of metrics) byCat.set(m.category, [...(byCat.get(m.category) ?? []), m]);
+
+    const failures: string[] = [];
+    for (const [cat, ms] of byCat) {
+      const desc = CAT_DESC[cat];
+      // a description that names no source at all makes no claim to check
+      if (!desc || !desc.includes("—")) continue;
+      const claimed = words(desc.split("—").slice(1).join(" "));
+
+      const groups = new Map<string, number>();
+      for (const m of ms) groups.set(m.source, (groups.get(m.source) ?? 0) + 1);
+      for (const [src, n] of groups) {
+        if (n / ms.length < SHARE) continue;
+        const overlap = [...words(src)].filter((w) => claimed.has(w));
+        if (!overlap.length)
+          failures.push(
+            `${cat}: ${n}/${ms.length} metrics come from "${src.slice(0, 70)}…" ` +
+            `but the description names none of it — "${desc}"`,
+          );
+      }
+    }
+    expect(failures, failures.join("\n")).toEqual([]);
+  });
+});
+
+// ── as-reported-2011 state view (to-do 346) ───────────────────────────────────
+test.describe("2011 vintage at state level paints (to-do 346)", () => {
+  // /api/metrics?level=state2011 keys states as zero-padded "01".."35", and the
+  // vintage geojson's promoteId is the same padded st_code — but the name index was
+  // built with String(Number(st_code)), giving "1".."35". allCodes("states2011")
+  // reads those keys, so every state looked up as undefined: the entire 2011 state
+  // map painted no-data, and the ranking rail showed bare codes instead of names.
+  // Pre-existing on main since the vintage toggle shipped; district-2011 was fine.
+  test("every state carries a value, and the rail names them", async ({ page, request }) => {
+    const api = (await (await request.get("/api/metrics/literacy_rate?level=state2011")).json()) as {
+      values: Record<string, number>;
+    };
+    const codes = Object.keys(api.values);
+    expect(codes.length).toBeGreaterThan(30);
+    // the premise: the API really does pad its keys
+    expect(codes.some((c) => /^0\d$/.test(c))).toBe(true);
+
+    await page.goto("/?m=literacy_rate&lvl=state&vin=2011");
+    await waitForMapReady(page);
+
+    // the legend's class counts are computed over the painted entries, so if the
+    // key mismatch is back they sum to zero rather than to the state count
+    const counts = await page.locator("[data-legend-count]").allInnerTexts();
+    const total = counts.reduce((a, c) => a + (Number(c.replace(/,/g, "")) || 0), 0);
+    expect(total).toBeGreaterThan(30);
+
+    // and the rail resolves NAMES, not bare codes — the second symptom of the same
+    // bug, since Entry.name falls back to the code when the index misses. Asserted
+    // by naming states that exist in the 2011 vintage (no Telangana, no Ladakh,
+    // undivided AP). Not by "no 0N text anywhere in the rail": the rank badges are
+    // themselves zero-padded, so that matches nine legitimate rows.
+    const rail = page.locator("aside");
+    for (const name of ["Kerala", "Maharashtra", "Bihar", "Punjab"])
+      await expect(rail.getByText(name, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   });
 });
