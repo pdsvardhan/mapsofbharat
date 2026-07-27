@@ -474,8 +474,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       (d2011.features as any[]).forEach((f) => {
         idx.set(String(f.properties?.rid), { name: String(f.properties?.district ?? "—"), state: String(f.properties?.st_nm ?? "") });
       });
+      // Key on the RAW zero-padded st_code ("01".."35"), not String(Number(...))
+      // (to-do 346). Three things must agree on this key and all three are padded:
+      // the source's promoteId below, the /api/metrics?level=state2011 value keys,
+      // and this index. Normalising to "1".."35" here desynchronised all of them —
+      // allCodes("states2011") reads these keys, so every state looked up as
+      // undefined and the whole 2011 state map painted no-data, while the ranking
+      // rail fell back to showing the bare code instead of the state name.
       (s2011.features as any[]).forEach((f) => {
-        idx.set(String(Number(f.properties?.st_code)), { name: String(f.properties?.st_nm ?? "—"), state: null });
+        idx.set(String(f.properties?.st_code), { name: String(f.properties?.st_nm ?? "—"), state: null });
       });
       map.addSource("districts2011", { type: "geojson", data: d2011, promoteId: "rid" });
       map.addSource("states2011", { type: "geojson", data: s2011, promoteId: "st_code" });
