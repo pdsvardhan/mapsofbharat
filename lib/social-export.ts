@@ -592,40 +592,118 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   if (!dense) {
   const labelCodes = new Set(spec.entries.map((e) => e.code));
 
-  type Lbl = { code: string; cx: number; cy: number; val: string; name: string; inside: boolean; side: "l" | "r"; x: number; y: number };
-  const labels: Lbl[] = [];
+  // Label placement is a three-tier ladder (item 763). Before this, anything
+  // that failed the fit-in-polygon test was flung 74px radially from the map
+  // centre and given a leader line, which put white sticks on Kerala, Goa,
+  // Arunachal, the NE cluster, Haryana and Chandigarh even where free canvas
+  // sat right beside the state. Now: INSIDE → NEAR (short offset, no stick)
+  // → FLUNG (previous behaviour, last resort). Shrink before flinging.
+  //
+  // Tier 0 is the iter-74 mobile-legible size (value 19px / name 13px);
+  // tier 1 is the compact fallback that buys back ~15% of the width.
+  const TIERS = [
+    { val: `700 19px ${SANS}`, name: `500 13px ${SANS}`, h: 40, dy: 16, minBh: 52, minArea: 6000 },
+    { val: `700 16px ${SANS}`, name: `500 11px ${SANS}`, h: 34, dy: 14, minBh: 44, minArea: 3600 },
+  ] as const;
+
+  type Mode = "inside" | "near" | "flung";
+  type Lbl = {
+    code: string; cx: number; cy: number; val: string; name: string;
+    mode: Mode; tier: number; side: "l" | "r"; x: number; y: number;
+    w: number; bw: number; bh: number; areaPx: number;
+  };
+  type Box = { x: number; y: number; w: number; h: number };
+
+  const widthAt = (l: Lbl, tier: number) => {
+    ctx.font = TIERS[tier].val;
+    const vw = ctx.measureText(l.val).width;
+    ctx.font = TIERS[tier].name;
+    return Math.max(vw, ctx.measureText(l.name).width);
+  };
+  const boxOf = (l: Lbl): Box => {
+    const h = TIERS[l.tier].h;
+    if (l.mode === "inside") return { x: l.cx - l.w / 2, y: l.cy - 18, w: l.w, h };
+    const tx = l.x + (l.side === "r" ? 4 : -4);
+    return { x: l.side === "r" ? tx : tx - l.w, y: l.y - 18, w: l.w, h };
+  };
+  const hit = (a: Box, b: Box) =>
+    a.x < b.x + b.w + 8 && b.x < a.x + a.w + 8 && a.y < b.y + b.h + 3 && b.y < a.y + a.h + 3;
+  const inMap = (b: Box) =>
+    b.x >= mapRect.x + 4 && b.x + b.w <= mapRect.x + mapRect.w - 4 &&
+    b.y >= mapRect.y + 4 && b.y + b.h <= mapRect.y + mapRect.h - 4;
+
+  const cand: Lbl[] = [];
   for (const f of mainland) {
     const code = spec.codeOf(f);
     if (!labelCodes.has(code) || values[code] == null) continue;
     const c = centroidPx(f, proj);
-    const val = fmtIndianShort(values[code], spec.metric.decimals, spec.metric.unit);
-    const name = nameByCode.get(code) ?? code;
-    // mobile-legible label sizes (iter-74 item 574): value 19px / name 13px
-    ctx.font = `700 19px ${SANS}`;
-    const valW = ctx.measureText(val).width;
-    ctx.font = `500 13px ${SANS}`;
-    const nameW = ctx.measureText(name).width;
-    const needW = Math.max(valW, nameW);
-    const inside = c.bw * 0.86 > needW && c.bh > 52 && c.areaPx > 6000;
-    labels.push({ code, cx: c.x, cy: c.y, val, name, inside, side: c.x >= mapCx ? "r" : "l", x: c.x, y: c.y });
+    cand.push({
+      code, cx: c.x, cy: c.y,
+      val: fmtIndianShort(values[code], spec.metric.decimals, spec.metric.unit),
+      name: nameByCode.get(code) ?? code,
+      mode: "flung", tier: 0, side: c.x >= mapCx ? "r" : "l",
+      x: c.x, y: c.y, w: 0, bw: c.bw, bh: c.bh, areaPx: c.areaPx,
+    });
   }
 
-  // push outside labels to the flank and resolve vertical collisions per side
+  // Greedy, largest-polygon-first: a big state claims its own space before the
+  // small crowded ones (Goa, Chandigarh, the NE cluster) resolve around it.
+  cand.sort((a, b) => b.areaPx - a.areaPx);
+  const placed: Lbl[] = [];
+  const clear = (l: Lbl) => {
+    const b = boxOf(l);
+    return inMap(b) && !insetRects.some((r) => hit(b, r)) && !placed.some((o) => hit(b, boxOf(o)));
+  };
+
+  // NEAR ring: cardinals first (they read most naturally beside a state), then
+  // diagonals; each tried at widening distance before dropping a tier.
+  const RING = [
+    [1, 0], [-1, 0], [0, -1], [0, 1],
+    [0.71, -0.71], [-0.71, -0.71], [0.71, 0.71], [-0.71, 0.71],
+  ] as const;
+
+  for (const l of cand) {
+    let done = false;
+    for (let t = 0; t < TIERS.length && !done; t++) {
+      l.tier = t; l.w = widthAt(l, t); l.mode = "inside";
+      const T = TIERS[t];
+      if (l.bw * 0.86 > l.w && l.bh > T.minBh && l.areaPx > T.minArea && clear(l)) done = true;
+    }
+    for (const dist of [30, 46, 62]) {
+      if (done) break;
+      for (const [ux, uy] of RING) {
+        if (done) break;
+        for (let t = 0; t < TIERS.length; t++) {
+          l.tier = t; l.w = widthAt(l, t); l.mode = "near";
+          // text grows away from the state when the offset is horizontal,
+          // otherwise away from the map centre so it cannot run off-canvas
+          l.side = ux > 0.3 ? "r" : ux < -0.3 ? "l" : l.cx >= mapCx ? "r" : "l";
+          l.x = l.cx + ux * dist;
+          l.y = l.cy + uy * dist;
+          if (clear(l)) { done = true; break; }
+        }
+      }
+    }
+    if (!done) {
+      l.mode = "flung"; l.tier = 0; l.w = widthAt(l, 0);
+      l.side = l.cx >= mapCx ? "r" : "l";
+    }
+    placed.push(l);
+  }
+
+  // Flung labels keep the previous flank treatment: pushed radially, clamped by
+  // measured width so long names (DNH&DD…) never leave the canvas (iter-72
+  // item 566), then de-collided per side.
+  const flung = placed.filter((l) => l.mode === "flung");
   for (const side of ["l", "r"] as const) {
-    const outs = labels.filter((l) => !l.inside && l.side === side).sort((a, b) => a.cy - b.cy);
+    const outs = flung.filter((l) => l.side === side).sort((a, b) => a.cy - b.cy);
     outs.forEach((l) => {
       const dx = l.cx - mapCx, dy = l.cy - mapCy;
       const len = Math.hypot(dx, dy) || 1;
-      const push = 74;
-      l.x = l.cx + (dx / len) * push;
-      l.y = l.cy + (dy / len) * push;
-      // clamp by measured text width so long names (DNH&DD…) never leave the canvas (iter-72 item 566)
-      ctx.font = `700 19px ${SANS}`;
-      const vw = ctx.measureText(l.val).width;
-      ctx.font = `500 13px ${SANS}`;
-      const tw = Math.max(vw, ctx.measureText(l.name).width);
-      if (side === "l") l.x = Math.max(l.x, 12 + tw + 4);
-      else l.x = Math.min(l.x, LW - 12 - tw - 4);
+      l.x = l.cx + (dx / len) * 74;
+      l.y = l.cy + (dy / len) * 74;
+      if (side === "l") l.x = Math.max(l.x, 12 + l.w + 4);
+      else l.x = Math.min(l.x, LW - 12 - l.w - 4);
       l.y = Math.max(mapRect.y + 24, Math.min(mapRect.y + mapRect.h - 18, l.y));
     });
     const gap = 42;
@@ -635,37 +713,24 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       if (outs[i].y > mapRect.y + mapRect.h - 18) outs[i].y = mapRect.y + mapRect.h - 18 - (outs.length - 1 - i) * gap;
   }
 
-  // global collision pass: outside labels also dodge inside labels, each
+  // global pass: flung labels also dodge committed inside/near labels, each
   // other across sides, and the island inset boxes (movers push downward)
-  type Box = { x: number; y: number; w: number; h: number };
-  const boxOf = (l: Lbl): Box => {
-    ctx.font = `700 19px ${SANS}`;
-    const vw = ctx.measureText(l.val).width;
-    ctx.font = `500 13px ${SANS}`;
-    const w = Math.max(vw, ctx.measureText(l.name).width);
-    if (l.inside) return { x: l.cx - w / 2, y: l.cy - 18, w, h: 40 };
-    const tx = l.x + (l.side === "r" ? 4 : -4);
-    return { x: l.side === "r" ? tx : tx - w, y: l.y - 18, w, h: 40 };
-  };
-  const hit = (a: Box, b: Box) =>
-    a.x < b.x + b.w + 8 && b.x < a.x + a.w + 8 && a.y < b.y + b.h + 3 && b.y < a.y + a.h + 3;
   for (let pass = 0; pass < 4; pass++)
-    for (const l of labels) {
-      if (l.inside) continue;
-      for (const o of labels) {
+    for (const l of flung) {
+      for (const o of placed) {
         if (o === l) continue;
-        const A = boxOf(l), B = boxOf(o);
-        if (hit(A, B)) l.y = B.y + B.h + 23;
+        const B = boxOf(o);
+        if (hit(boxOf(l), B)) l.y = B.y + B.h + 23;
       }
-      for (const r of insetRects) {
-        const A = boxOf(l);
-        if (hit(A, r)) l.y = r.y - 22; // sit above the inset frame
-      }
+      for (const r of insetRects) if (hit(boxOf(l), r)) l.y = r.y - 22; // sit above the inset frame
       l.y = Math.max(mapRect.y + 24, Math.min(mapRect.y + mapRect.h - 18, l.y));
     }
 
-  for (const l of labels) {
-    if (!l.inside) {
+  for (const l of placed) {
+    const T = TIERS[l.tier];
+    // only a flung label earns a leader line — near labels sit beside the
+    // state and read without one (item 763)
+    if (l.mode === "flung") {
       ctx.strokeStyle = P.leader;
       ctx.lineWidth = 0.9;
       ctx.beginPath();
@@ -673,20 +738,19 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       ctx.lineTo(l.x, l.y - 6);
       ctx.stroke();
     }
-    const align: CanvasTextAlign = l.inside ? "center" : l.side === "r" ? "left" : "right";
-    ctx.textAlign = align;
-    const tx = l.inside ? l.cx : l.x + (l.side === "r" ? 4 : -4);
-    const ty = l.inside ? l.cy : l.y;
-    ctx.font = `700 19px ${SANS}`;
+    ctx.textAlign = l.mode === "inside" ? "center" : l.side === "r" ? "left" : "right";
+    const tx = l.mode === "inside" ? l.cx : l.x + (l.side === "r" ? 4 : -4);
+    const ty = l.mode === "inside" ? l.cy : l.y;
+    ctx.font = T.val;
     ctx.lineWidth = 4.5;
     ctx.strokeStyle = P.halo;
     ctx.strokeText(l.val, tx, ty);
     ctx.fillStyle = P.text;
     ctx.fillText(l.val, tx, ty);
-    ctx.font = `500 13px ${SANS}`;
-    ctx.strokeText(l.name, tx, ty + 16);
+    ctx.font = T.name;
+    ctx.strokeText(l.name, tx, ty + T.dy);
     ctx.fillStyle = P.muted;
-    ctx.fillText(l.name, tx, ty + 16);
+    ctx.fillText(l.name, tx, ty + T.dy);
   }
   ctx.textAlign = "left";
   } else {
