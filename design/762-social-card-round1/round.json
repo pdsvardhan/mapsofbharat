@@ -1,0 +1,21 @@
+{
+  "project_slug": "mapsofbharat",
+  "target_id": "feat-social-export",
+  "target_kind": "feature",
+  "archetype": "media-card",
+  "round": 1,
+  "rung": 2,
+  "profile": "P2",
+  "session_id": "cc-2026-07-27-mob-iter26",
+  "html": "/tmp/mob-design/round1/pick.html",
+  "constraints": {
+    "frozen": ["colour-palette", "typeface", "type-voice"],
+    "owner_ruling": "Keep the current look, fix the layout only (2026-07-27)",
+    "note": "Target is a static Canvas-rendered PNG, not a DOM component. Variants are REAL renders from lib/social-export.ts, not HTML panels; the DOM isolation gate does not apply and was not run."
+  },
+  "variants_shown": {
+    "A": { "dead-space-usage": "hero-number-in-tibet", "rank-table-placement": "3+3-in-bay", "anchor-stat-treatment": "110px-dominant", "legend-placement": "arabian-sea", "mobile-type-scale": "headline-as-kicker" },
+    "B": { "dead-space-usage": "four-quarters", "rank-table-placement": "highest-only-in-bay", "anchor-stat-treatment": "naked-over-arabian", "legend-placement": "top-left", "mobile-type-scale": "largest-in-set" },
+    "C": { "dead-space-usage": "tables-into-both-seas", "rank-table-placement": "lowest-arabian-highest-bay", "anchor-stat-treatment": "plate-top-right", "legend-placement": "under-map-control", "mobile-type-scale": "current-scale" }
+  }
+}
