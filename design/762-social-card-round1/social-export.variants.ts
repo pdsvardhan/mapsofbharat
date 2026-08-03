@@ -22,7 +22,7 @@ import { estimateFootnote } from "@/lib/estimate-kind";
 
 export type SocialPreset = "portrait" | "square";
 export type SocialTheme = "ink" | "paper";
-export type LayoutId = "v0" | "v1" | "v2" | "v3" | "v4" | "v5" | "v6";
+export type LayoutId = "v0" | "v1" | "v2" | "v3" | "v4" | "v5" | "v6" | "v7";
 export type VoidId = "nw" | "tibet" | "arabian" | "bay";
 export type Slot = VoidId | "band" | "under" | null;
 
@@ -339,6 +339,35 @@ export const LAYOUTS: Record<LayoutId, LayoutPreset> = {
     note: { place: null, size: 11 },
     markers: "none", captionSize: 12.5,
     onMap: { value: 19, name: 13.5 },
+  },
+
+  // ── v7 — "HERO LEDGER" (round-2 owner pick: A/v3 modified, 2026-08-03) ──────
+  // Owner picked v3 (Hero Number) then moved two blocks: the 110px hero numeral
+  // out of the Tibet band and into the TOP of the Bay (above the Andaman inset,
+  // which the allocator lays from the bay's bottom, so they don't collide), and
+  // the two rank tables abreast into the wide Tibet band (v2's placement) rather
+  // than stacked in the Bay. Net: the hero owns the Bay's upper void, ranks read
+  // across the top over Bihar/Nepal, legend stays a vertical stack in the
+  // Arabian Sea, and the headline stays a 34px kicker in the band.
+  // Differs on: anchor (hero 110px unboxed, Bay-top), tables (paired in Tibet),
+  // headline (34px kicker), legend (Arabian vertical).
+  v7: {
+    id: "v7", label: "Hero Ledger",
+    idea: "v3's 110px hero numeral moves to the top of the Bay (above the Andaman inset); the two rank tables go abreast in the Tibet band; kicker headline; legend stacks in the Arabian.",
+    differsOn: ["anchor: hero 110px unboxed in Bay-top", "tables: paired in Tibet (side)", "headline: 34px kicker", "legend: Arabian vertical"],
+    margin: 52, edgeToEdge: false, fitAlign: "center",
+    headline: { place: "band", size: 34, lines: 2, align: "left" },
+    sub: { show: true, size: 17 },
+    anchor: { place: "bay", value: 110, label: 16, boxed: false },
+    tables: {
+      hi: "tibet", lo: "tibet", layout: "side",
+      style: T({ w: 240, rows: 5, rowH: 27, valueSize: 15, nameSize: 13 }),
+      atState: true,
+    },
+    legend: { place: "arabian", form: "stack", swatchW: 30, swatchH: 14, labelSize: 12, titleSize: 12 },
+    note: { place: null, size: 11 },
+    markers: "none", captionSize: 12,
+    onMap: { value: 19, name: 13 },
   },
 };
 
