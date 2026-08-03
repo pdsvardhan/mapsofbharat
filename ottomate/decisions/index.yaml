@@ -304,3 +304,13 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/2026-07-27-classification-method-selection.md
+  - id: adr-027-shrug-crosswalk-accept
+    project_slug: mapsofbharat
+    title: Accept the CC-BY-NC-SA census crosswalk while non-commercial; swap to LGD
+      before monetising
+    status: accepted
+    date: 2026-08-04T00:00:00.000Z
+    tags:
+      - curated
+      - cat:product
+    body_path: decisions/adr-027-shrug-crosswalk-accept.md
