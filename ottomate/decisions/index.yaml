@@ -292,16 +292,15 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/2026-07-18-drop-shrug-ec13.md
-  - id: adr-026-inheritance-grading
+  - id: adr-025-classification-method-selection
     project_slug: mapsofbharat
-    title: Inherited estimates are graded, and the shaky ones are flagged
+    title: Choropleth classification follows each metric distribution, not one
+      global default
     status: accepted
-    date: 2026-08-03T00:00:00.000Z
+    date: 2026-07-27T00:00:00.000Z
     tags:
       - data
-      - reliability
-      - ux
-      - honesty
+      - correctness
       - curated
-      - cat:reliability
-    body_path: decisions/2026-08-03-iter-27-inheritance-grading.md
+      - cat:product
+    body_path: decisions/2026-07-27-classification-method-selection.md
