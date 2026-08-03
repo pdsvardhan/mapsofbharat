@@ -420,3 +420,137 @@ test.describe("2011 vintage at state level paints (to-do 346)", () => {
       await expect(rail.getByText(name, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   });
 });
+
+// ── item-760 adaptive stroke invariant (to-do 349) ────────────────────────────
+// item 760 made every region's boundary seam ADAPTIVE: instead of one fixed warm-
+// white hairline everywhere, each seam is derived from the fill it borders via
+// strokeForFill() in lib/breaks.ts — a dark seam cut into a pale fill, a soft light
+// seam over a saturated one — so the boundary stays legible at both ends of every
+// ramp. The seam lives entirely in MapLibre feature-state ("stroke"), never the DOM,
+// so nothing in typecheck, lint, or a screenshot would notice a future recolor round
+// quietly regressing it to a constant. These read the live map through the instance
+// the component parks on window.__mob_map (india-map.tsx) and pin the three pieces of
+// the invariant directly:
+//   1. every region carries a seam at all;
+//   2. the seam is DERIVED per region from its own fill — both treatments occur, the
+//      map splits cleanly by fill luminance, and the two seams are luminance-separated;
+//   3. the state-outline context layer is hidden at state level (there state-line
+//      already draws that geometry, and two stacked strokes were half the reason the
+//      boundaries read as heavy white — item 760 / to-do 348).
+
+/** Rec. 709 relative luminance of "rgb(r,g,b)" / "rgb(r, g, b)" / "#rrggbb", 0..1.
+ *  A verification helper only: it mirrors the standard luminance formula the map
+ *  reasons about, NOT strokeForFill's 0.55 threshold, so these tests stay black-box
+ *  — they read the seams the app actually painted and check their shape rather than
+ *  re-implementing the rule under test. */
+function lum(c: string): number {
+  let r: number, g: number, b: number;
+  const m = c.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  if (m) { r = +m[1]; g = +m[2]; b = +m[3]; }
+  else {
+    const h = c.replace("#", "");
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+  }
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+type Seam = { id: string; color: string | null; stroke: string | null };
+
+/** Every region of the active source, with the fill + seam the last recolor parked
+ *  in its MapLibre feature-state. Enumerates the SAME promoteId set recolor()
+ *  iterates (allCodes()), read straight from the source geojson, then waits until a
+ *  seam has been stamped on every one of them so we never read a half-painted map. */
+async function readSeams(page: Page, level: "state" | "district"): Promise<{ total: number; seams: Seam[] }> {
+  return await page.evaluate(async (lvl) => {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const map = (window as unknown as { __mob_map?: any }).__mob_map;
+    const source = lvl === "state" ? "states" : "districts";
+    const url = lvl === "state" ? "/geo/states.geojson" : "/geo/districts.geojson";
+    const promoteId = lvl === "state" ? "st_code" : "rid";
+    const deadline = Date.now() + 20_000;
+    while ((!map || !map.getSource || !map.getSource(source)) && Date.now() < deadline) await sleep(150);
+    const fc = await fetch(url).then((r) => r.json());
+    const ids: string[] = [...new Set((fc.features as any[]).map((f) => String(f.properties[promoteId])))];
+    let seams: Seam[] = [];
+    while (Date.now() < deadline) {
+      seams = ids.map((id) => {
+        const s = map.getFeatureState({ source, id }) || {};
+        return { id, color: s.color ?? null, stroke: s.stroke ?? null };
+      });
+      if (seams.every((s) => s.stroke)) break; // recolor has run for every region
+      await sleep(150);
+    }
+    return { total: ids.length, seams };
+  }, level);
+}
+
+test.describe("item-760 adaptive stroke invariant (to-do 349)", () => {
+  test("every painted region carries a boundary seam", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    const { total, seams } = await readSeams(page, "district");
+    expect(total).toBeGreaterThan(600); // the district source really loaded
+    const bare = seams.filter((s) => !s.stroke).map((s) => s.id);
+    expect(bare, `regions with no seam: ${bare.slice(0, 12).join(", ")}`).toEqual([]);
+  });
+
+  test("the seam is derived per region from its fill, and the two seams are luminance-separated", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    const { seams } = await readSeams(page, "district");
+    const painted = seams.filter((s) => s.color && s.stroke) as { id: string; color: string; stroke: string }[];
+    expect(painted.length).toBeGreaterThan(600);
+
+    // group regions by the seam they were given, carrying each region's fill luminance
+    const byStroke = new Map<string, number[]>();
+    for (const s of painted) {
+      const arr = byStroke.get(s.stroke) ?? [];
+      arr.push(lum(s.color));
+      byStroke.set(s.stroke, arr);
+    }
+
+    // (a) BOTH seam treatments actually occur. A constant stroke — the exact
+    //     regression this item exists to catch — collapses this to a single value.
+    const strokes = [...byStroke.keys()];
+    expect(strokes.length, `distinct seams painted: ${strokes.join(" | ")}`).toBeGreaterThanOrEqual(2);
+
+    // (b) the two seams are separated in LUMINANCE: a genuinely dark seam and a
+    //     genuinely light one, not two near-identical near-white hairlines.
+    const seamLums = strokes.map((c) => ({ c, l: lum(c) })).sort((a, b) => a.l - b.l);
+    const dark = seamLums[0];                    // rgba(13,15,20,.75)    ≈ 0.06
+    const light = seamLums[seamLums.length - 1]; // rgba(233,227,213,.41) ≈ 0.89
+    expect(dark.l, `darkest seam is not dark: ${dark.c}`).toBeLessThan(0.2);
+    expect(light.l, `lightest seam is not light: ${light.c}`).toBeGreaterThan(0.6);
+    expect(light.l - dark.l).toBeGreaterThan(0.3);
+
+    // (c) DERIVED FROM THE FILL IT BORDERS: the seam is a clean threshold on the
+    //     region's OWN fill luminance — the dark seam falls only on pale fills, the
+    //     light seam only on saturated ones, with no overlap. This split is what
+    //     makes the seam per-region; a constant or fill-independent stroke cannot
+    //     produce it.
+    const darkFills = byStroke.get(dark.c)!;   // fills wearing the dark seam → must be pale
+    const lightFills = byStroke.get(light.c)!; // fills wearing the light seam → must be saturated
+    expect(Math.min(...darkFills), "a dark seam landed on a saturated fill")
+      .toBeGreaterThan(Math.max(...lightFills));
+  });
+
+  test("the state-outline context layer is hidden at state level and drawn over the district map", async ({ page }) => {
+    const visibility = () =>
+      page.evaluate(() => {
+        const map = (window as unknown as { __mob_map?: any }).__mob_map;
+        if (!map?.getLayer?.("state-outline")) return "MISSING";
+        return map.getLayoutProperty("state-outline", "visibility") ?? "visible";
+      });
+
+    // at state level state-line already draws the same geometry, so the outline is
+    // suppressed to avoid the double stroke (item 760 / to-do 348)
+    await page.goto("/?m=literacy_rate&lvl=state");
+    await waitForMapReady(page);
+    await expect.poll(visibility, { timeout: 10_000 }).toBe("none");
+
+    // over the DISTRICT map it IS the national context boundary, so it is shown
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    await expect.poll(visibility, { timeout: 10_000 }).toBe("visible");
+  });
+});
