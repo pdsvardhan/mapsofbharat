@@ -20,28 +20,27 @@ Worked examples (counts per class, low→high):
 | `upi_value_per_capita` (C8's metric) | 15× | **682**,38,5,3,3 | 147,146,146,146,146 | 9,297,313,97,15 |
 | `buddhist_pct` | 70× | **711**,15,1,3,3 | 445,0,0,157,131 | — (has 0s) |
 
-The map defaults to **jenks** (natural breaks, `components/india-map.tsx:78`), which is better than equal but still collapses on heavy skew; **equal** is offered in the UI and is the worst option — the commenter's link (`?brk=equal`) selected exactly that.
+These four are the *manual* method options. The map's actual default is a data-driven auto-selector, not any fixed method — see the CORRECTION section below. `equal` is the worst manual option, and the commenter's `?brk=equal` link is a manual override of the auto-selector.
 
 ## The four "how to handle the gradient" options on OUR data
 
 - **equal-interval** — even value slabs. Fails on skew (above). Only good for uniform/bounded data.
 - **quantile** — equal *count* per class (~146/731). **Robustly spreads colour on every metric** (see the quantile column — always even). Trade-off: classes have unequal value widths, so it flattens magnitude (a district 100× another can sit one class away).
-- **jenks** (current default) — natural breaks minimising within-class variance. Good for *clustered* data; still collapses when the low cluster holds ~90% of districts.
+- **jenks** — natural breaks minimising within-class variance. Good for *clustered* data; still collapses when the low cluster holds ~90% of districts.
 - **log-equal** (not yet built) — equal slabs in log space. For strictly-positive right-skew (density, counts, ₹) it both spreads colour AND preserves orders-of-magnitude (`upi log=[9,297,313,97,15]`). Cannot be used where values hit 0 (many `_pct` metrics).
 
 Palette is not the problem — navy→yellow sequential is correct for magnitude. The fix is classification.
 
-## Recommendation (per-metric smart default + a log method)
+## CORRECTION + what we actually built (2026-08-04)
 
-1. **Wire per-metric `default_scale`** so each metric opens in its best method — this finishes adr-025 / to-do #154 (the column exists, values `quantile`/`equal` are present, but the map hard-defaults to `jenks` and doesn't honour it). Choose by measured skew:
-   - heavy right-skew (≥80% one-class under equal, or skew > 5×) → **quantile** (or **log** if strictly positive) ;
-   - moderate skew → **jenks** ;
-   - symmetric / bounded (sex ratio, turnout, literacy) → **equal** or **jenks**.
-2. **Add a `log` break method** for strictly-positive skewed metrics — keeps the magnitude story quantile loses. Sits alongside the existing `zeroFloor` / `reference` specials.
-3. **Auto-classify script** computes each metric's skew and writes `default_scale`, re-runnable as data refreshes (the analysis in `c7-analysis` is the seed).
-4. Optional: soft-warn or de-prioritise `equal` in the UI for heavy-skew metrics — it's the trap this comment hit.
+**The map does NOT default to a fixed method.** It runs a data-driven auto-selector — `selectMethod` (item 757) — that occupancy-checks a preference ladder and takes the first method that does NOT bury >45% of regions in one class. Measured against the live data, it already spreads **86 of 87** district metrics well by default (only `buddhist_pct`, an all-zeros case, stays >60%). Heavy-skew metrics like `upi_value_per_capita` / `pop_density` default to **quantile**, not equal. `default_scale` is only a one-frame placeholder until values load and `selectMethod` refines it (india-map.tsx:304-306). **`equal` is a manual option the selector deliberately never overrides** — the commenter's `?brk=equal` link picked exactly that, the only reason those maps looked monochrome. So there is no default bug; a per-metric `default_scale`-by-skew scheme would be redundant (and is the skew-threshold approach item-757 measured and rejected as worse). Palette is fine; classification is already handled by default.
 
-Net effect: a visitor landing on any metric sees a well-differentiated map by default, and power users keep every method. No data changes, no re-ingest.
+Given that, the two genuine, owner-approved improvements — both shipped:
+
+1. **`log` break method** (equal-interval in log space). For strictly-positive right-skew it BOTH spreads the low tail AND preserves orders of magnitude (which quantile flattens). Offered in the picker only for strictly-positive series (undefined at ≤0), and added to `selectMethod`'s ladder ABOVE quantile with an occupancy check, so a positive-skew metric prefers log only when it actually declusters (`upi` → log; `pop_density` fails the log occupancy check → stays quantile).
+2. **Collapse warning.** When a user MANUALLY picks a method that buries >60% of regions in one class (the `equal`-on-skew trap), the scale popover shows a soft amber hint naming a better method with a one-click switch. Never fires on the auto-default or a reasonable pick.
+
+Net effect: defaults stay as strong as they already are; power users gain a magnitude-faithful `log` view, and the `equal` trap now guides you out of it. No data changes, no re-ingest.
 
 ## Elections (basic scoping)
 

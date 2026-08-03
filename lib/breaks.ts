@@ -14,15 +14,16 @@ export type BreakMethod =
   | "continuous" | "quantile" | "equal" | "jenks"
   // item 757, from the choropleth research brief (research/758-*.md):
   | "zeroFloor"    // tie mass at the floor gets its own class; jenks the remainder
-  | "reference";   // diverging, critical break pinned at an EXTERNAL reference
+  | "reference"    // diverging, critical break pinned at an EXTERNAL reference
+  | "log";         // equal-interval in LOG space — spreads a positive right-skew tail (item C7)
 
-/** Methods a user may pick for any metric. zeroFloor and reference are omitted
- *  deliberately: both are only meaningful for a metric whose distribution (or
- *  metadata) warrants them, so the picker offers them conditionally — see
- *  applicableMethods(). */
+/** Methods a user may pick for any metric. zeroFloor, reference and log are
+ *  omitted deliberately: each is only meaningful for a metric whose distribution
+ *  (or metadata) warrants it, so the picker offers them conditionally — see
+ *  applicableMethods(). log needs strictly-positive values (undefined at <=0). */
 export const UNIVERSAL_METHODS: BreakMethod[] = ["continuous", "quantile", "equal", "jenks"];
 
-export const ALL_METHODS: BreakMethod[] = [...UNIVERSAL_METHODS, "zeroFloor", "reference"];
+export const ALL_METHODS: BreakMethod[] = [...UNIVERSAL_METHODS, "zeroFloor", "reference", "log"];
 
 export function isBreakMethod(v: unknown): v is BreakMethod {
   return typeof v === "string" && (ALL_METHODS as string[]).includes(v);
@@ -113,7 +114,20 @@ export function computeBreaks(values: number[], method: BreakMethod, k = 5, ref?
   }
   if (method === "zeroFloor") return zeroFloorBreaks(v, k);
   if (method === "reference") return referenceBreaks(v, k, ref ?? null);
+  if (method === "log") return logBreaks(v, k);
   return jenksBreaks(v, k);
+}
+
+/** Equal-interval breaks in LOG space (item C7). On a right-skewed positive
+ *  series this spreads the crowded low tail across classes while preserving
+ *  orders of magnitude — the thing quantile flattens. Undefined at <=0, so it
+ *  falls back to jenks if any value is non-positive (the picker only offers it
+ *  for strictly-positive series, but guard anyway). */
+function logBreaks(sorted: number[], k: number): number[] {
+  if (sorted[0] <= 0) return jenksBreaks(sorted, k);
+  const lmin = Math.log(sorted[0]), lmax = Math.log(sorted[sorted.length - 1]);
+  const step = (lmax - lmin) / k;
+  return Array.from({ length: k - 1 }, (_, i) => Math.exp(lmin + step * (i + 1)));
 }
 
 /** Tie-mass-at-the-floor classing (item 757).
@@ -349,6 +363,7 @@ export function applicableMethods(shape: DistShape | null, ref: number | null, k
   const out = [...UNIVERSAL_METHODS];
   if (shape && shape.tieAtMin >= 1 / k) out.push("zeroFloor");
   if (ref != null) out.push("reference");
+  if (shape && shape.min > 0) out.push("log"); // log is undefined at <=0
   return out;
 }
 
@@ -396,6 +411,13 @@ export function selectMethod(
     {
       method: "equal", when: opts.isPct && Math.abs(shape.skew) < 0.5 && shape.bimodality <= 0.555,
       reason: "near-symmetric bounded percentage — round, evenly-spaced edges read most easily",
+    },
+    {
+      // Preferred over quantile for a positive right-skew because it BOTH spreads
+      // the low tail AND preserves orders of magnitude (quantile flattens them).
+      // Occupancy-checked below, so it is only taken when it actually declusters.
+      method: "log", when: shape.min > 0 && shape.skew > 1,
+      reason: `right-skewed and strictly positive (skew ${shape.skew.toFixed(1)}) — log spacing spreads the low tail while keeping orders of magnitude`,
     },
     // Quantile sits ABOVE jenks deliberately, and this order is measured rather
     // than assumed. Preferring jenks raised the dominant-class share on 21 series

@@ -250,11 +250,11 @@ export function LegendCard({
 
 const METHOD_LABEL: Record<BreakMethod, string> = {
   continuous: "SMOOTH", quantile: "QUANTILE", equal: "EQUAL", jenks: "JENKS",
-  zeroFloor: "FLOOR", reference: "PIVOT",
+  zeroFloor: "FLOOR", reference: "PIVOT", log: "LOG",
 };
 
 export function ScalePopover({
-  method, onMethod, reverse, onReverse, onClose, applicable, autoReason,
+  method, onMethod, reverse, onReverse, onClose, applicable, autoReason, collapseWarn,
 }: {
   method: BreakMethod; onMethod: (m: BreakMethod) => void;
   reverse: boolean; onReverse: () => void; onClose: () => void;
@@ -265,6 +265,9 @@ export function ScalePopover({
   /** Why the automatic selector chose the current method. Null once the user has
    *  picked by hand — at that point the choice is theirs, not the selector's. */
   autoReason: string | null;
+  /** Set when the CURRENT method (a manual pick) collapses the map into one class;
+   *  names a better method to nudge toward. Null when the pick reads fine. */
+  collapseWarn: { share: number; better: BreakMethod } | null;
 }) {
   const METHODS: [BreakMethod, string][] =
     applicable.map((m) => [m, METHOD_LABEL[m]] as [BreakMethod, string]);
@@ -307,6 +310,19 @@ export function ScalePopover({
           ↔ REVERSE {reverse ? "ON" : "OFF"}
         </button>
       </div>
+      {collapseWarn && (
+        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug" style={{ color: "#e0913f" }} data-collapse-warn>
+          <span className="font-bold tracking-[.1em]">HEADS UP — </span>
+          {METHOD_LABEL[method]} puts {Math.round(collapseWarn.share * 100)}% of regions in one class here.{" "}
+          <button
+            onClick={() => onMethod(collapseWarn.better)}
+            className="font-bold underline underline-offset-2 hover:text-bright"
+          >
+            Use {METHOD_LABEL[collapseWarn.better]}
+          </button>{" "}
+          for a clearer spread.
+        </div>
+      )}
       {autoReason && (
         <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug text-dim" data-auto-reason>
           <span className="font-bold tracking-[.1em] text-faint">CHOSEN FOR THIS METRIC — </span>

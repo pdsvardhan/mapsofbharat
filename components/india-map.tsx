@@ -11,7 +11,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   BreakMethod, PaletteId, PALETTES, DEFAULT_PALETTE, SUGGESTED_PALETTE, normalizePalette,
-  computeBreaks, selectMethod, isBreakMethod, applicableMethods, describe,
+  computeBreaks, selectMethod, isBreakMethod, applicableMethods, describe, classCounts,
   METRIC_REFERENCE, colorFor, strokeForFill, fillLuminance, outlineForBackdrop, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
@@ -971,6 +971,20 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (choice.method !== brkMethod) setBrkMethod(choice.method);
   }, [statsEntries, mode, brkMethod, data, sel, metricRef]);
 
+  // Nudge for a MANUAL pick that collapses the map (comment C7). Fires only when
+  // the current method buries >60% of regions in one class AND the auto-selector
+  // would do better — so it never nags on a reasonable pick or the auto-default.
+  const collapseWarn = useMemo(() => {
+    if (mode !== "value" || !statsEntries.length || data?.id !== sel) return null;
+    const vals = statsEntries.map((e) => e.value);
+    const edges = computeBreaks(vals, brkMethod, 5, metricRef);
+    if (!edges.length) return null; // SMOOTH has no classes to collapse
+    const share = Math.max(...classCounts(vals, edges)) / vals.length;
+    if (share <= 0.6) return null;
+    const better = selectMethod(vals, { isPct: data?.unit === "%", reference: metricRef }).method;
+    return better === brkMethod ? null : { share, better };
+  }, [statsEntries, brkMethod, metricRef, data, sel, mode]);
+
   /** The exact class edges the map is painting with — same rows, same rule as the
    *  paint (adr-022 stats membership). Handed to the social card so an export can
    *  never class the data differently from the map it was taken from (item 759). */
@@ -1260,6 +1274,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   describe(statsEntries.map((e) => e.value)), metricRef,
                 )}
                 autoReason={autoReason}
+                collapseWarn={collapseWarn}
                 reverse={reverse} onReverse={() => setReverse((r) => !r)}
                 onClose={() => setScaleOpen(false)}
               />
