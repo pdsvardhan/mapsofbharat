@@ -68,19 +68,38 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
   // Adilabad. A single parent per district cannot state that (adr-020).
   // Guarded: the table only exists once fill_new_districts.py has run.
   const donorOf = new Map<string, string>();
-  try {
+  // Which of this region's inheritances are SHAKY — a weak sibling match flagged by
+  // adr-026's gate — keyed like the donor. Tolerates the column's absence on a store
+  // graded by an older pipeline (falls back to donors-only; nothing flagged shaky).
+  const shakyOf = new Set<string>();
+  const load = (withShaky: boolean) => {
+    const cols = withShaky ? "metric_id, year, source_name, shaky" : "metric_id, year, source_name";
     const src = d
-      .prepare(
-        "SELECT metric_id, year, source_name FROM district_estimate_source WHERE region_code = ?"
-      )
-      .all(code) as { metric_id: string; year: number; source_name: string }[];
-    for (const s of src) donorOf.set(`${s.metric_id}|${s.year}`, s.source_name);
+      .prepare(`SELECT ${cols} FROM district_estimate_source WHERE region_code = ?`)
+      .all(code) as { metric_id: string; year: number; source_name: string; shaky?: number }[];
+    donorOf.clear();
+    shakyOf.clear();
+    for (const s of src) {
+      donorOf.set(`${s.metric_id}|${s.year}`, s.source_name);
+      if (withShaky && s.shaky) shakyOf.add(`${s.metric_id}|${s.year}`);
+    }
+  };
+  try {
+    load(true);
   } catch (err) {
-    // Absent table = the pipeline has not run yet, which is expected on a fresh
-    // DB. Anything else is a real fault, and silently degrading every citation to
-    // null would hide it — the panel would just stop naming parents with no signal.
+    // Absent table = the pipeline has not run yet, expected on a fresh DB. Absent
+    // column = graded by an older pipeline — retry without it. Anything else is a
+    // real fault, and silently degrading every citation to null would hide it — the
+    // panel would just stop naming parents with no signal.
     const msg = err instanceof Error ? err.message : String(err);
-    if (!/no such table/i.test(msg)) {
+    if (/no such column/i.test(msg)) {
+      try {
+        load(false);
+      } catch (e2) {
+        const m2 = e2 instanceof Error ? e2.message : String(e2);
+        if (!/no such table/i.test(m2)) console.error(`[region/${code}] citation lookup failed:`, m2);
+      }
+    } else if (!/no such table/i.test(msg)) {
       console.error(`[region/${code}] district_estimate_source lookup failed:`, msg);
     }
   }
@@ -111,6 +130,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
     // column that already disagrees for 36 rows. Keying on the wrong one looks fine
     // today and would silently null every citation the moment they diverge here.
     estimated_from: r.estimated ? donorOf.get(`${r.id}|${r.value_year}`) ?? null : null,
+    // 1 when this inherited value is a weak sibling match (adr-026). Disclosure
+    // only — the value, its (absent) rank and the stats are untouched.
+    shaky: r.estimated && shakyOf.has(`${r.id}|${r.value_year}`) ? 1 : 0,
   }));
 
   // Distinct donors across this region's estimates, for the panel's footnote.

@@ -45,6 +45,8 @@ type MetricData = {
   estimate_kind?: Record<string, string>;
   /** region_code -> the district that supplied the number; 'inherited' only (item 640). */
   estimated_from?: Record<string, string>;
+  /** region_code -> 1 for a SHAKY inheritance — a weak sibling match (adr-026). */
+  shaky?: Record<string, 1>;
 };
 type Sel = { code: string; name: string; state: string; kind: "state" | "district" };
 type Focus = { code: string; name: string };
@@ -101,6 +103,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const estimatedRef = useRef<Record<string, 1>>({});
   const estimateKindRef = useRef<Record<string, string>>({});
   const estimatedFromRef = useRef<Record<string, string>>({});
+  const shakyRef = useRef<Record<string, 1>>({});
   const rankRef = useRef<Record<string, number>>({});
   const statesRef = useRef<Record<string, any>>({});
   const statesFCRef = useRef<{ features: SocialFeature[] } | null>(null);
@@ -637,6 +640,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       estimatedRef.current = md.estimated || {};
       estimateKindRef.current = md.estimate_kind || {};
       estimatedFromRef.current = md.estimated_from || {};
+      shakyRef.current = md.shaky || {};
       const sorted = Object.entries(md.values).sort((a, b) => b[1] - a[1]);
       const ranks: Record<string, number> = {};
       sorted.forEach(([c], i) => (ranks[c] = i + 1));
@@ -869,6 +873,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const est = data.estimated ?? {};
     const kinds = data.estimate_kind ?? {};
     const donors = data.estimated_from ?? {};
+    const shak = data.shaky ?? {};
     const out: Entry[] = [];
     for (const [code, value] of Object.entries(data.values)) {
       if (f && !code.startsWith(f) && !code.startsWith((focus?.code ?? "") + "_")) continue;
@@ -884,6 +889,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         estimated: est[code] === 1 ? 1 : 0,
         estimate_kind: kinds[code] ?? null,
         estimated_from: donors[code] ?? null,
+        shaky: shak[code] === 1 ? 1 : 0,
       });
     }
     out.sort((a, b) => b.value - a.value);
@@ -1113,10 +1119,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const hoverEst = !!(hovered && estimatedRef.current[hovered.code] === 1);
   const hoverKind = hovered ? estimateKindRef.current[hovered.code] : null;
   const hoverDonor = hovered ? estimatedFromRef.current[hovered.code] : null;
+  const hoverShaky = hovered ? shakyRef.current[hovered.code] === 1 : false;
   // Name the district the number actually came from, rather than "estimated from
   // parent" while the region panel names Nirmal for the same cell (item 640).
-  // Falls back per kind — a projected figure has no donor to name.
-  const hoverEstNote = hoverEst ? estimateShort(hoverKind, hoverDonor) : "";
+  // Falls back per kind — a projected figure has no donor to name. A shaky
+  // inheritance adds "(weak match)" so the hover carries the caveat too (adr-026).
+  const hoverEstNote = hoverEst ? estimateShort(hoverKind, hoverDonor, hoverShaky) : "";
 
   const fmtHover = (v: number | null | undefined) =>
     v == null ? "no data" : fmtFull(v) + (hoverEst ? " · est." : "");

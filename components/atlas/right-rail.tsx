@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ESTIMATE_BADGE, countsInStats, estimateNote, estimateShort, notRankedNote } from "@/lib/estimate-kind";
+import { ESTIMATE_BADGE, estimateBadge, countsInStats, estimateNote, estimateShort, notRankedNote } from "@/lib/estimate-kind";
 import { useDismiss } from "@/lib/use-dismiss";
 
 export type Entry = {
@@ -20,6 +20,8 @@ export type Entry = {
   /** District that supplied this number; 'inherited' only — a projected figure has
    *  no donor (item 640). */
   estimated_from?: string | null;
+  /** 1 when this inherited value is a SHAKY (weak sibling) match (adr-026). */
+  shaky?: number;
 };
 export type CohortDef = { key: string; name: string; note: string; codes: Set<string> | null };
 export type RegionMetricRow = {
@@ -32,9 +34,15 @@ export type RegionMetricRow = {
    *  inherit different metrics from different siblings (adr-020). Only ever set
    *  for estimate_kind='inherited' — a projected figure has no donor. */
   estimated_from?: string | null;
+  /** 1 when this inherited value is a SHAKY (weak sibling) match (adr-026). */
+  shaky?: number;
 };
 
 const BINS = 9;
+
+// Amber for a SHAKY inheritance badge (adr-026) — distinct from the accent orange
+// a normal "est." uses, so a weak sibling match reads as a stronger caution.
+const SHAKY_COLOR = "#e0a92e";
 
 function reducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -103,13 +111,13 @@ export function RegionProfile({
     // fall back to a number here: `rank ?? 1` would announce a copied value as
     // the top of the table.
     const selEntry = entries.find((e) => e.code === sel.code);
-    if (rank == null) return { bins, sentence: notRankedNote(selEntry?.estimate_kind, selEntry?.estimated_from) };
+    if (rank == null) return { bins, sentence: notRankedNote(selEntry?.estimate_kind, selEntry?.estimated_from, selEntry?.shaky) };
     const N = entries.reduce((n, e) => n + (countsInStats(e.estimated, e.estimate_kind) ? 1 : 0), 0);
     const pct = N > 1 ? Math.round(((N - rank) / (N - 1)) * 100) : 100;
     // A ranked projection still is not this state's own audited number — the
     // rank sentence carries the disclosure with it (adr-023 keeps the badge).
     const estClause = selEntry?.estimated
-      ? ` · ${estimateShort(selEntry.estimate_kind, selEntry.estimated_from)}`
+      ? ` · ${estimateShort(selEntry.estimate_kind, selEntry.estimated_from, selEntry.shaky)}`
       : "";
     return { bins, sentence: `Rank ${rank} of ${N} — ahead of ${pct}% of ${scopeNoun}.${estClause}` };
   }, [hasMetric, sel.code, sel.value, entries, min, max, rank, scopeNoun]);
@@ -195,8 +203,11 @@ export function RegionProfile({
                           from Nirmal" for inherited, "Budget/Revised Estimate" for
                           projected, which has no donor to name. */}
                       {m.estimated ? (
-                        <span className="block truncate text-[9px] text-dim">
-                          {estimateShort(m.estimate_kind, m.estimated_from)}
+                        <span
+                          className={`block truncate text-[9px] ${m.shaky ? "" : "text-dim"}`}
+                          style={m.shaky ? { color: SHAKY_COLOR } : undefined}
+                        >
+                          {estimateShort(m.estimate_kind, m.estimated_from, m.shaky)}
                         </span>
                       ) : null}
                     </span>
@@ -204,9 +215,12 @@ export function RegionProfile({
                       {m.value.toLocaleString("en-IN", { maximumFractionDigits: m.decimals ?? 0 })}
                       {m.estimated
                         ? <span
-                            className="ml-1 text-[9px] text-accent"
-                            title={estimateNote(m.estimate_kind, m.estimated_from)}
-                          >{ESTIMATE_BADGE}</span>
+                            data-testid="est-badge"
+                            data-shaky={m.shaky ? 1 : 0}
+                            className={`ml-1 text-[9px] ${m.shaky ? "font-bold" : "text-accent"}`}
+                            style={m.shaky ? { color: SHAKY_COLOR } : undefined}
+                            title={estimateNote(m.estimate_kind, m.estimated_from, m.shaky)}
+                          >{estimateBadge(m.estimate_kind, m.shaky)}</span>
                         : <span className="ml-1 text-[9px] text-dim">#{m.rank}/{m.count}</span>}
                     </span>
                   </div>
@@ -392,13 +406,16 @@ export function RankingRail({
                   {r.entry.estimated ? (
                     <span
                       data-testid="est-badge"
-                      className="ml-1 text-[9px] text-accent"
+                      data-shaky={r.entry.shaky ? 1 : 0}
+                      className={`ml-1 text-[9px] ${r.entry.shaky ? "font-bold" : "text-accent"}`}
+                      style={r.entry.shaky ? { color: SHAKY_COLOR } : undefined}
                       // Names the actual donor now that /api/metrics carries it
                       // (item 640). This said "the parent district" while the region
                       // panel said "Nirmal" for the same cell, both on screen at once.
-                      title={estimateNote(r.entry.estimate_kind, r.entry.estimated_from)}
+                      // A shaky match (adr-026) gets the amber ⚠ badge + caution note.
+                      title={estimateNote(r.entry.estimate_kind, r.entry.estimated_from, r.entry.shaky)}
                     >
-                      {ESTIMATE_BADGE}
+                      {estimateBadge(r.entry.estimate_kind, r.entry.shaky)}
                     </span>
                   ) : null}
                 </span>

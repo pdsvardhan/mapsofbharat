@@ -43,19 +43,41 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // Nirmal (item 640). Same (region, metric, year) key the fill wrote (adr-020).
   // Guarded: the table only exists once fill_new_districts.py has run.
   const donorOf = new Map<string, string>();
+  // Which inheritances are SHAKY — a weak sibling match flagged by adr-026's gate
+  // (divergence >= 1 IQR AND reach >= 1M), keyed like the donor. Tolerates the
+  // column's absence on a store graded by an older pipeline: falls back to
+  // donors-only, so nothing is flagged shaky rather than the query failing.
+  const shakyOf = new Set<string>();
   if (level === "district") {
-    try {
+    const load = (withShaky: boolean) => {
+      const cols = withShaky
+        ? "region_code, year, source_name, shaky"
+        : "region_code, year, source_name";
       const src = d
-        .prepare(
-          "SELECT region_code, year, source_name FROM district_estimate_source WHERE metric_id = ?"
-        )
-        .all(id) as { region_code: string; year: number; source_name: string }[];
-      for (const s of src) donorOf.set(`${s.region_code}|${s.year}`, s.source_name);
+        .prepare(`SELECT ${cols} FROM district_estimate_source WHERE metric_id = ?`)
+        .all(id) as { region_code: string; year: number; source_name: string; shaky?: number }[];
+      donorOf.clear();
+      shakyOf.clear();
+      for (const s of src) {
+        donorOf.set(`${s.region_code}|${s.year}`, s.source_name);
+        if (withShaky && s.shaky) shakyOf.add(`${s.region_code}|${s.year}`);
+      }
+    };
+    try {
+      load(true);
     } catch (err) {
-      // Absent table = pipeline not run yet, expected on a fresh DB. Anything else
-      // is a real fault; degrading every citation to null silently would hide it.
+      // Absent table = pipeline not run yet, expected on a fresh DB. Absent column =
+      // graded by an older pipeline — retry without it. Anything else is a real
+      // fault; degrading every citation to null silently would hide it.
       const msg = err instanceof Error ? err.message : String(err);
-      if (!/no such table/i.test(msg)) {
+      if (/no such column/i.test(msg)) {
+        try {
+          load(false);
+        } catch (e2) {
+          const m2 = e2 instanceof Error ? e2.message : String(e2);
+          if (!/no such table/i.test(m2)) console.error(`[metrics/${id}] citation lookup failed:`, m2);
+        }
+      } else if (!/no such table/i.test(msg)) {
         console.error(`[metrics/${id}] district_estimate_source lookup failed:`, msg);
       }
     }
@@ -73,6 +95,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // region_code -> the district that actually supplied this number. Only ever set
   // for 'inherited'; a projected BE/RE figure is copied from nobody (item 640).
   const estimatedFrom: Record<string, string> = {};
+  // region_code -> 1 when this inherited value is a SHAKY match (adr-026). Only ever
+  // set for 'inherited'; drives the stronger badge and caution wording. Disclosure
+  // only — it does not change the value, its rank or the stats.
+  const shakyOut: Record<string, 1> = {};
   // Class-break stats exclude COPIES, not projections (adr-022). An inherited
   // value duplicates a real row already counted here; a projected one is its
   // state's only figure, and dropping it collapsed this metric's scale to a
@@ -89,6 +115,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       if (r.estimate_kind) estimateKind[r.region_code] = r.estimate_kind;
       const donor = donorOf.get(`${r.region_code}|${r.year}`);
       if (donor) estimatedFrom[r.region_code] = donor;
+      if (shakyOf.has(`${r.region_code}|${r.year}`)) shakyOut[r.region_code] = 1;
     } else {
       realCount += 1;
     }
@@ -122,5 +149,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     estimated,
     estimate_kind: estimateKind,
     estimated_from: estimatedFrom,
+    // region_code -> 1 for a shaky inheritance (adr-026); absent for the rest.
+    shaky: shakyOut,
   });
 }

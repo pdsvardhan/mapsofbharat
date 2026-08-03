@@ -13,6 +13,23 @@ export type EstimateKind = "inherited" | "projected" | "aggregated";
 export const ESTIMATE_BADGE = "est.";
 
 /**
+ * Stronger badge for a SHAKY inheritance (adr-026). Only an 'inherited' value can
+ * be shaky: the child sits far from its donor (divergence >= 1 national IQR on
+ * urbanisation / literacy / density) AND is populous enough (>= 1M) that a weak
+ * copy misleads many readers. NTR carrying Krishna's numbers (59% vs 28% urban)
+ * is the archetype. See research/218-inheritance-audit.md.
+ */
+export const ESTIMATE_BADGE_SHAKY = "est. ⚠"; // "est. ⚠"
+
+/** The badge to show for an estimate: the shaky variant only for a shaky inheritance. */
+export function estimateBadge(
+  kind: EstimateKind | string | null | undefined,
+  shaky?: number | boolean | null
+): string {
+  return kind === "inherited" && shaky ? ESTIMATE_BADGE_SHAKY : ESTIMATE_BADGE;
+}
+
+/**
  * The full explanation for one estimated value.
  *
  * `donor` is only ever meaningful for 'inherited'; the other kinds have nothing to
@@ -21,13 +38,22 @@ export const ESTIMATE_BADGE = "est.";
  */
 export function estimateNote(
   kind: EstimateKind | string | null | undefined,
-  donor?: string | null
+  donor?: string | null,
+  shaky?: number | boolean | null
 ): string {
   switch (kind) {
-    case "inherited":
+    case "inherited": {
+      // The caution clause is APPENDED, so the base sentence is byte-for-byte
+      // what a non-shaky inheritance shows (adr-026) — surfaces and tests that
+      // match the base wording keep working.
+      const caution =
+        shaky
+          ? ` — but ${donor ?? "the donor"} is a weak match for it (very different urbanisation, literacy or density), so treat this figure with particular caution`
+          : "";
       return donor
-        ? `Inherited from ${donor} — this district formed after the survey, so this number is ${donor}'s, not its own measurement`
-        : "Inherited from the district this one was carved out of — it formed after the source's survey, so this number is not its own measurement";
+        ? `Inherited from ${donor} — this district formed after the survey, so this number is ${donor}'s, not its own measurement${caution}`
+        : `Inherited from the district this one was carved out of — it formed after the source's survey, so this number is not its own measurement${caution}`;
+    }
     case "projected":
       return "Budget or Revised Estimate — the state's own projection for a fiscal year that has not closed, not an audited actual";
     case "aggregated":
@@ -44,11 +70,14 @@ export function estimateNote(
  */
 export function estimateShort(
   kind: EstimateKind | string | null | undefined,
-  donor?: string | null
+  donor?: string | null,
+  shaky?: number | boolean | null
 ): string {
   switch (kind) {
-    case "inherited":
-      return donor ? `estimated from ${donor}` : "estimated from parent district";
+    case "inherited": {
+      const weak = shaky ? " (weak match)" : "";
+      return donor ? `estimated from ${donor}${weak}` : `estimated from parent district${weak}`;
+    }
     case "projected":
       return "Budget/Revised Estimate";
     case "aggregated":
@@ -97,20 +126,25 @@ export function countsInStats(
  * fully-measured map gains no noise.
  */
 export function estimateFootnote(
-  entries: { estimated?: number | null; estimate_kind?: string | null }[],
+  entries: { estimated?: number | null; estimate_kind?: string | null; shaky?: number | null }[],
   noun: string
 ): string {
   const est = entries.filter((e) => e.estimated);
   if (!est.length) return "";
   const M = entries.length;
+  // How many inherited copies are a weak sibling match (adr-026). Appended to the
+  // travelling footnote so a shared card/embed still carries the caveat, since it
+  // has no tooltip or rail to disclose it at point of use.
+  const shaky = est.filter((e) => e.estimate_kind === "inherited" && e.shaky).length;
+  const weak = shaky ? ` (${shaky} a weak match)` : "";
   const kinds = new Set(est.map((e) => e.estimate_kind ?? "unknown"));
   if (kinds.size === 1) {
     const [k] = [...kinds];
-    if (k === "inherited") return `${est.length} of ${M} ${noun} estimated from a parent region`;
+    if (k === "inherited") return `${est.length} of ${M} ${noun} estimated from a parent region${weak}`;
     if (k === "projected") return `${est.length} of ${M} ${noun} are Budget/Revised Estimates, not actuals`;
     if (k === "aggregated") return `${est.length} of ${M} ${noun} aggregated from underlying rows`;
   }
-  return `${est.length} of ${M} ${noun} estimated — see methodology`;
+  return `${est.length} of ${M} ${noun} estimated — see methodology${weak}`;
 }
 
 /**
@@ -125,13 +159,18 @@ export function estimateFootnote(
  */
 export function notRankedNote(
   kind: EstimateKind | string | null | undefined,
-  donor?: string | null
+  donor?: string | null,
+  shaky?: number | boolean | null
 ): string {
   switch (kind) {
-    case "inherited":
+    case "inherited": {
+      // Base clause identical to the non-shaky case (adr-026) so the existing
+      // "inherited from X — not ranked" assertions still hold; caution appended.
+      const caution = shaky ? " (weak match — treat with caution)" : "";
       return donor
-        ? `Value inherited from ${donor} — not ranked.`
-        : "Value inherited from the district this one was carved out of — not ranked.";
+        ? `Value inherited from ${donor}${caution} — not ranked.`
+        : `Value inherited from the district this one was carved out of${caution} — not ranked.`;
+    }
     case "projected":
       return "Budget or Revised Estimate, not an actual — not ranked.";
     case "aggregated":

@@ -23,20 +23,38 @@ adr-020. This is applied ONLY to INTENSIVE metrics
 (population, livestock head, crop tonnes, area, GST crore, tourist visits) are
 NOT inherited, because a new district does not carry its parent's total.
 
+GRADING (item 812, adr-026): not every inheritance is equally safe. Each estimate
+is graded by how far the child sits from its donor and how many people it affects —
+`divergence` = robust-z MAX distance over urban_pct, female_literacy_rate and
+log(pop_density) (child-vs-donor delta / that axis's NATIONAL IQR, maxed across the
+three), and it is flagged SHAKY iff divergence >= 1.0 AND the child's pop_total >=
+1,000,000. Both are written into district_estimate_source alongside the donor. This
+is DISCLOSURE-ONLY: it changes no value, rank or statistic (inherited estimates are
+already rank-less and stats-excluded, adr-022/023). The gate flags 12 pairs on the
+shipped data (NTR<-Krishna in; Shi Yomi<-West Siang out) — see
+research/218-inheritance-audit.md. migrate_inheritance_grading.py grades an
+already-built store without re-ingesting.
+
 Idempotent: deletes its own prior district estimated=1 rows first. Run LAST,
 after all ingest_*.py and reaggregate.py.
 
 Run: pipeline/.venv/bin/python pipeline/fill_new_districts.py
 """
 import collections
+import math
 import os
 import sqlite3
+import statistics
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "data", "mapsofbharat.db")
 
 # extensive (absolute-count) units — never inherited
 COUNT_UNITS = {"people", "km²", "visits", "tonnes", "hectares", "head", "birds", "₹ crore"}
+
+# inheritance-grading gate (adr-026), calibrated in research/218-inheritance-audit.md
+GATE_DIVERGENCE = 1.0
+GATE_REACH = 1_000_000
 
 
 def main():
@@ -69,6 +87,39 @@ def main():
             "WHERE region_level='district' AND estimated=0"):
         if mid in intensive:
             real[(mid, yr)][rc] = val
+
+    # 4b. inheritance grading (adr-026): flatten the three structural axes to one
+    #     value per district, compute each axis's NATIONAL IQR (robust-z denom), and
+    #     define divergence(child, donor) = MAX over axes of |Δ| / IQR. A pair is
+    #     SHAKY iff divergence >= 1.0 AND the child's pop_total >= 1,000,000.
+    def _axis(metric_id):
+        m = {}
+        for (mid, _yr), d in real.items():
+            if mid == metric_id:
+                m.update(d)
+        return m
+    urban_ax, flit_ax, dens_ax = _axis("urban_pct"), _axis("female_literacy_rate"), _axis("pop_density")
+
+    def _iqr(vals):
+        q1, _med, q3 = statistics.quantiles(vals, n=4)   # exclusive method
+        return q3 - q1
+    iqr_u = _iqr(list(urban_ax.values()))
+    iqr_f = _iqr(list(flit_ax.values()))
+    iqr_d = _iqr([math.log(v) for v in dens_ax.values() if v > 0])
+
+    def divergence(child, donor):
+        parts = []
+        if child in urban_ax and donor in urban_ax:
+            parts.append(abs(urban_ax[child] - urban_ax[donor]) / iqr_u)
+        if child in flit_ax and donor in flit_ax:
+            parts.append(abs(flit_ax[child] - flit_ax[donor]) / iqr_f)
+        if child in dens_ax and donor in dens_ax and dens_ax[child] > 0 and dens_ax[donor] > 0:
+            parts.append(abs(math.log(dens_ax[child]) - math.log(dens_ax[donor])) / iqr_d)
+        return max(parts) if parts else 0.0
+
+    def is_shaky(child, donor):
+        return 1 if (divergence(child, donor) >= GATE_DIVERGENCE
+                     and pop.get(child, 0.0) >= GATE_REACH) else 0
 
     # 5. clear prior district estimates (state estimates untouched). Scope is every
     #    district estimate, not just estimate_kind='inherited': ingest_pca.py's
@@ -113,14 +164,21 @@ def main():
     #    the donor graph, NOT a reason for this key: each member has one donor and
     #    fits a region_code PK fine. Noted so nobody re-derives it as a second
     #    justification; it isn't one.)
+    #    `divergence`/`shaky` (adr-026) are stamped on every citation row from the
+    #    same (child, src) the fill used — the grade is a property of the pair, so it
+    #    is identical across a child's rows for a given donor, and a multi-donor
+    #    district can be shaky via one donor and fine via another.
     con.execute("DROP TABLE IF EXISTS district_estimate_source")
     con.execute("""CREATE TABLE district_estimate_source (
         region_code TEXT, metric_id TEXT, year INTEGER,
         source_code TEXT, source_name TEXT,
+        divergence REAL, shaky INTEGER,
         PRIMARY KEY (region_code, metric_id, year))""")
     for (r, mid, yr), src in source_of.items():
-        con.execute("INSERT OR REPLACE INTO district_estimate_source VALUES(?,?,?,?,?)",
-                    (r, mid, yr, src, name.get(src, "")))
+        con.execute("INSERT OR REPLACE INTO district_estimate_source"
+                    "(region_code,metric_id,year,source_code,source_name,divergence,shaky) "
+                    "VALUES(?,?,?,?,?,?,?)",
+                    (r, mid, yr, src, name.get(src, ""), divergence(r, src), is_shaky(r, src)))
 
     con.commit()
     filled_dists = len({r for (r, _mid, _yr) in source_of})
@@ -133,6 +191,10 @@ def main():
     print(f"metrics filled: {len(filled_metrics)}")
     top = filled_metrics.most_common(6)
     print("most-filled metrics:", [(m, n) for m, n in top])
+    graded_pairs = {(r, src) for (r, _m, _y), src in source_of.items()}
+    shaky_pairs = {(r, src) for (r, src) in graded_pairs if is_shaky(r, src)}
+    print(f"inheritance grading (adr-026): {len(graded_pairs)} pairs, "
+          f"{len(shaky_pairs)} shaky (div>=1.0 & reach>=1M)")
     # sanity invariant: no estimate where a real value already exists
     dup = con.execute("""SELECT COUNT(*) FROM metric_values a
         WHERE a.estimated=1 AND a.region_level='district' AND EXISTS (
@@ -173,6 +235,14 @@ def main():
     print("OK — no citation without a matching estimate")
     assert self_cite == 0, f"{self_cite} districts cite themselves"
     print("OK — no district cites itself")
+
+    # adr-026 tripwires: the calibrated gate flags a weak match and spares a tiny
+    # remote one. NTR is 59% urban to Krishna's 28%; Shi Yomi (13k people) never
+    # trips the 1M reach floor however divergent from West Siang. Anchor checks, not
+    # a fixed count — migrate_inheritance_grading.py owns the "exactly 12" assert.
+    assert is_shaky("37_749", "37_510") == 1, "NTR<-Krishna should be graded shaky"
+    assert is_shaky("12_785", "12_250") == 0, "Shi Yomi<-West Siang should not be shaky"
+    print("OK — grading flags NTR as shaky and spares Shi Yomi")
 
 
 if __name__ == "__main__":
