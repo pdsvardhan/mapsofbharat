@@ -365,3 +365,24 @@ Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it
 - The container is built from the working tree and committed afterwards, so the image can predate its own commit object; a verifier had to bind its conclusions to a `git archive` tree to be sure what it was testing. → to-do 344.
 
 **Next session context:** 13 locked items remain in iteration 112 — 9 UI/card, 3 research, 1 approach question. The natural next cluster is the card work (**762** poster redesign is a `revamp` and wants its own design round; **763** labels-beside-states instead of leader lines; **761** default rows 7→5), and the variant harness is warm now so a second round is much cheaper than the first. Highest-value loose bug found in passing: **to-do 346** — the as-reported-2011 toggle (an adr-003 must-have) paints every state as no-data at state level because the API returns zero-padded st_codes and the app normalises them; district-2011 is fine. The two dead research briefs are worth re-running with the no-grandchildren rule.
+
+## Session 2026-08-03 — OPEN-5 dive + iteration 27 (811 + 812) shipped
+
+**Stage:** Stage 4 (shipped/building). Ottomate iteration 120 = iter #27.
+**What changed / SHIPPED (live at d7a01f5):**
+- **811 (to-do 348)** — adaptive state-outline is now the DEFAULT (`?outline=fixed` escape hatch, preserved in the shareable URL; also fixed the URL-writer silently stripping `?outline`). Commit `398a818`. Independent verifier APPROVE (#698).
+- **812 (to-do 218 Slice 2)** — grade inherited Census-2011 estimates; flag the 12 SHAKY inheritances via a two-floor gate `div>=1.0 AND reach>=1M` (amber "weak match" badge across rail/panel/hover/footnote). Disclosure-only: no value/rank/stat moved. Commit `d7a01f5` (adr-026, idempotent migration `pipeline/migrate_inheritance_grading.py`). DB migrated with backup `data/mapsofbharat.db.bak-iter27-pre-20260803T064214`. Independent verifier APPROVE (#699) — it recomputed the 12 pairs itself.
+- **349** — item-760 stroke-invariant Playwright test (`tests/iter26-regressions.spec.ts`), mutation-verified. Commit `2b3cdad`.
+- Iteration 120 INTEGRATED; YAML mirror `0dea391`; branch `iter-27-2026-08-03` pushed to Gitea; **container rebuilt from d7a01f5** (public health confirms).
+
+**Decisions:** adr-026-inheritance-grading (curated, cat:reliability). 275 verified CC-BY-NC-SA (SHRUG NonCommercial) — decision stands; site is compliant until ads run.
+
+**Friction (tooling/env):** (1) first 811 coder sub-agent returned empty (0 tool calls) — built by hand instead. (2) `next dev` tests return EMPTY unless `export DB_PATH=/mnt/storage/websites/mapsofbharat/data/mapsofbharat.db` (lib/db.ts defaults to container path `/data/...`, absent on host; .env sets same). (3) `next dev` orphans children on kill — `fuser -k <port>/tcp` before+after, use fresh port. All captured in memory `mapsofbharat-build-test-deploy-ops`.
+
+**Deploy model learned:** Dockerfile `COPY . .` builds the checked-out ref (not `main`); `main` is the integration branch but stalled at iter-25 (07-19); iter-26 + iter-27 run as LIVE branch-previews. main-merge DEFERRED (iter-26 mid-flight — 762 still open).
+
+**Next session context (start here):**
+- **762 round-2 (owner picked, spec captured):** owner chose composition **A (Hero Number = preset v3)** MODIFIED — national hero number moved into the **Bay (above the Andamans)**, two rank tables **side-by-side in the Tibet band**. Full build spec: `design/762-social-card-round1/ROUND2-SPEC.md`. Build the preset, render via `design/762-social-card-round1/render.mjs`, show for approval, then wire into `lib/social-export.ts` (+ add poster-export archetype to component-anatomy.json — doctrine rule 40 blocked the iter-26 ledger write).
+- **275 RESOLUTION FOUND:** open ads-safe drop-in for the SHRUG crosswalk = **LGD Sub-District table (GODL-India, commercial-OK)** — code-join on `(state_code, census_2011_sub_district_code) -> present-day district_code`, no geometry. Render on geoBoundaries ADM2 / DataMeet districts (CC-BY). Adopt when monetising; email DDL only if that path fails. (Avoid AIKosh subdist polygons = SHRUG re-host, still NC.) DDL email draft delivered to owner.
+- **5 open UI comments (08-03 batch)** not yet built: C2 metric-row animations (needs 752-755 picks), C3 category icon, C4/C5 header-label presentation, C6 metric-list-as-cards.
+- Open to-dos: 157 (RBI QSDCB export — owner), 275 (defer email), 380 (flaky chooser test iter26-regressions.spec.ts:32).
