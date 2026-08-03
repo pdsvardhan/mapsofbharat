@@ -554,3 +554,41 @@ test.describe("item-760 adaptive stroke invariant (to-do 349)", () => {
     await expect.poll(visibility, { timeout: 10_000 }).toBe("visible");
   });
 });
+
+// ── state-outline adaptive is the DEFAULT (to-do 348) ─────────────────────────
+// to-do 348 flipped the default: the state-outline overlay drawn OVER district
+// fills now adapts its colour to the backdrop out of the box (a dark context line
+// over a pale map, where the old warm-white washed out into the pale fills), and
+// ?outline=fixed opts back. The flip is asserted on the resolved MODE the component
+// parks on window.__mob_outline (parallel to window.__mob_map): a colour assertion
+// would be metric-dependent — adaptive only diverges from warm-white on a pale map
+// (mean fill luminance > 0.55), and quantile breaks put most metrics mid-ramp. The
+// colour rule itself (outlineForBackdrop) is pre-existing and exercised by the
+// item-760 seam tests above. A future accidental revert of the default fails here.
+test.describe("state-outline adaptive is the DEFAULT (to-do 348)", () => {
+  const outlineMode = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __mob_outline?: string }).__mob_outline ?? "UNSET");
+  const outlineColor = (page: Page) =>
+    page.evaluate(() => {
+      const map = (window as unknown as { __mob_map?: any }).__mob_map;
+      if (!map?.getLayer?.("state-outline")) return "MISSING";
+      const c = map.getPaintProperty("state-outline", "line-color");
+      return typeof c === "string" ? c : JSON.stringify(c);
+    });
+
+  test("with no ?outline param the overlay defaults to adaptive (the flip)", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    await expect.poll(() => outlineMode(page), { timeout: 10_000 }).toBe("adaptive");
+  });
+
+  test("?outline=fixed opts back to fixed, and the layer wears the warm-white", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district&outline=fixed");
+    await waitForMapReady(page);
+    await expect.poll(() => outlineMode(page), { timeout: 10_000 }).toBe("fixed");
+    // not a stale adaptive colour left behind — the layer really shows the warm-white
+    await expect
+      .poll(async () => lum(await outlineColor(page)), { timeout: 10_000 })
+      .toBeGreaterThan(0.6); // rgba(233,227,213,0.26)
+  });
+});

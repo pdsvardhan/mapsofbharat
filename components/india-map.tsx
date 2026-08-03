@@ -159,8 +159,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const brkRef = useRef(brkMethod);
   // the `reference` method needs the pivot inside the imperative paint too (item 757)
   const metricRefRef = useRef<number | null>(null);
-  // to-do 348 comparison flag: ?outline=adaptive vs the fixed default
-  const outlineModeRef = useRef<"fixed" | "adaptive">("fixed");
+  // to-do 348: the state-outline overlay adapts its colour to the backdrop by
+  // default (item-760 rule extended to the overlay); ?outline=fixed opts back to
+  // the old fixed warm-white.
+  const outlineModeRef = useRef<"fixed" | "adaptive">("adaptive");
   const palRef = useRef(palette);
   const revRef = useRef(reverse);
   const cohortRef = useRef(cohort);
@@ -198,7 +200,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     outlineModeRef.current =
-      new URLSearchParams(window.location.search).get("outline") === "adaptive" ? "adaptive" : "fixed";
+      new URLSearchParams(window.location.search).get("outline") === "fixed" ? "fixed" : "adaptive";
+    // test hook (parallels window.__mob_map): expose the resolved outline mode so the
+    // to-do 348 default can be asserted directly, without depending on a metric being
+    // pale enough for the adaptive colour to visibly diverge from the warm-white.
+    (window as unknown as { __mob_outline?: string }).__mob_outline = outlineModeRef.current;
   }, []);
   useEffect(() => { palRef.current = palette; }, [palette]);
   useEffect(() => { revRef.current = reverse; }, [reverse]);
@@ -702,6 +708,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
     if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
     if (vintage === "2011") p.set("vin", "2011");
+    // to-do 348: adaptive is the outline default, so only the fixed ESCAPE HATCH needs
+    // to travel. Preserving it here keeps a shared/reloaded "fixed" view fixed — and
+    // stops this writer from stripping the param out from under the mount-time reader.
+    if (outlineModeRef.current === "fixed") p.set("outline", "fixed");
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
   }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick]);
@@ -805,16 +815,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
     // to-do 348 — the state-outline overlay. District boundaries have been adaptive
     // since item 760, but state-outline is a separate layer on the `states` source
-    // drawn OVER district fills, and it kept a fixed warm-white. Item 760's rule
-    // ("derive from the fill it borders") is undefined here: a state boundary runs
-    // past dozens of districts with different values. So this derives ONE colour per
-    // repaint from the mean luminance of what is actually painted underneath.
-    // Opt-in via ?outline=adaptive while the owner compares it against the fixed
-    // treatment; the default is unchanged.
-    if (map.getLayer("state-outline") && outlineModeRef.current === "adaptive")
+    // drawn OVER district fills, and it used to keep a fixed warm-white. Item 760's
+    // rule ("derive from the fill it borders") is undefined here: a state boundary
+    // runs past dozens of districts with different values. So this derives ONE colour
+    // per repaint from the mean luminance of what is actually painted underneath.
+    // Adaptive is now the DEFAULT (the fixed warm-white washed out over a pale map);
+    // ?outline=fixed opts back to the fixed warm-white, set explicitly here so opting
+    // out is unambiguous regardless of any prior repaint.
+    if (map.getLayer("state-outline"))
       map.setPaintProperty(
         "state-outline", "line-color",
-        lumN ? outlineForBackdrop(lumSum / lumN) : "rgba(233,227,213,0.26)",
+        outlineModeRef.current === "adaptive"
+          ? (lumN ? outlineForBackdrop(lumSum / lumN) : "rgba(233,227,213,0.26)")
+          : "rgba(233,227,213,0.26)",
       );
   }
 
