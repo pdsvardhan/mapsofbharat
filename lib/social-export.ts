@@ -408,7 +408,12 @@ export function fmtIndianShort(v: number, decimals: number, unit: string): strin
 export function anchorStat(spec: SocialCardSpec): { label: string; value: string } {
   const { unit, decimals } = spec.metric;
   const vals = spec.entries.map((e) => e.value);
-  const rate = unit === "%" || /per\s|rate|ratio|index|years|km2|density/i.test(unit) || decimals > 0;
+  // An intensive quantity is averaged, never summed. A compound unit (contains
+  // "/", e.g. ₹/person/mo) or an explicit per-/rate word is intensive; summing
+  // a per-capita metric produced a meaningless "All-India total" on the card
+  // while the map framed it per-person (comment C8, iter-28).
+  const rate = unit === "%" || unit.includes("/") ||
+    /\bper\b|rate|ratio|index|years|km2|density|capita|score/i.test(unit) || decimals > 0;
   const scopeName = spec.focusName ?? "National";
   if (rate) {
     const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
