@@ -9,6 +9,7 @@ import { useRef } from "react";
 
 import { BreakMethod, METHOD_LABEL, PALETTES, PaletteId, classCounts, fmtBin, methodAnchor } from "@/lib/breaks";
 import { useDismiss } from "@/lib/use-dismiss";
+import { ViewToggle } from "@/components/atlas/data-table";
 
 export function Crumbs({
   items, hasBack, onBack,
@@ -69,6 +70,7 @@ export function IndicatorCard({
 
 export function LevelColourCard({
   level, onLevel, levelLock, palette, onPalette, vintage, onVintage, vintageAvailable,
+  view, onView,
 }: {
   level: "state" | "district";
   onLevel: (l: "state" | "district") => void;
@@ -79,11 +81,21 @@ export function LevelColourCard({
   vintage?: "current" | "2011";
   onVintage?: (v: "current" | "2011") => void;
   vintageAvailable?: boolean;
+  /** map ⇄ table view toggle (iter-131 item 826), rendered as a VIEW row so the
+   *  swap sits with LEVEL / BOUNDARIES / MAP COLOUR in the same controls card. */
+  view?: "map" | "table";
+  onView?: (v: "map" | "table") => void;
 }) {
   const lockMsg = (l: "state" | "district") =>
     levelLock && levelLock !== l ? "This indicator is only available at the " + levelLock + " level" : undefined;
   return (
     <div className="border border-border px-[15px] py-[13px]" style={{ background: "var(--panel)", boxShadow: "0 4px 18px rgba(0,0,0,.35)" }}>
+      {view && onView && (
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[10px] font-bold tracking-[.12em] text-faint">VIEW</span>
+          <ViewToggle view={view} onView={onView} />
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold tracking-[.12em] text-faint">LEVEL</span>
         <div className="flex border border-border">

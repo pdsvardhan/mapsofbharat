@@ -23,6 +23,7 @@ import { SocialExportDialog } from "@/components/atlas/social-export-dialog";
 import type { SocialFeature } from "@/lib/social-export";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
+import { DataTable, ViewToggle } from "@/components/atlas/data-table";
 
 const INDIA_BOUNDS: [number, number, number, number] = [67, 6, 98, 37];
 const NEUTRAL = "#26231c"; // no indicator picked
@@ -138,6 +139,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // bumped when the lazily-added 2011 layers finish loading, so visibility
   // and entries recompute once the sources exist
   const [vintageTick, setVintageTick] = useState(0);
+  // Map vs a semantic sortable table of the SAME view (iter-131 item 826). A view
+  // preference, not shareable state: kept out of the URL so the readUrl/URL-sync
+  // contract is untouched. The map engine is never unmounted (that would orphan
+  // MapLibre), so every toggle preserves metric / vintage / drill / selection.
+  const [view, setView] = useState<"map" | "table">("map");
   const [chooserOpen, setChooserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
@@ -655,6 +661,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (dataRef.current) recolor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets]);
+
+  // The map lives in a plate that is display:none while the table view is up, so
+  // MapLibre holds its last canvas size until the plate is shown again. Resize on
+  // the way back so the choropleth fills the plate instead of rendering at the
+  // stale size it had when it was hidden.
+  useEffect(() => {
+    if (view !== "map") return;
+    const map = mapRef.current;
+    if (!map) return;
+    const id = requestAnimationFrame(() => map.resize());
+    return () => cancelAnimationFrame(id);
+  }, [view]);
 
   // level/vintage switch: layer visibility; on real change reset drill/pins/selection
   const prevLevelRef = useRef(init.lvl);
@@ -1230,8 +1248,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       <div className="relative flex min-h-0 flex-1">
         {/* MAP PLATE */}
         <div className="relative min-w-0 flex-1 p-4">
+          {/* The map plate stays MOUNTED in table view (display:none) — unmounting
+              would orphan MapLibre and lose the drill/selection it holds. The table
+              plate below reads the same computed entries, so the swap is view-only. */}
           <div
-            className="relative h-full border border-border"
+            className={`relative h-full border border-border${view === "table" ? " hidden" : ""}`}
             style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" }}
             onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY })}
           >
@@ -1251,6 +1272,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 palette={palette} onPalette={(p) => { palTouchedRef.current = true; setPalette(p); }}
                 vintage={vintage} onVintage={setVintage}
                 vintageAvailable={!!meta?.levels?.some((l) => l === "district2011" || l === "state2011")}
+                view={view} onView={setView}
               />
             </div>
 
@@ -1383,6 +1405,37 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               </div>
             )}
           </div>
+
+          {/* TABLE PLATE — the same view as a semantic, sortable table (item 826).
+              Fed the same computed `entries` + `rankOf` the ranking rail renders, so
+              the two can never disagree. Its own VIEW toggle + caption stand in for
+              the left stack, which is display:none with the map plate. */}
+          {view === "table" && (
+            <div
+              className="relative flex h-full flex-col overflow-hidden border border-border"
+              style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" }}
+            >
+              <div className="flex flex-none items-center justify-between gap-3 border-b border-border-soft px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold tracking-[.12em] text-faint">DATA TABLE</div>
+                  <div className="truncate text-[15px] font-extrabold leading-tight text-bright">
+                    {data ? data.name : "No indicator selected"}
+                  </div>
+                </div>
+                <ViewToggle view={view} onView={setView} />
+              </div>
+              <DataTable
+                metricLabel={data?.name ?? ""}
+                unit={data?.unit ?? ""}
+                year={data?.year}
+                scopeNoun={scopeNoun}
+                boundaryNote={vintage === "2011" ? "2011 boundaries, as reported" : null}
+                entries={entries}
+                rankOf={rankOf}
+                fmtVal={fmtVal}
+              />
+            </div>
+          )}
         </div>
 
         {/* RIGHT RAIL */}

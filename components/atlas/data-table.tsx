@@ -1,0 +1,219 @@
+"use client";
+
+// Reusable data table for the atlas (iter-131 item 826): a semantic, sortable
+// HTML <table> of the SAME rows the ranking rail computes, so the two surfaces
+// can never disagree — the single-source rule this codebase keeps re-applying
+// (legend vs paint, legend vs social card). It is fed `entries` + `rankOf`
+// straight from india-map, not its own recomputation.
+//
+// Estimated values are marked with the shared estimate-kind labels (adr-021,
+// adr-026) so the table agrees with the map hover, the rail badge and the export
+// footnote instead of wording the flag a fourth way.
+//
+// Prop-driven and UI-library-free by design (component-pick gate: zero table
+// candidates in master_components) so the canonical metric pages (#829) and the
+// methodology / download page (#831) can reuse it without a map underneath.
+
+import { useMemo, useState } from "react";
+
+import { Entry } from "@/components/atlas/right-rail";
+import { estimateBadge, estimateNote, estimateShort } from "@/lib/estimate-kind";
+
+// Amber for a SHAKY inheritance — the same badge colour the rail uses (adr-026),
+// so a weak sibling match reads as the same stronger caution here as everywhere.
+const SHAKY_COLOR = "#e0a92e";
+
+export type SortKey = "rank" | "name" | "value";
+
+/** The map ⇄ table view control. Styled to match the LEVEL / VALUE segmented
+ *  buttons in the left stack and legend, so the toggle reads as one of the atlas
+ *  controls. Exported so the map view (its VIEW row in the left stack) and the
+ *  table view (the table's own header) drive one shared control rather than
+ *  drifting two copies apart. */
+export function ViewToggle({
+  view, onView,
+}: {
+  view: "map" | "table";
+  onView: (v: "map" | "table") => void;
+}) {
+  return (
+    <div className="flex border border-border" role="group" aria-label="Choose map or table view">
+      {(["map", "table"] as const).map((v) => {
+        const on = view === v;
+        return (
+          <button
+            key={v} onClick={() => onView(v)} aria-pressed={on}
+            className="px-2.5 py-1 text-[10.5px] font-bold"
+            style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
+          >
+            {v === "map" ? "MAP" : "TABLE"}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A keyboard-operable, aria-sort-annotated column header. The <button> is a real
+ *  button, so Enter/Space toggle the sort natively; aria-sort lives on the <th>
+ *  so assistive tech announces the current column and direction. */
+function SortHeader({
+  label, col, sortKey, dir, onSort, align = "left",
+}: {
+  label: string; col: SortKey; sortKey: SortKey; dir: "asc" | "desc";
+  onSort: (k: SortKey) => void; align?: "left" | "right";
+}) {
+  const active = sortKey === col;
+  const ariaSort: "none" | "ascending" | "descending" =
+    active ? (dir === "asc" ? "ascending" : "descending") : "none";
+  return (
+    <th
+      scope="col" aria-sort={ariaSort}
+      className={`sticky top-0 z-10 bg-panel-solid px-3 py-2 text-[10px] font-bold uppercase tracking-[.1em] ${align === "right" ? "text-right" : "text-left"}`}
+    >
+      <button
+        type="button" onClick={() => onSort(col)}
+        aria-label={`Sort by ${label.toLowerCase()}${active ? (dir === "asc" ? ", currently ascending" : ", currently descending") : ""}`}
+        className={`inline-flex items-center gap-1 text-faint hover:text-foreground ${align === "right" ? "flex-row-reverse" : ""}`}
+      >
+        <span>{label}</span>
+        <span aria-hidden className="text-[8px] text-accent">{active ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
+      </button>
+    </th>
+  );
+}
+
+/**
+ * The table itself. `entries` is already scoped to what the map is showing (the
+ * current drill state) and `rankOf` is the same rank map the rail renders, so the
+ * two never disagree. Rankless copies (an inherited value carries no rank of its
+ * own — adr-023) sort to the bottom under rank and show an em dash for rank.
+ */
+export function DataTable({
+  metricLabel, unit, year, scopeNoun, boundaryNote,
+  entries, rankOf, fmtVal, onRowClick, selectedCode,
+}: {
+  metricLabel: string; unit: string; year?: number;
+  scopeNoun: string; boundaryNote?: string | null;
+  entries: Entry[]; rankOf: Record<string, number>;
+  fmtVal: (v: number) => string;
+  onRowClick?: (e: Entry) => void;
+  selectedCode?: string | null;
+}) {
+  const [sortKey, setSortKey] = useState<SortKey>("rank");
+  const [dir, setDir] = useState<"asc" | "desc">("asc");
+
+  const onSort = (k: SortKey) => {
+    if (k === sortKey) setDir((d) => (d === "asc" ? "desc" : "asc"));
+    // A fresh column starts in its natural direction: best rank / A→Z at the top,
+    // highest value at the top.
+    else { setSortKey(k); setDir(k === "value" ? "desc" : "asc"); }
+  };
+
+  const isDistrict = entries.some((e) => e.kind === "district");
+
+  const rows = useMemo(() => {
+    const withRank = entries.map((e) => ({ e, rank: rankOf[e.code] ?? null }));
+    const sign = dir === "asc" ? 1 : -1;
+    return withRank.sort((a, b) => {
+      if (sortKey === "name") return sign * a.e.name.localeCompare(b.e.name, "en");
+      if (sortKey === "value") return sign * (a.e.value - b.e.value);
+      // rank: a copy holds no rank of its own, so it sinks to the bottom in BOTH
+      // directions rather than claiming rank 1 when sorted ascending.
+      if (a.rank == null && b.rank == null) return b.e.value - a.e.value;
+      if (a.rank == null) return 1;
+      if (b.rank == null) return -1;
+      return sign * (a.rank - b.rank);
+    });
+  }, [entries, rankOf, sortKey, dir]);
+
+  const unitParen = unit ? (unit === "%" ? " (%)" : ` (${unit})`) : "";
+  const caption =
+    `${metricLabel}${unitParen} — ${entries.length} ${scopeNoun}` +
+    `${year ? ` · ${year}` : ""}${boundaryNote ? ` · ${boundaryNote}` : ""}`;
+  // Value formatting matches the map's fmtFull (fmtVal + "%") so a cell here reads
+  // identically to the same region's tooltip and rail row.
+  const fmtCell = (v: number) => fmtVal(v) + (unit === "%" ? "%" : "");
+
+  if (!entries.length) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">
+        Pick an indicator and every place lines up here, first to last.
+      </div>
+    );
+  }
+
+  return (
+    <div className="atl-scroll min-h-0 flex-1 overflow-auto">
+      <table className="w-full border-collapse text-left">
+        <caption className="px-3 pb-2 pt-3 text-left text-[11px] leading-snug text-faint">
+          {caption}
+        </caption>
+        <thead>
+          <tr>
+            <SortHeader label="Rank" col="rank" sortKey={sortKey} dir={dir} onSort={onSort} />
+            <SortHeader label="Region" col="name" sortKey={sortKey} dir={dir} onSort={onSort} />
+            {isDistrict && (
+              <th scope="col" className="sticky top-0 z-10 bg-panel-solid px-3 py-2 text-left text-[10px] font-bold uppercase tracking-[.1em] text-faint">
+                State
+              </th>
+            )}
+            <SortHeader label="Value" col="value" sortKey={sortKey} dir={dir} onSort={onSort} align="right" />
+            <th scope="col" className="sticky top-0 z-10 bg-panel-solid px-3 py-2 text-left text-[10px] font-bold uppercase tracking-[.1em] text-faint">
+              Estimate
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ e, rank }) => {
+            const on = e.code === selectedCode;
+            return (
+              <tr
+                key={e.code}
+                data-testid="data-table-row"
+                onClick={onRowClick ? () => onRowClick(e) : undefined}
+                className={`border-b border-border-faint ${onRowClick ? "cursor-pointer hover:bg-elevated" : ""}`}
+                style={{ background: on ? "#17130e" : undefined }}
+              >
+                <td className="px-3 py-1.5 font-mono text-[11px] text-dim">
+                  {rank == null ? "—" : rank}
+                </td>
+                <th scope="row" className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-bright">
+                  {e.name}
+                </th>
+                {isDistrict && (
+                  <td className="px-3 py-1.5 text-[11px] text-faint">{e.sub || "—"}</td>
+                )}
+                <td className="px-3 py-1.5 text-right font-mono text-[12px] text-bright">
+                  {fmtCell(e.value)}
+                </td>
+                <td className="px-3 py-1.5 text-[11px]">
+                  {e.estimated ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        data-testid="est-badge" data-shaky={e.shaky ? 1 : 0}
+                        className={`font-mono text-[10px] ${e.shaky ? "font-bold" : "text-accent"}`}
+                        style={e.shaky ? { color: SHAKY_COLOR } : undefined}
+                        title={estimateNote(e.estimate_kind, e.estimated_from, e.shaky)}
+                      >
+                        {estimateBadge(e.estimate_kind, e.shaky)}
+                      </span>
+                      <span
+                        className={e.shaky ? "" : "text-dim"}
+                        style={e.shaky ? { color: SHAKY_COLOR } : undefined}
+                      >
+                        {estimateShort(e.estimate_kind, e.estimated_from, e.shaky)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-dim" aria-hidden>—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
