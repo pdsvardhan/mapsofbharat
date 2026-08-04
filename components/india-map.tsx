@@ -17,6 +17,10 @@ import {
 import { Metric, catAccent } from "@/components/atlas/cats";
 import { track } from "@/lib/analytics";
 import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
+import {
+  ProvenanceClass, PROVENANCE_COLOR, PROVENANCE_MUTED,
+  provenanceOf, coverageCounts, coverageStat,
+} from "@/lib/coverage";
 import { ChooserModal } from "@/components/atlas/chooser";
 import { SearchModal, RegionIdx } from "@/components/atlas/search-modal";
 import { ShareMenu } from "@/components/atlas/share-menu";
@@ -52,6 +56,9 @@ type MetricData = {
 };
 type Sel = { code: string; name: string; state: string; kind: "state" | "district" };
 type Focus = { code: string; name: string };
+/** Legend view mode: shade by VALUE, by distance from the scope average, or by
+ *  each region's DATA PROVENANCE (coverage view, item 830). */
+type Mode = "value" | "vs_avg" | "coverage";
 /** Boundary vintage: current-day (default, adr-003 main path) or the
  *  as-reported Census 2011 view (adr-003's toggle, iter-98 item 671). */
 type Vintage = "current" | "2011";
@@ -82,7 +89,7 @@ function readUrl() {
   const lvl = (p.get("lvl") === "state" ? "state" : p.get("lvl") === "district" ? "district" : m ? "district" : "state") as "state" | "district";
   return {
     m,
-    mode: (p.get("mode") === "vs_avg" ? "vs_avg" : "value") as "value" | "vs_avg",
+    mode: (p.get("mode") === "vs_avg" ? "vs_avg" : p.get("mode") === "coverage" ? "coverage" : "value") as Mode,
     st: p.get("st") || "",
     stn: p.get("stn") || "",
     cmp: (p.get("cmp") || "").split(",").filter(Boolean),
@@ -117,7 +124,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [regions, setRegions] = useState<RegionIdx[]>([]);
   const [sel, setSel] = useState<string>(init.m);
   const [data, setData] = useState<MetricData | null>(null);
-  const [mode, setMode] = useState<"value" | "vs_avg">(init.mode);
+  const [mode, setMode] = useState<Mode>(init.mode);
+  // Coverage view: which provenance classes are hidden (toggled off in the legend),
+  // so a reader can e.g. show only inherited districts (item 830). A hidden class'
+  // regions recede to the neutral no-data tone.
+  const [coverageHidden, setCoverageHidden] = useState<ProvenanceClass[]>([]);
   const [level, setLevel] = useState<"state" | "district">(init.lvl);
   const [focus, setFocus] = useState<Focus | null>(null);
   const [selected, setSelected] = useState<Sel | null>(null);
@@ -166,6 +177,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const pinsRef = useRef<Sel[]>([]);
   const selectedRef = useRef<Sel | null>(null);
   const modeRef = useRef(mode);
+  const coverageHiddenRef = useRef<ProvenanceClass[]>(coverageHidden);
   const brkRef = useRef(brkMethod);
   // the `reference` method needs the pivot inside the imperative paint too (item 757)
   const metricRefRef = useRef<number | null>(null);
@@ -205,6 +217,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => { pinsRef.current = pins; }, [pins]);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { coverageHiddenRef.current = coverageHidden; }, [coverageHidden]);
   useEffect(() => { brkRef.current = brkMethod; }, [brkMethod]);
   useEffect(() => { metricRefRef.current = METRIC_REFERENCE[sel] ?? null; }, [sel]);
   useEffect(() => {
@@ -672,7 +685,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => {
     if (dataRef.current) recolor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets]);
+  }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets, coverageHidden]);
 
   // The map lives in a plate that is display:none while the table view is up, so
   // MapLibre holds its last canvas size until the plate is shown again. Resize on
@@ -833,9 +846,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA) });
         continue;
       }
-      const color = modeRef.current === "vs_avg"
-        ? interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - mean) / (2 * maxDev))))
-        : colorFor(v, min, max, breaks, pal);
+      // COVERAGE view (item 830): shade by DATA PROVENANCE, not value. A class
+      // toggled off in the legend recedes to the neutral no-data tone so the
+      // classes left on stand out (e.g. inherited-only).
+      let color: string;
+      if (modeRef.current === "coverage") {
+        const cls = provenanceOf(estimatedRef.current[code], estimateKindRef.current[code]);
+        color = coverageHiddenRef.current.includes(cls) ? PROVENANCE_MUTED : PROVENANCE_COLOR[cls];
+      } else if (modeRef.current === "vs_avg") {
+        color = interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - mean) / (2 * maxDev))));
+      } else {
+        color = colorFor(v, min, max, breaks, pal);
+      }
       const dim = cohortSet ? !cohortSet.has(code) : false;
       // No `estimated` feature-state: adr-019 dropped ambient hatching, so nothing
       // consumes it. Estimates are disclosed where the number is read.
@@ -949,6 +971,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // Disclosure count stays over ALL estimates — a ranked projection is still
   // not this region's own measurement, and the "N estimated" line must say so.
   const estCount = entries.reduce((n, e) => n + (e.estimated ? 1 : 0), 0);
+
+  // Per-metric coverage breakdown over the SAME rows the rail/legend show (item
+  // 830). Drives the coverage legend's per-class counts, the trust-surface stat
+  // and the coverage-view shading — one tally so they can never disagree.
+  const coverCounts = useMemo(() => coverageCounts(entries), [entries]);
 
   // The legend's floor, ceiling and average must describe the scale that coloured
   // the map, or the legend contradicts the picture it labels (item 639): recolor()
@@ -1163,6 +1190,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     : null;
 
   const scopeNoun = focusActive && focus ? `districts in ${focus.name}` : level === "district" ? "districts" : "states";
+  // "612 of 730 districts measured · 118 inherited" — the trust-surface coverage
+  // stat, over the same rows as coverCounts (item 830).
+  const coverageStatText = data ? coverageStat(coverCounts, entries.length, scopeNoun) : null;
+  const toggleCoverageClass = useCallback((cls: ProvenanceClass) => {
+    setCoverageHidden((h) => (h.includes(cls) ? h.filter((c) => c !== cls) : [...h, cls]));
+  }, []);
   const activeCohortDef = cohortDefs.find((c) => c.key === cohort);
   const cohortActive = level === "state" && cohort !== "all" && !!activeCohortDef?.codes;
 
@@ -1301,6 +1334,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   method={brkMethod} mapEdges={mapBreaks}
                   paletteFn={PALETTES[palette].fn} reverse={reverse}
                   mode={mode} onMode={setMode}
+                  coverageCounts={coverCounts} coverageHidden={coverageHidden}
+                  onToggleCoverageClass={toggleCoverageClass}
+                  coverageStat={coverageStatText}
                   avgNote={`avg ${fmtVal(scopeMean)}${focusActive ? " (state avg)" : ""}`}
                   scope={focusActive ? "within state" : level === "district" ? "districts" : "states"}
                   countLabel={`${entries.length} ${level === "district" ? "districts" : "states"}`}
@@ -1553,7 +1589,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           }
           codeOf={(f) =>
             level === "state" ? String(f.properties?.st_code) : String(f.properties?.rid)}
-          paletteFn={reverse ? (t: number) => PALETTES[palette].fn(1 - t) : PALETTES[palette].fn}
+          // The map's live palette/direction/mode/filters are threaded in so the
+          // exported card matches what is on screen (item 830). The card owns its
+          // own copy of palette + direction from here, so its colour-scheme
+          // selector can re-colour the preview without touching the map.
+          palette={palette}
+          reverse={reverse}
+          mode={mode}
+          coverageHidden={coverageHidden}
           breaks={mapBreaks}
           method={brkMethod}
           fileBase={`mapsofbharat-${sel}`}

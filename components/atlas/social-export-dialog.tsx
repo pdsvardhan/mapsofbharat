@@ -9,7 +9,8 @@ import {
   renderSocialCard, presetSize, cardClassification,
   SocialCardSpec, SocialFeature, SocialPreset, SocialTheme,
 } from "@/lib/social-export";
-import { BreakMethod, METHOD_LABEL } from "@/lib/breaks";
+import { BreakMethod, METHOD_LABEL, PALETTES, PaletteId } from "@/lib/breaks";
+import { PROVENANCE_CLASSES, PROVENANCE_COLOR, PROVENANCE_LABEL, type ProvenanceClass } from "@/lib/coverage";
 import { track } from "@/lib/analytics";
 
 type Props = {
@@ -22,7 +23,15 @@ type Props = {
   entries: { code: string; name: string; value: number; estimated?: number; estimate_kind?: string | null }[];
   features: SocialFeature[];
   codeOf: (f: SocialFeature) => string;
-  paletteFn: (t: number) => string;
+  /** The map's active palette + direction (item 830). The card starts from these so
+   *  the export matches the screen, and its own COLOUR SCHEME selector re-colours the
+   *  preview from here without disturbing the map. */
+  palette: PaletteId;
+  reverse: boolean;
+  /** The map's active view — threaded so a coverage-mode card mirrors the map. */
+  mode: "value" | "vs_avg" | "coverage";
+  /** Coverage classes toggled off on the map, passed through to the card. */
+  coverageHidden?: ProvenanceClass[];
   /** The explorer's live class edges — passed straight through so the exported
    *  card classes the data exactly as the map does (item 759). */
   breaks?: number[];
@@ -33,13 +42,25 @@ type Props = {
 };
 
 export function SocialExportDialog({
-  onClose, metric, level, focusName, entries, features, codeOf, paletteFn, breaks, method, fileBase,
+  onClose, metric, level, focusName, entries, features, codeOf,
+  palette, reverse, mode, coverageHidden, breaks, method, fileBase,
 }: Props) {
   const [preset, setPreset] = useState<SocialPreset>("portrait");
   const [theme, setTheme] = useState<SocialTheme>("ink");
   const [headline, setHeadline] = useState(metric.name);
   const [rows, setRows] = useState<3 | 5 | 7 | 10>(5); // item 761: 5 is the default, was 7
   const [markers, setMarkers] = useState<"none" | "extremes" | "top3" | "table">("none");
+  // The card owns a copy of the map's palette + direction so its COLOUR SCHEME
+  // selector can recolour the preview without touching the map (item 830). Coverage
+  // mode ignores the ramp — it uses the categorical provenance palette.
+  const [pal, setPal] = useState<PaletteId>(palette);
+  const [rev, setRev] = useState<boolean>(reverse);
+  const coverage = mode === "coverage";
+  const paletteFn = useMemo(
+    () => (rev ? (t: number) => PALETTES[pal].fn(1 - t) : PALETTES[pal].fn),
+    [pal, rev],
+  );
+  const dirtyColour = pal !== palette || rev !== reverse;
   // null → default (last word); explicit [] → no accent (iter-101 item 684)
   const [accentSel, setAccentSel] = useState<number[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -61,9 +82,10 @@ export function SocialExportDialog({
 
   const spec = useCallback((): SocialCardSpec => ({
     preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn, breaks, method,
+    mode, coverageHidden,
     tableN: rows, markerMode: markers, accentWords: accents,
   }), [preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn,
-    breaks, method, rows, markers, accents]);
+    breaks, method, mode, coverageHidden, rows, markers, accents]);
 
   // Describe the card's actual classification — one source of truth with the card
   // itself, so the control-panel copy can never say "jenks" while the card draws
@@ -141,7 +163,9 @@ export function SocialExportDialog({
           <div>
             <div className="text-[14px] font-bold text-bright">Social card</div>
             <div className="mt-1 text-[11px] leading-snug text-faint">
-              High/low tables, island insets, {cls.classes}-class {METHOD_LABEL[cls.method].toLowerCase()} legend, source + brand block.
+              {coverage
+                ? "Regions shaded by data provenance — measured vs re-aggregated / inherited / projected — with a matching legend, source + brand block."
+                : `High/low tables, island insets, ${cls.classes}-class ${METHOD_LABEL[cls.method].toLowerCase()} legend, source + brand block.`}
             </div>
           </div>
 
@@ -171,6 +195,64 @@ export function SocialExportDialog({
                 Paper
               </button>
             </div>
+          </div>
+
+          {/* COLOUR SCHEME — the colour choice the popup was missing (item 830). It
+              starts from the map's palette + direction and re-renders the preview on
+              change; "Match map" resets it. Coverage mode uses the fixed provenance
+              palette instead of a value ramp, so the ramp picker is replaced by a
+              read-only key there. */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="font-mono text-[9.5px] tracking-[.1em] text-dim">COLOUR SCHEME</span>
+              {!coverage && dirtyColour && (
+                <button
+                  onClick={() => { setPal(palette); setRev(reverse); }}
+                  className="text-[10px] font-semibold text-faint hover:text-accent"
+                >
+                  Match map
+                </button>
+              )}
+            </div>
+            {coverage ? (
+              <div>
+                <div className="flex gap-1.5">
+                  {PROVENANCE_CLASSES.map((c) => (
+                    <div key={c} className="flex flex-1 flex-col items-center gap-1" title={PROVENANCE_LABEL[c]}>
+                      <span className="h-[18px] w-full rounded-sm border border-border" style={{ background: PROVENANCE_COLOR[c] }} />
+                      <span className="text-[8px] leading-none text-dim">{PROVENANCE_LABEL[c]}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-1.5 text-[10px] leading-snug text-dim">Coverage cards use fixed, colour-blind-safe provenance colours.</div>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-1.5" role="group" aria-label="Card colour scheme">
+                  {(Object.keys(PALETTES) as PaletteId[]).map((p) => (
+                    <button
+                      key={p} onClick={() => setPal(p)}
+                      title={`${PALETTES[p].name} — ${PALETTES[p].note}`}
+                      aria-label={`Colour scheme ${PALETTES[p].name}`} aria-pressed={pal === p}
+                      data-card-palette={p}
+                      className="h-[20px] flex-1 rounded-sm border transition-transform hover:-translate-y-0.5"
+                      style={{
+                        background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => PALETTES[p].fn(rev ? 1 - t : t)).join(",")})`,
+                        borderColor: pal === p ? "#d1502f" : "#3b3626",
+                      }}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={() => setRev((r) => !r)} aria-pressed={rev} data-card-reverse
+                  className="mt-2 w-full border border-border px-2.5 py-1.5 text-[10.5px] font-bold hover:text-foreground"
+                  style={{ color: rev ? "#d1502f" : "#a49d8c" }}
+                >
+                  ↔ REVERSE {rev ? "ON" : "OFF"}
+                </button>
+                <div className="mt-1 text-[10px] text-dim">{PALETTES[pal].name}</div>
+              </>
+            )}
           </div>
 
           <div>

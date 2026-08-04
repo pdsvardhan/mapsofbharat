@@ -9,8 +9,15 @@ import { useRef } from "react";
 import Link from "next/link";
 
 import { BreakMethod, METHOD_LABEL, PALETTES, PaletteId, classCounts, fmtBin, methodAnchor } from "@/lib/breaks";
+import {
+  ProvenanceClass, PROVENANCE_CLASSES, PROVENANCE_COLOR, PROVENANCE_LABEL, PROVENANCE_MUTED,
+  type CoverageCounts,
+} from "@/lib/coverage";
 import { useDismiss } from "@/lib/use-dismiss";
 import { ViewToggle } from "@/components/atlas/data-table";
+
+/** Legend view mode — shared with india-map's Mode. */
+type LegendMode = "value" | "vs_avg" | "coverage";
 
 export function Crumbs({
   items, hasBack, onBack,
@@ -180,7 +187,8 @@ export function LevelColourCard({
 
 export function LegendCard({
   metricName, unit, decimals, min, max, values, method, mapEdges, paletteFn, reverse,
-  mode, onMode, avgNote, scope, countLabel, source, license, cohortNote,
+  mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
+  avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
@@ -191,7 +199,13 @@ export function LegendCard({
    *  single-source rule item 759 applied to the social card. */
   mapEdges: number[];
   paletteFn: (t: number) => string; reverse: boolean;
-  mode: "value" | "vs_avg"; onMode: (m: "value" | "vs_avg") => void;
+  mode: LegendMode; onMode: (m: LegendMode) => void;
+  /** Coverage view (item 830): per-class region counts, which classes are hidden,
+   *  a toggle handler, and the always-on trust-surface coverage stat. */
+  coverageCounts: CoverageCounts;
+  coverageHidden: ProvenanceClass[];
+  onToggleCoverageClass: (cls: ProvenanceClass) => void;
+  coverageStat: string | null;
   avgNote: string | null; scope: string; countLabel: string; source: string; license: string;
   cohortNote: string | null;
   scaleOpen: boolean; onToggleScale: () => void;
@@ -226,22 +240,58 @@ export function LegendCard({
         <span className="truncate text-[10px] font-bold tracking-[.1em] text-faint">{metricName.toUpperCase()}</span>
         <div className="flex flex-none items-center gap-1.5">
           <div className="flex border border-border">
-            <button onClick={() => onMode("value")} aria-pressed={mode === "value"}
-              className="px-1.5 py-0.5 text-[9px] font-bold"
-              style={{ background: mode === "value" ? "#d1502f" : "transparent", color: mode === "value" ? "#16110b" : "#a49d8c" }}>VALUE</button>
-            <button onClick={() => onMode("vs_avg")} aria-pressed={mode === "vs_avg"}
-              className="px-1.5 py-0.5 text-[9px] font-bold"
-              style={{ background: mode === "vs_avg" ? "#d1502f" : "transparent", color: mode === "vs_avg" ? "#16110b" : "#a49d8c" }}>VS AVG</button>
+            {([["value", "VALUE"], ["vs_avg", "VS AVG"], ["coverage", "COVERAGE"]] as [LegendMode, string][]).map(([m, label]) => (
+              <button
+                key={m} onClick={() => onMode(m)} aria-pressed={mode === m} data-legend-mode={m}
+                className="px-1.5 py-0.5 text-[9px] font-bold"
+                style={{ background: mode === m ? "#d1502f" : "transparent", color: mode === m ? "#16110b" : "#a49d8c" }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <button
-            onClick={onToggleScale} aria-expanded={scaleOpen} data-scale-toggle
-            className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent hover:bg-elevated"
-          >
-            ⚙ SCALE
-          </button>
+          {/* The ⚙ SCALE popover only governs value-mode class breaks — irrelevant
+              to the categorical coverage view, so it is hidden there. */}
+          {mode !== "coverage" && (
+            <button
+              onClick={onToggleScale} aria-expanded={scaleOpen} data-scale-toggle
+              className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent hover:bg-elevated"
+            >
+              ⚙ SCALE
+            </button>
+          )}
         </div>
       </div>
-      {mode === "vs_avg" ? (
+      {mode === "coverage" ? (
+        // COVERAGE view (item 830): the categorical provenance key REPLACES the
+        // value legend. Each class present in the data lists its colour + count and
+        // is a show/hide toggle, so a reader can isolate e.g. inherited districts.
+        <div className="mt-2 space-y-1" data-coverage-legend>
+          {PROVENANCE_CLASSES.filter((cls) => coverageCounts[cls] > 0).map((cls) => {
+            const hidden = coverageHidden.includes(cls);
+            return (
+              <button
+                key={cls} onClick={() => onToggleCoverageClass(cls)}
+                aria-pressed={!hidden} data-coverage-class={cls}
+                className="flex w-full items-center gap-2 text-left"
+                style={{ opacity: hidden ? 0.42 : 1 }}
+              >
+                <span
+                  className="h-2.5 w-4 flex-none rounded-[1px]"
+                  style={{ background: hidden ? PROVENANCE_MUTED : PROVENANCE_COLOR[cls] }}
+                />
+                <span className="flex-1 text-[10px] font-semibold text-faint">{PROVENANCE_LABEL[cls]}</span>
+                <span data-coverage-count className="flex-none font-mono text-[9.5px] text-dim">
+                  {coverageCounts[cls].toLocaleString("en-IN")}
+                </span>
+              </button>
+            );
+          })}
+          <div className="pt-0.5 text-[9px] leading-snug text-dim">
+            Coloured by data provenance. Tap a class to show or hide it.
+          </div>
+        </div>
+      ) : mode === "vs_avg" ? (
         <>
           <div className="mt-2 h-2" style={{ background: "linear-gradient(90deg,#b2182b,#f7f7f7,#2166ac)" }} />
           <div className="mt-1 flex justify-between font-mono text-[9.5px] text-faint"><span>below avg</span><span>{avgNote}</span><span>above avg</span></div>
@@ -273,20 +323,31 @@ export function LegendCard({
           </div>
         </>
       )}
-      <div
-        data-legend-method-line
-        className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-dim"
-      >
-        <a
-          href={`/methodology#${methodMeta.anchor}`} target="_blank" rel="noopener noreferrer"
-          data-legend-method
-          className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent"
+      {mode !== "coverage" && (
+        <div
+          data-legend-method-line
+          className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-dim"
         >
-          {methodMeta.label}
-        </a>
-        <span aria-hidden>·</span>
-        <span data-legend-method-detail>{methodMeta.detail}</span>
-      </div>
+          <a
+            href={`/methodology#${methodMeta.anchor}`} target="_blank" rel="noopener noreferrer"
+            data-legend-method
+            className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent"
+          >
+            {methodMeta.label}
+          </a>
+          <span aria-hidden>·</span>
+          <span data-legend-method-detail>{methodMeta.detail}</span>
+        </div>
+      )}
+      {/* Per-metric coverage stat — the trust surface, shown in every mode (item
+          830). One click from the /coverage league table. */}
+      {coverageStat && (
+        <div className="mt-2 text-[9.5px] leading-snug text-dim">
+          <a href="/coverage" target="_blank" rel="noopener noreferrer" data-coverage-stat className="hover:text-accent">
+            {coverageStat}
+          </a>
+        </div>
+      )}
       {cohortNote && (
         <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent">{cohortNote}</div>
       )}

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { countsInStats } from "@/lib/estimate-kind";
+import { coverageCounts } from "@/lib/coverage";
 
 // Server-side data layer for the canonical per-metric pages (/metric/{id}, item
 // 829). These read the same store /api/metrics and /api/metrics/[id] read, so the
@@ -298,4 +299,63 @@ export function rankRows(rows: MetricRow[]): Record<string, number> {
   let r = 0;
   for (const e of rows) if (countsInStats(e.estimated, e.estimate_kind)) m[e.code] = ++r;
   return m;
+}
+
+export type CoverageMetric = {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  /** The level the counts are taken at — district where available, else state,
+   *  mirroring the per-metric page's level pick. */
+  level: "state" | "district";
+  total: number;
+  measured: number;
+  estimated: number;
+  inherited: number;
+  aggregated: number;
+  projected: number;
+  /** measured / total, 0..1 — the ranking key. */
+  measuredShare: number;
+};
+
+/**
+ * Per-metric coverage for the /coverage league table (item 830). REUSES
+ * getMetricDetail's counts (count / estimated_count) rather than recomputing them,
+ * so the /coverage figures always agree with each metric's own page; the estimate
+ * kinds are tallied from the same detail via lib/coverage.
+ *
+ * Sorted by measured share ASCENDING — the metrics that lean most on inherited or
+ * projected values surface at the top, which is the point of a coverage/trust
+ * surface (the fully-measured majority need no scrutiny). Ties break by size.
+ */
+export function getCoverageSummary(): CoverageMetric[] {
+  const out: CoverageMetric[] = [];
+  for (const m of getAllMetrics()) {
+    const level: "state" | "district" = m.levels.includes("district") ? "district" : "state";
+    const detail = getMetricDetail(m.id, level);
+    if (!detail || detail.count === 0) continue;
+    const rows = Object.keys(detail.values).map((code) => ({
+      estimated: detail.estimated[code] ?? 0,
+      estimate_kind: detail.estimate_kind[code] ?? null,
+    }));
+    const c = coverageCounts(rows);
+    const measured = detail.count - detail.estimated_count;
+    out.push({
+      id: m.id,
+      name: m.name,
+      category: m.category,
+      unit: m.unit,
+      level,
+      total: detail.count,
+      measured,
+      estimated: detail.estimated_count,
+      inherited: c.inherited,
+      aggregated: c.aggregated,
+      projected: c.projected,
+      measuredShare: detail.count ? measured / detail.count : 0,
+    });
+  }
+  out.sort((a, b) => a.measuredShare - b.measuredShare || b.total - a.total);
+  return out;
 }

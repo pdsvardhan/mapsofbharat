@@ -22,6 +22,10 @@
 
 import { BreakMethod, METHOD_LABEL, computeBreaks, colorFor, strokeForFill } from "@/lib/breaks";
 import { estimateFootnote } from "@/lib/estimate-kind";
+import {
+  ProvenanceClass, PROVENANCE_CLASSES, PROVENANCE_COLOR, PROVENANCE_LABEL,
+  provenanceOf, coverageCounts as tallyCoverage,
+} from "@/lib/coverage";
 
 export type SocialPreset = "portrait" | "square";
 export type SocialTheme = "ink" | "paper";
@@ -47,6 +51,13 @@ export type SocialCardSpec = {
   features: SocialFeature[];
   codeOf: (f: SocialFeature) => string;
   paletteFn: (t: number) => string;
+  /** Which map view the card mirrors (item 830). "coverage" shades each region by
+   *  its DATA PROVENANCE with the categorical provenance palette instead of the
+   *  value ramp; "value"/"vs_avg" bin by value as before. Default "value". */
+  mode?: "value" | "vs_avg" | "coverage";
+  /** Coverage classes toggled off on the map — threaded so the card matches what
+   *  the reader sees. Their regions render as no-data on the card. */
+  coverageHidden?: ProvenanceClass[];
   breaks?: number[];
   /** The break method behind `breaks`, so the card can NAME the classification it
    *  is painting with rather than guess (item 827). When breaks are the explorer's
@@ -606,6 +617,29 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   // contradict the colours (item 827).
   const usedMethod: BreakMethod = cardClassification(spec).method;
 
+  // COVERAGE view (item 830): shade each region by its DATA PROVENANCE with the
+  // categorical provenance palette instead of the value ramp, so a coverage-mode
+  // card matches the coverage-mode map. Classes toggled off on the map render as
+  // no-data here too.
+  const coverage = spec.mode === "coverage";
+  const provByCode: Record<string, ProvenanceClass> = {};
+  if (coverage) for (const e of spec.entries) provByCode[e.code] = provenanceOf(e.estimated, e.estimate_kind);
+  const hiddenCov = new Set(spec.coverageHidden ?? []);
+  const covCounts = coverage ? tallyCoverage(spec.entries) : null;
+  const covClasses = coverage
+    ? PROVENANCE_CLASSES.filter((c) => covCounts![c] > 0 && !hiddenCov.has(c))
+    : [];
+  /** Fill for one region — provenance colour in coverage mode (null = hidden class
+   *  or no value, drawn as hatch), the value ramp otherwise. */
+  const regionFill = (code: string, v: number | undefined): string | null => {
+    if (v == null) return null;
+    if (coverage) {
+      const cls = provByCode[code] ?? "measured";
+      return hiddenCov.has(cls) ? null : PROVENANCE_COLOR[cls];
+    }
+    return fill(v);
+  };
+
   // ── rank rows ─────────────────────────────────────────────────────────────
   const dense = spec.level === "district" || spec.entries.length > 40;
   const showTables = (dense || L.tables.atState) && L.tables.hi !== null;
@@ -933,7 +967,19 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const nClasses = Math.max(1, edges.length - 1);
   const hasNoData = spec.entries.length < spec.features.length;
   const LG = L.legend;
+  // Coverage legend swatch — a fixed categorical key, rendered as a vertical stack
+  // in every layout (it is a class list, not a ramp).
+  const COV_SW = 26, COV_SH = 13;
   const legendSize = (): { w: number; h: number } => {
+    if (coverage) {
+      ctx.font = `500 ${LG.labelSize}px ${SANS}`;
+      let lw = 0;
+      for (const c of covClasses)
+        lw = Math.max(lw, ctx.measureText(`${PROVENANCE_LABEL[c]}  ${covCounts![c].toLocaleString("en-IN")}`).width);
+      if (hasNoData) lw = Math.max(lw, ctx.measureText("No data").width);
+      const rows = covClasses.length + (hasNoData ? 1 : 0);
+      return { w: COV_SW + 10 + lw, h: 22 + rows * (COV_SH + 8) };
+    }
     if (LG.form === "strip") return { w: nClasses * (LG.swatchW + 12) + (hasNoData ? 42 : 0), h: 62 };
     if (LG.form === "bar") return { w: nClasses * LG.swatchW, h: 56 };
     ctx.font = `500 ${LG.labelSize}px ${MONO}`;
@@ -997,9 +1043,10 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   // ── map ───────────────────────────────────────────────────────────────────
   const nodataFill = hatchPattern(ctx, P.nodata, P.nodataLine);
   const drawRegion = (f: SocialFeature, pr: Proj) => {
-    const v = values[spec.codeOf(f)];
+    const code = spec.codeOf(f);
+    const v = values[code];
     tracePath(ctx, f, pr);
-    const paint = v == null ? null : fill(v);
+    const paint = regionFill(code, v);
     ctx.fillStyle = paint ?? nodataFill;
     ctx.fill("evenodd");
     ctx.strokeStyle = paint ? strokeForFill(paint) : P.nodataLine;
@@ -1039,7 +1086,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     const irect = { x: bx, y: by + geoTop, w: iw, h: ih - geoTop - 6 };
     if (code === "31") {
       const v = spec.level === "state" ? values[code] : undefined;
-      const dotFill = v == null ? P.nodata : fill(v);
+      const dotFill = regionFill(code, v) ?? P.nodata;
       const lonLats = LAKSHADWEEP_ISLANDS;
       const b: [number, number, number, number] = [
         Math.min(...lonLats.map((p) => p[0])), Math.min(...lonLats.map((p) => p[1])),
@@ -1299,7 +1346,9 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   if (noteBox) {
     ctx.font = `500 ${L.note.size}px ${SANS}`;
     ctx.fillStyle = P.dim;
-    const noteText = `${nClasses}-class ${METHOD_LABEL[usedMethod].toLowerCase()} breaks — the same cuts the live map is using. Hatched fill = no value reported for that region.`;
+    const noteText = coverage
+      ? "Coloured by each region's data provenance — measured vs re-aggregated, inherited or projected — not by value. Hatched fill = no value reported for that region."
+      : `${nClasses}-class ${METHOD_LABEL[usedMethod].toLowerCase()} breaks — the same cuts the live map is using. Hatched fill = no value reported for that region.`;
     const nl = wrap(ctx, noteText, noteBox.w, 8);
     ctx.strokeStyle = P.border;
     ctx.lineWidth = 1;
@@ -1309,6 +1358,30 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
 
   // ── legend ───────────────────────────────────────────────────────────────
   const drawLegend = (bx: number, by: number, bw: number) => {
+    if (coverage) {
+      // Categorical provenance key: swatch + class label + region count, one row
+      // per class present (item 830). Same colours as the map's coverage legend.
+      ctx.font = `600 ${LG.titleSize}px ${SANS}`;
+      ctx.fillStyle = P.muted;
+      const ctitle = "Data provenance";
+      if (!legendUnder) { ctx.lineWidth = 4.5; ctx.strokeStyle = P.halo; ctx.strokeText(ctitle, bx, by + 2); }
+      ctx.fillText(ctitle, bx, by + 2);
+      let ly = by + 14;
+      const covRow = (swatch: string | CanvasPattern, label: string, muted: boolean) => {
+        ctx.fillStyle = swatch;
+        ctx.fillRect(bx, ly, COV_SW, COV_SH);
+        ctx.strokeStyle = P.border; ctx.lineWidth = 0.5; ctx.strokeRect(bx, ly, COV_SW, COV_SH);
+        ctx.font = `500 ${LG.labelSize}px ${SANS}`;
+        if (!legendUnder) { ctx.lineWidth = 4.5; ctx.strokeStyle = P.halo; ctx.strokeText(label, bx + COV_SW + 10, ly + COV_SH - 1); }
+        ctx.fillStyle = muted ? P.muted : P.text;
+        ctx.fillText(label, bx + COV_SW + 10, ly + COV_SH - 1);
+        ly += COV_SH + 8;
+      };
+      for (const c of covClasses)
+        covRow(PROVENANCE_COLOR[c], `${PROVENANCE_LABEL[c]}  ${covCounts![c].toLocaleString("en-IN")}`, false);
+      if (hasNoData) covRow(nodataFill, "No data", true);
+      return;
+    }
     ctx.font = `600 ${LG.titleSize}px ${SANS}`;
     ctx.fillStyle = P.muted;
     const title = spec.metric.unit === "%" ? "Share (%)" : spec.metric.unit;
@@ -1409,7 +1482,9 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   // that place no separate note block. Drawn on its OWN line, never folded into the
   // source wrap, so it can't reflow the estimate footnote — which must stay a single
   // intact string (item 827; keeps item 667's disclosure whole).
-  const methodNote = `${nClasses}-class ${METHOD_LABEL[usedMethod].toLowerCase()}`;
+  const methodNote = coverage
+    ? "coloured by data provenance"
+    : `${nClasses}-class ${METHOD_LABEL[usedMethod].toLowerCase()}`;
   const srcW = LW - MARGIN * 2 - (brandInFooter ? 300 : 20);
   const srcLines = wrap(ctx, note ? `${srcText} · ${note}` : srcText, srcW, 2);
   srcLines.forEach((s, i) => ctx.fillText(s, MARGIN, footerTop + 22 + i * 16));

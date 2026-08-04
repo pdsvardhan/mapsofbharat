@@ -43,6 +43,16 @@ export default function MethodologyPage() {
         source, is harmonized onto current-day boundaries, and keeps its citation. This page is
         the honest fine print: how values are computed and where they are imperfect.
       </p>
+      <p className="mt-3 leading-relaxed text-muted">
+        Each value is tagged with its provenance — the region&apos;s own measurement, or an
+        inherited, re-aggregated or projected estimate. See the{" "}
+        <Link href="/coverage" className="text-accent hover:underline">
+          coverage table
+        </Link>{" "}
+        for how much of every metric is directly measured, and switch the map to its{" "}
+        <strong className="font-semibold text-foreground">Coverage</strong> view to shade any
+        indicator by provenance.
+      </p>
 
       <h2 className="mt-10 border-b border-border-soft pb-2 text-[13px] font-bold tracking-[.12em] text-faint">KNOWN LIMITATIONS</h2>
       <ul className="mt-4 space-y-3 text-[14px] leading-relaxed text-muted">
