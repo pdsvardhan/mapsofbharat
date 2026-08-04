@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Metric } from "./cats";
+import { track } from "@/lib/analytics";
 
 export type RegionIdx = { level: "district" | "state"; code: string; name: string; st_code: string; state: string | null };
 
@@ -50,6 +51,25 @@ export function SearchModal({
     }
     return out;
   }, [q, metrics, regions, valueOf, onMetric, onRegion]);
+
+  // search-empty: a FAILED search — a non-empty query that matches no indicator
+  // and no place (item 825). Debounced so a query is only counted once it settles,
+  // and deduped by query so holding on a dead query does not re-fire. This is a
+  // DISTINCT event from a successful pick (onMetric / onRegion); search terms are
+  // metric/place queries, not personal data. (Fires per settled query, not on
+  // every keystroke, so partial prefixes of a match are not counted as failures.)
+  const lastEmptyRef = useRef("");
+  useEffect(() => {
+    const needle = q.trim();
+    if (!open || !needle) return;
+    const t = setTimeout(() => {
+      if (items.length === 0 && lastEmptyRef.current !== needle) {
+        lastEmptyRef.current = needle;
+        track("search-empty", { q: needle });
+      }
+    }, 450);
+    return () => clearTimeout(t);
+  }, [q, items.length, open]);
 
   if (!open) return null;
   const metricItems = items.filter((i) => i.kind === "metric");

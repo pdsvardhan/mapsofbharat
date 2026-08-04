@@ -15,6 +15,7 @@ import {
   METRIC_REFERENCE, colorFor, strokeForFill, fillLuminance, outlineForBackdrop, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
+import { track } from "@/lib/analytics";
 import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
 import { ChooserModal } from "@/components/atlas/chooser";
 import { SearchModal, RegionIdx } from "@/components/atlas/search-modal";
@@ -220,6 +221,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => { cohortRef.current = cohort; }, [cohort]);
   useEffect(() => { cohortSetsRef.current = cohortSets; }, [cohortSets]);
   useEffect(() => { dataRef.current = data; }, [data]);
+
+  // embed-load: fire once when the chrome-less /embed view mounts (item 825). The
+  // metric comes straight off the URL (init is frozen at mount) — /embed has no
+  // chooser, so it never changes after this.
+  useEffect(() => {
+    if (!minimal) return;
+    track("embed-load", { metric: init.m });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minimal]);
 
   const meta = metrics.find((m) => m.id === sel);
 
@@ -610,6 +620,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       drillingRef.current = true; // level effect must not tear down this focus
       setLevel("district");
     }
+    // India→state→district: the canonical drill into a state's districts (item 825).
+    track("drill", { level: "district", region: name });
   }
   function exitFocus(toStates: boolean) {
     const map = mapRef.current; if (!map) return;
@@ -1054,8 +1066,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       showToast("Couldn't copy — copy the address bar manually");
     }
   }, [showToast]);
-  const copyLink = useCallback(() => copyText(window.location.href, "link"), [copyText]);
+  const copyLink = useCallback(() => {
+    track("share", { action: "link", metric: sel });
+    return copyText(window.location.href, "link");
+  }, [copyText, sel]);
   const copyEmbed = useCallback(() => {
+    track("share", { action: "embed", metric: sel });
     const url = new URL(window.location.href);
     url.pathname = "/embed";
     // Name the frame after the indicator on view — a meaningful title helps the
@@ -1063,7 +1079,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // the same view from any origin. Params ride along untouched.
     const title = `Maps of Bharat${data ? ` — ${data.name.replace(/"/g, "")}` : ""}`;
     copyText(`<iframe src="${url.toString()}" width="800" height="560" style="border:0" loading="lazy" title="${title}"></iframe>`, "embed");
-  }, [copyText, data]);
+  }, [copyText, data, sel]);
 
   // Legacy viewport-screenshot PNG export removed (iter-72 item 568) — the
   // social CARD dialog is the sole image export now.
@@ -1546,7 +1562,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       {chooserOpen && (
         <ChooserModal
           metrics={metrics} selected={sel}
-          onPick={(id) => { setSel(id); setChooserOpen(false); }}
+          onPick={(id) => { track("metric-select", { metric: id }); setSel(id); setChooserOpen(false); }}
           onClose={() => setChooserOpen(false)}
         />
       )}
@@ -1554,7 +1570,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         open={searchOpen}
         metrics={metrics} regions={regions}
         valueOf={(code) => { const v = valuesRef.current[code]; return v == null ? null : fmtFull(v); }}
-        onMetric={(id) => setSel(id)}
+        onMetric={(id) => { track("metric-select", { metric: id }); setSel(id); }}
         onRegion={onSearchRegion}
         onClose={() => setSearchOpen(false)}
       />

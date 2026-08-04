@@ -10,6 +10,7 @@ import {
   SocialCardSpec, SocialFeature, SocialPreset, SocialTheme,
 } from "@/lib/social-export";
 import { BreakMethod, METHOD_LABEL } from "@/lib/breaks";
+import { track } from "@/lib/analytics";
 
 type Props = {
   onClose: () => void;
@@ -103,6 +104,9 @@ export function SocialExportDialog({
 
   const download = async () => {
     setBusy(true);
+    // export: a social card PNG was rendered and downloaded (item 825). Identifies
+    // the action (format/preset/theme) and the metric it depicts.
+    track("export", { format: "png", preset, theme, metric: metric.name });
     try {
       const canvas = await renderSocialCard(spec());
       const a = document.createElement("a");

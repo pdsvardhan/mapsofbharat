@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
+import { Umami } from "@/components/analytics/umami";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -57,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${hanken.variable} ${plexMono.variable} antialiased`}>
         <ClientErrorReporter />
+        <Umami />
         {children}
       </body>
     </html>
