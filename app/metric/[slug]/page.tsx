@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { MetricLineage } from "@/components/atlas/metric-lineage";
 import { MetricTable } from "@/components/atlas/metric-table";
 import { MetricShare } from "@/components/atlas/metric-share";
 import { estimateFootnote } from "@/lib/estimate-kind";
@@ -13,6 +14,7 @@ import {
   rankRows,
   type MetricListItem,
 } from "@/lib/metric-page-data";
+import { getMetricLineage } from "@/lib/metric-raw-source";
 
 // Canonical, server-rendered, indexable page for one metric (iter-131 item 829).
 // The ranked table, coverage stats and every citation line are in the SSR HTML so
@@ -95,6 +97,7 @@ export default async function MetricPage({
 
   const rows = buildMetricRows(detail);
   const ranks = rankRows(rows);
+  const lineage = getMetricLineage(detail.id);
   const scopeNoun = level === "district" ? "districts" : "states";
   const measured = detail.count - detail.estimated_count;
   const footnote = estimateFootnote(rows, scopeNoun);
@@ -263,6 +266,15 @@ export default async function MetricPage({
           />
         </div>
       </section>
+
+      {/* Data lineage + tiered download (iter-131 item 831), server-rendered */}
+      <MetricLineage
+        metricId={detail.id}
+        source={detail.source}
+        sourceUrl={detail.source_url}
+        scopeNoun={scopeNoun}
+        lineage={lineage}
+      />
 
       {/* Share / embed */}
       <section className="mt-8">
