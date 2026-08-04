@@ -20,7 +20,7 @@
 // presets, retained so the export layout can be switched or offered as options.
 // Pure module: no React, no DB, geometry in, canvas out.
 
-import { computeBreaks, colorFor, strokeForFill } from "@/lib/breaks";
+import { BreakMethod, METHOD_LABEL, computeBreaks, colorFor, strokeForFill } from "@/lib/breaks";
 import { estimateFootnote } from "@/lib/estimate-kind";
 
 export type SocialPreset = "portrait" | "square";
@@ -48,6 +48,11 @@ export type SocialCardSpec = {
   codeOf: (f: SocialFeature) => string;
   paletteFn: (t: number) => string;
   breaks?: number[];
+  /** The break method behind `breaks`, so the card can NAME the classification it
+   *  is painting with rather than guess (item 827). When breaks are the explorer's
+   *  live edges this is the map's method; the card falls back to jenks/quantile when
+   *  no edges are passed, and cardClassification() resolves which. */
+  method?: BreakMethod;
   tableN?: 3 | 5 | 7 | 10;
   markerMode?: "none" | "extremes" | "top3" | "table";
   accentWords?: number[];
@@ -546,6 +551,25 @@ function loadBrandMark(): Promise<HTMLImageElement | null> {
   return brandMarkLoad;
 }
 
+/** The classification the exported card ACTUALLY paints with. A static card has no
+ *  continuous or vs-average mode, so it always bins: it uses the explorer's live
+ *  edges + method when they were passed (value mode), and falls back to jenks —
+ *  quantile below five regions — otherwise. Exported so the export dialog can
+ *  describe the card without re-deriving the rule, keeping one source of truth for
+ *  the method + class count the card discloses (item 827). */
+export function cardClassification(
+  spec: Pick<SocialCardSpec, "breaks" | "method" | "entries">,
+): { method: BreakMethod; classes: number } {
+  const n = spec.entries.length;
+  if (spec.breaks?.length) {
+    const method = spec.method && spec.method !== "continuous" ? spec.method : "jenks";
+    return { method, classes: spec.breaks.length + 1 };
+  }
+  const k = Math.min(5, Math.max(1, n));
+  const method: BreakMethod = n >= 5 ? "jenks" : "quantile";
+  return { method, classes: Math.max(1, computeBreaks(spec.entries.map((e) => e.value), method, k).length + 1) };
+}
+
 // ── main renderer ───────────────────────────────────────────────────────────
 
 export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvasElement> {
@@ -577,6 +601,10 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     ? spec.breaks
     : computeBreaks(vals, vals.length >= 5 ? "jenks" : "quantile", k);
   const fill = (v: number) => colorFor(v, min, max, breaks, spec.paletteFn);
+  // The method the card is actually classing with — resolved from the same rule as
+  // the breaks above (via cardClassification) so the disclosed method can never
+  // contradict the colours (item 827).
+  const usedMethod: BreakMethod = cardClassification(spec).method;
 
   // ── rank rows ─────────────────────────────────────────────────────────────
   const dense = spec.level === "district" || spec.entries.length > 40;
@@ -1271,7 +1299,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   if (noteBox) {
     ctx.font = `500 ${L.note.size}px ${SANS}`;
     ctx.fillStyle = P.dim;
-    const noteText = `Five colour classes, the same cuts the live map is using. Hatched fill = no value reported for that region.`;
+    const noteText = `${nClasses}-class ${METHOD_LABEL[usedMethod].toLowerCase()} breaks — the same cuts the live map is using. Hatched fill = no value reported for that region.`;
     const nl = wrap(ctx, noteText, noteBox.w, 8);
     ctx.strokeStyle = P.border;
     ctx.lineWidth = 1;
@@ -1376,9 +1404,16 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   ctx.fillStyle = P.muted;
   const srcText = `Source: ${spec.metric.source} · ${spec.metric.year}`;
   const note = estimateFootnote(spec.entries, spec.level === "district" ? "districts" : "states");
+  // The classification is part of the card's provenance and every template draws this
+  // footer, so the method + class count is disclosed here consistently even on layouts
+  // that place no separate note block. Drawn on its OWN line, never folded into the
+  // source wrap, so it can't reflow the estimate footnote — which must stay a single
+  // intact string (item 827; keeps item 667's disclosure whole).
+  const methodNote = `${nClasses}-class ${METHOD_LABEL[usedMethod].toLowerCase()}`;
   const srcW = LW - MARGIN * 2 - (brandInFooter ? 300 : 20);
   const srcLines = wrap(ctx, note ? `${srcText} · ${note}` : srcText, srcW, 2);
   srcLines.forEach((s, i) => ctx.fillText(s, MARGIN, footerTop + 22 + i * 16));
+  ctx.fillText(methodNote, MARGIN, footerTop + 22 + srcLines.length * 16);
   if (brandInFooter) drawBrand(LW - MARGIN, footerTop + 8, true);
 
   return canvas;

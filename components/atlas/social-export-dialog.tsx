@@ -6,8 +6,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  renderSocialCard, presetSize, SocialCardSpec, SocialFeature, SocialPreset, SocialTheme,
+  renderSocialCard, presetSize, cardClassification,
+  SocialCardSpec, SocialFeature, SocialPreset, SocialTheme,
 } from "@/lib/social-export";
+import { BreakMethod, METHOD_LABEL } from "@/lib/breaks";
 
 type Props = {
   onClose: () => void;
@@ -23,11 +25,14 @@ type Props = {
   /** The explorer's live class edges — passed straight through so the exported
    *  card classes the data exactly as the map does (item 759). */
   breaks?: number[];
+  /** The break method behind `breaks`, so the card can NAME the classification it
+   *  paints with (item 827). */
+  method: BreakMethod;
   fileBase: string;
 };
 
 export function SocialExportDialog({
-  onClose, metric, level, focusName, entries, features, codeOf, paletteFn, breaks, fileBase,
+  onClose, metric, level, focusName, entries, features, codeOf, paletteFn, breaks, method, fileBase,
 }: Props) {
   const [preset, setPreset] = useState<SocialPreset>("portrait");
   const [theme, setTheme] = useState<SocialTheme>("ink");
@@ -54,10 +59,18 @@ export function SocialExportDialog({
   };
 
   const spec = useCallback((): SocialCardSpec => ({
-    preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn, breaks,
+    preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn, breaks, method,
     tableN: rows, markerMode: markers, accentWords: accents,
   }), [preset, theme, headline, metric, level, focusName, entries, features, codeOf, paletteFn,
-    breaks, rows, markers, accents]);
+    breaks, method, rows, markers, accents]);
+
+  // Describe the card's actual classification — one source of truth with the card
+  // itself, so the control-panel copy can never say "jenks" while the card draws
+  // something else (item 827).
+  const cls = useMemo(
+    () => cardClassification({ breaks, method, entries }),
+    [breaks, method, entries],
+  );
 
   // debounced live preview
   useEffect(() => {
@@ -124,7 +137,7 @@ export function SocialExportDialog({
           <div>
             <div className="text-[14px] font-bold text-bright">Social card</div>
             <div className="mt-1 text-[11px] leading-snug text-faint">
-              High/low tables, island insets, 5-class jenks legend, source + brand block.
+              High/low tables, island insets, {cls.classes}-class {METHOD_LABEL[cls.method].toLowerCase()} legend, source + brand block.
             </div>
           </div>
 

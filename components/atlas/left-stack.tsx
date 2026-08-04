@@ -7,7 +7,7 @@
 
 import { useRef } from "react";
 
-import { BreakMethod, PALETTES, PaletteId, classCounts, fmtBin } from "@/lib/breaks";
+import { BreakMethod, METHOD_LABEL, PALETTES, PaletteId, classCounts, fmtBin, methodAnchor } from "@/lib/breaks";
 import { useDismiss } from "@/lib/use-dismiss";
 
 export function Crumbs({
@@ -183,6 +183,21 @@ export function LegendCard({
   // behind a plausible-looking legend (item 757).
   const counts = binned && edges.length ? classCounts(values, edges) : [];
 
+  // Which classification produced these colours — surfaced at rest, not only inside
+  // the ⚙ SCALE popover. A classed choropleth cannot be read honestly without its
+  // break rule and class count, and the label deep-links to the method's explanation
+  // on the methodology page (item 827). vs-avg and a smooth ramp have no discrete
+  // classes, so they carry a mode label rather than a fabricated count. edges is
+  // empty when a real method has too few regions to cut — that paints continuously,
+  // so it reads as smooth too.
+  const methodSmooth = mode === "value" && (method === "continuous" || edges.length === 0);
+  const methodMeta =
+    mode === "vs_avg"
+      ? { label: "DIVERGING", anchor: "breaks-vs-avg", detail: "vs average" }
+      : methodSmooth
+        ? { label: METHOD_LABEL.continuous, anchor: methodAnchor("continuous"), detail: "smooth scale" }
+        : { label: METHOD_LABEL[method], anchor: methodAnchor(method), detail: `${edges.length + 1} classes` };
+
   return (
     <div className="border border-border px-[15px] py-3" style={{ background: "var(--panel)", boxShadow: "0 4px 18px rgba(0,0,0,.35)" }}>
       <div className="flex items-center justify-between gap-2">
@@ -236,6 +251,20 @@ export function LegendCard({
           </div>
         </>
       )}
+      <div
+        data-legend-method-line
+        className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-dim"
+      >
+        <a
+          href={`/methodology#${methodMeta.anchor}`} target="_blank" rel="noopener noreferrer"
+          data-legend-method
+          className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent"
+        >
+          {methodMeta.label}
+        </a>
+        <span aria-hidden>·</span>
+        <span data-legend-method-detail>{methodMeta.detail}</span>
+      </div>
       {cohortNote && (
         <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent">{cohortNote}</div>
       )}
@@ -247,11 +276,6 @@ export function LegendCard({
     </div>
   );
 }
-
-const METHOD_LABEL: Record<BreakMethod, string> = {
-  continuous: "SMOOTH", quantile: "QUANTILE", equal: "EQUAL", jenks: "JENKS",
-  zeroFloor: "FLOOR", reference: "PIVOT", log: "LOG",
-};
 
 export function ScalePopover({
   method, onMethod, reverse, onReverse, onClose, applicable, autoReason, collapseWarn,

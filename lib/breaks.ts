@@ -29,6 +29,22 @@ export function isBreakMethod(v: unknown): v is BreakMethod {
   return typeof v === "string" && (ALL_METHODS as string[]).includes(v);
 }
 
+/** Human-facing short label for each break method — the SINGLE source shared by the
+ *  resting legend, the ⚙ SCALE popover and the social export card, so the method a
+ *  reader is shown named can never drift from the one actually painting the map
+ *  (item 827). */
+export const METHOD_LABEL: Record<BreakMethod, string> = {
+  continuous: "SMOOTH", quantile: "QUANTILE", equal: "EQUAL", jenks: "JENKS",
+  zeroFloor: "FLOOR", reference: "PIVOT", log: "LOG",
+};
+
+/** Anchor id for a method's explanation on /methodology (item 827). Kept beside the
+ *  label map so the legend's deep-link and the methodology section ids are generated
+ *  from one rule and cannot disagree. */
+export function methodAnchor(method: BreakMethod): string {
+  return `breaks-${method.toLowerCase()}`;
+}
+
 /** External reference values for metrics whose scale has a meaningful pivot.
  *
  *  These cannot be inferred from the data — a reference is a fact about what the

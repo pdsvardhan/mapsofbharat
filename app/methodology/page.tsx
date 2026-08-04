@@ -74,6 +74,35 @@ export default function MethodologyPage() {
         </li>
       </ul>
 
+      <h2 id="classification" className="mt-10 scroll-mt-24 border-b border-border-soft pb-2 text-[13px] font-bold tracking-[.12em] text-faint">HOW THE MAP IS CLASSED</h2>
+      <p className="mt-4 text-[14px] leading-relaxed text-muted">
+        A choropleth turns a column of numbers into colour bands, and the rule that
+        cuts those bands changes the map as much as the data does. Maps of Bharat picks
+        a break method automatically from the shape of each series &mdash; you can
+        override it, and read why the automatic choice was made, in the &#9881; SCALE
+        panel on the map. The resting legend always names the method and class count in
+        use. Here is what each one does, and where it misleads if used blindly.
+      </p>
+      <dl className="mt-4 space-y-3">
+        {(
+          [
+            ["breaks-continuous", "Smooth (continuous)", "A single colour ramp stretched linearly from the lowest value to the highest, with no discrete classes. It shows the raw gradient, but small differences near the crowded end of a skewed series become impossible to tell apart."],
+            ["breaks-quantile", "Quantile", "An equal COUNT of regions falls in each class, so every colour is equally common and no class is ever empty. Rank-balanced and the easiest to read on a single map — but two regions with very different values can share a class wherever the data is flat."],
+            ["breaks-equal", "Equal-interval", "Every class spans an equal VALUE width, giving round, evenly-spaced edges. Most intuitive for bounded percentages, but on a skewed series a single class can swallow most of the country while the rest render for almost nobody."],
+            ["breaks-jenks", "Jenks (natural breaks)", "Places the cuts where the data has natural gaps, minimising the spread within each class. Faithful to real clusters, but on a heavy tail it tends to bury most regions in one wide low class."],
+            ["breaks-log", "Log", "Equal-interval computed in log space. On a strictly-positive, right-skewed series it spreads the crowded low tail across classes while preserving orders of magnitude. Offered only when every value is above zero, where the logarithm is defined."],
+            ["breaks-zerofloor", "Floor", "When a large share of regions sit at exactly the minimum — often zero, e.g. districts reporting no population of a given group — that floor gets its OWN class at the bottom of the ramp and the remainder is subdivided, so “none” is never coloured as though it were “some.”"],
+            ["breaks-reference", "Pivot (reference)", "A diverging classification pinned at an external reference that carries real-world meaning — 1000 females per 1000 males is sex-ratio parity, not the data’s own median. The reference is a class EDGE, never a class centre, so a band straddling parity can never masquerade as “at parity.”"],
+            ["breaks-vs-avg", "Value vs average", "Not a break method but a separate diverging view: colour runs from one hue for regions below the scope’s average to the other hue for those above it, centred on that mean. There are no discrete classes — the scale is continuous on either side of the average."],
+          ] as [string, string, string][]
+        ).map(([id, name, body]) => (
+          <div key={id} id={id} className="scroll-mt-24 border border-border px-4 py-4" style={{ background: "var(--panel)" }}>
+            <dt className="text-[13px] font-semibold text-bright">{name}</dt>
+            <dd className="mt-2 text-[13.5px] leading-relaxed text-muted">{body}</dd>
+          </div>
+        ))}
+      </dl>
+
       {[...byCategory.entries()].map(([cat, ms]) => (
         <section key={cat} className="mt-10">
           <h2 className="border-b border-border-soft pb-2 text-[13px] font-bold uppercase tracking-[.12em] text-faint">{cat}</h2>

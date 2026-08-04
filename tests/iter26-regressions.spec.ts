@@ -592,3 +592,50 @@ test.describe("state-outline adaptive is the DEFAULT (to-do 348)", () => {
       .toBeGreaterThan(0.6); // rgba(233,227,213,0.26)
   });
 });
+
+// ── resting legend states the classification (item 827) ───────────────────────
+// The break method + class count that produced the colour bands used to be visible
+// ONLY inside the ⚙ SCALE popover, and the social card hardcoded "5-class jenks".
+// A classed choropleth can't be read honestly without knowing its break rule, so the
+// resting legend now names the method and deep-links it to its explanation on the
+// methodology page. These pin that it stays AT REST (no popover), reflects the mode
+// (a class count in value mode, a diverging label in vs-avg), and that the link is
+// not dangling — nothing in typecheck or lint would notice any of that regressing.
+test.describe("resting legend states the classification (item 827)", () => {
+  test("value mode: method label + class count, linked into /methodology", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    await page.waitForTimeout(900); // let the auto-selector settle on a method
+
+    // visible without opening the ⚙ SCALE popover
+    const line = page.locator("[data-legend-method-line]");
+    await expect(line).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /Scale options/i })).toHaveCount(0);
+
+    // the method label is an uppercase token AND a deep-link into the methodology page
+    const link = page.locator("[data-legend-method]");
+    await expect(link).toBeVisible();
+    expect((await link.innerText()).trim()).toMatch(/^[A-Z]+$/);
+    const href = await link.getAttribute("href");
+    expect(href).toMatch(/^\/methodology#breaks-[a-z-]+$/);
+
+    // binned value mode names a real class count, not a mode label
+    expect((await page.locator("[data-legend-method-detail]").innerText()).trim())
+      .toMatch(/^\d+ classes$/);
+
+    // the deep-link is not dangling: its anchor exists on the methodology page
+    const anchor = href!.split("#")[1];
+    await page.goto("/methodology");
+    await expect(page.locator(`#${anchor}`)).toBeVisible();
+  });
+
+  test("vs-avg mode swaps the class count for a diverging label", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district&mode=vs_avg");
+    await waitForMapReady(page);
+
+    // no fabricated class count where there are no discrete classes
+    await expect(page.locator("[data-legend-method-detail]")).toHaveText(/vs average/i);
+    // still deep-links into the methodology page
+    await expect(page.locator("[data-legend-method]")).toHaveAttribute("href", /\/methodology#breaks-/);
+  });
+});

@@ -1471,6 +1471,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             level === "state" ? String(f.properties?.st_code) : String(f.properties?.rid)}
           paletteFn={reverse ? (t: number) => PALETTES[palette].fn(1 - t) : PALETTES[palette].fn}
           breaks={mapBreaks}
+          method={brkMethod}
           fileBase={`mapsofbharat-${sel}`}
         />
       )}
