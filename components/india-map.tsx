@@ -1185,12 +1185,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   // ── minimal (embed) chrome ───────────────────────────────────────────────
   if (minimal) {
-    // The embed carries the same view params it was opened with, so the link
-    // back is just this view on the full Atlas: drop the /embed path, keep the
-    // query. Relative on purpose — it resolves to this app's origin even when
-    // the frame is hosted on a third-party page.
-    // TODO(iter-131 #829): point link-back at /metric/{id} once canonical pages land
-    const shareBackHref = typeof window === "undefined" ? "/" : `/${window.location.search}`;
+    // The embed links back to the metric's canonical page (/metric/{id}, item
+    // 829) — its permanent, cited, indexable home — rather than to a query-string
+    // view of the atlas. Falls back to the atlas root only when no metric is on
+    // view. Relative on purpose so it resolves to this app's origin even when the
+    // frame is hosted on a third-party page.
+    const shareBackHref = sel ? `/metric/${encodeURIComponent(sel)}` : "/";
     return (
       <div className="relative h-dvh w-full overflow-hidden bg-background">
         <div ref={ref} style={{ position: "absolute", inset: 0 }} />

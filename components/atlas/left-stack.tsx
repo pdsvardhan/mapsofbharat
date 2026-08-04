@@ -6,6 +6,7 @@
 // The value-range slider is retired (item 397, adr-015).
 
 import { useRef } from "react";
+import Link from "next/link";
 
 import { BreakMethod, METHOD_LABEL, PALETTES, PaletteId, classCounts, fmtBin, methodAnchor } from "@/lib/breaks";
 import { useDismiss } from "@/lib/use-dismiss";
@@ -64,6 +65,15 @@ export function IndicatorCard({
       >
         {metricName ? "CHANGE INDICATOR" : "BROWSE INDICATORS"}
       </button>
+      {/* Link to the crawlable catalogue of canonical per-metric pages (item 829),
+          right where a reader browses indicators. Each metric there has its own
+          permanent, cited, embeddable page. */}
+      <Link
+        href="/metric"
+        className="mt-2 block text-center text-[11px] font-semibold text-faint hover:text-accent"
+      >
+        Browse all metrics →
+      </Link>
     </div>
   );
 }
