@@ -411,3 +411,17 @@ Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it
 - **275 RESOLUTION FOUND:** open ads-safe drop-in for the SHRUG crosswalk = **LGD Sub-District table (GODL-India, commercial-OK)** — code-join on `(state_code, census_2011_sub_district_code) -> present-day district_code`, no geometry. Render on geoBoundaries ADM2 / DataMeet districts (CC-BY). Adopt when monetising; email DDL only if that path fails. (Avoid AIKosh subdist polygons = SHRUG re-host, still NC.) DDL email draft delivered to owner.
 - **5 open UI comments (08-03 batch)** not yet built: C2 metric-row animations (needs 752-755 picks), C3 category icon, C4/C5 header-label presentation, C6 metric-list-as-cards.
 - Open to-dos: 157 (RBI QSDCB export — owner), 275 (defer email), 380 (flaky chooser test iter26-regressions.spec.ts:32).
+
+## Session 2026-08-04/05 — launch planning + decisions (post iter-131)
+
+**Stage:** Stage 4 planning (no product code changed; iter-131 already shipped + integrated earlier this session).
+**What happened:**
+- Critiqued the external competitive/DV research (files 00–07) against live state; corrected stale claims (124 metrics not ~12; embed already unblocked; adr-027 already decided).
+- Consolidated the 16 `cat-*` launch docs (via 4 parallel extraction agents → 164 items) + the viz/data tables (31 items) into one master backlog (195), then a decided, de-duplicated "whole picture" (77 remaining items).
+- Ran a full owner decision pass (49-question HTML form) + follow-ups + web research (scheduler, IG aspect, monetisation market). All "needs-a-decision" and "needs-research" items closed.
+- Produced the before-launch build plan (3 phases + verification gates) — **approved**.
+
+**Decisions:** captured in `decisions/2026-08-05-launch-decisions-and-plan.md` (domain .in, keep tagline, logo A, CC-BY, no-UGC, paywall line, Postiz, silent-live-until-ready, #384 stays deferred, etc.).
+**Artifacts:** `planning/2026-08-05/MoB-master-backlog.csv`, `MoB-the-whole-picture.html`.
+**Friction:** none blocking (one API session-limit interruption mid-session; a coder interrupted at commit but the commit had landed — verified).
+**Next session context:** BUILD next session. Start **Phase 1** (trust/legal/brand): citation block + boundary self-cert + no-UGC ADR + corrections page. Owner tasks in parallel: buy mapsofbharat.in, secure @maps_of_bharat handles, flip Cloudflare cache rule. Post-launch tracks (product growth / content machine / paid tier v2) recorded as PENDING to-dos.

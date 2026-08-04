@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maps of Bharat — Decisions</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --bd:#2b333d; --tx:#e6edf3;
+    --dim:#9aa5b1; --faint:#6b7482; --accent:#d1502f; --accent2:#4c9a6b; --rec:#e0a92e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{position:sticky;top:0;z-index:10;background:rgba(14,17,22,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--bd);padding:14px 20px}
+  .wrap{max-width:900px;margin:0 auto;padding:0 20px}
+  h1{font-size:19px;margin:0}
+  .sub{color:var(--dim);font-size:13px;margin-top:3px}
+  .bar{height:7px;background:var(--panel2);border-radius:4px;margin-top:10px;overflow:hidden}
+  .bar>i{display:block;height:100%;width:0;background:var(--accent2);transition:width .2s}
+  .barlbl{font-size:12px;color:var(--dim);margin-top:5px;display:flex;justify-content:space-between}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  button{font:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--bd);background:var(--panel2);color:var(--tx);padding:8px 12px;font-size:13px;font-weight:600}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#160f0a}
+  button.good{background:var(--accent2);border-color:var(--accent2);color:#08160e}
+  main{max-width:900px;margin:0 auto;padding:22px 20px 120px}
+  .intro{background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:14px 16px;color:var(--dim);font-size:13.5px;margin-bottom:20px}
+  .intro b{color:var(--tx)}
+  .group{margin:26px 0 10px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:700;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .q{background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:15px 16px;margin:12px 0}
+  .q.answered{border-color:#2f5a44}
+  .qid{font-size:11px;color:var(--faint);font-weight:700}
+  .qt{font-weight:600;margin:3px 0 4px;font-size:15.5px}
+  .qh{color:var(--dim);font-size:13px;margin-bottom:10px}
+  label.opt{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border:1px solid var(--bd);border-radius:7px;margin:6px 0;cursor:pointer;background:var(--panel2)}
+  label.opt:hover{border-color:var(--accent)}
+  label.opt.sel{border-color:var(--accent2);background:#15251c}
+  label.opt input{margin-top:3px;accent-color:var(--accent2)}
+  .recbadge{display:inline-block;font-size:10.5px;font-weight:700;color:#160f0a;background:var(--rec);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .notes{width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--bd);border-radius:7px;color:var(--tx);padding:8px 10px;font:inherit;font-size:13.5px}
+  textarea.notes{min-height:38px;resize:vertical}
+  footer{position:fixed;bottom:0;left:0;right:0;background:rgba(14,17,22,.96);border-top:1px solid var(--bd);padding:12px 20px}
+  .foot{max-width:900px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .foot .sp{flex:1}
+  .toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:var(--accent2);color:#08160e;font-weight:700;padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .3s;pointer-events:none}
+  .toast.show{opacity:1}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>Maps of Bharat — Decisions to make</h1>
+  <div class="sub">Answer what you can, skip what you can't. Recommended options are marked <span class="recbadge">REC</span>. Autosaves in your browser.</div>
+  <div class="bar"><i id="fill"></i></div>
+  <div class="barlbl"><span id="cnt">0 answered</span><span id="pct">0%</span></div>
+  <div class="actions">
+    <button class="good" onclick="acceptRec()">✓ Accept all recommended</button>
+    <button onclick="clearAll()">Clear all</button>
+  </div>
+</div></header>
+
+<main>
+  <div class="intro">
+    <b>How this works.</b> These are the open decisions from the launch plan (I've dropped the ones you've already settled and the ~15 we already shipped). Pick an option per question — the <b>notes</b> box under each lets you add "Other" or nuance. When done, hit <b>Download answers</b> at the bottom and send me the file (or <b>Copy as text</b> and paste it back). We'll then go through anything you flagged and start the "today" items.
+  </div>
+  <div id="qs"></div>
+</main>
+
+<footer><div class="foot">
+  <span id="cnt2" style="color:var(--dim);font-size:13px"></span>
+  <span class="sp"></span>
+  <button onclick="copyText()">📋 Copy as text</button>
+  <button class="primary" onclick="download()">⬇ Download answers</button>
+</div></footer>
+<div class="toast" id="toast"></div>
+
+<script>
+const Q = [
+ // ---- Legal & Compliance ----
+ {id:"L1",g:"Legal & Compliance",q:"Publish the corrections log publicly, or keep it internal?",h:"A public log of every fix builds trust; errors across 71k values are inevitable.",o:[{v:"Public",rec:1},{v:"Internal only"}]},
+ {id:"L2",g:"Legal & Compliance",q:"Permanently commit to no comments / no user-generated content?",h:"Hosting UGC triggers intermediary + grievance-officer duties under the IT Rules 2021. No-UGC is a free legal simplification.",o:[{v:"Yes — no UGC, ever",rec:1},{v:"Keep the option open"}]},
+ {id:"L3",g:"Legal & Compliance",q:"File the 'Maps of Bharat' trademark (~₹4,500, Class 42) — now or later?",h:"Cheap now; cost/risk rises sharply once you have visibility and someone can squat it.",o:[{v:"File now",rec:1},{v:"After launch"},{v:"Skip for now"}]},
+ {id:"L4",g:"Legal & Compliance",q:"Pay for a quick pre-launch legal review by an Indian advocate (~₹5–15k)?",h:"Map depiction carries criminal exposure; a few hours of advice is cheap insurance.",o:[{v:"Yes",rec:1},{v:"No — self-certify only"},{v:"Later"}]},
+ {id:"L5",g:"Legal & Compliance",q:"Operate as sole proprietor for now, or register a formal entity?",h:"Only really matters at monetisation.",o:[{v:"Sole proprietor for now",rec:1},{v:"Register an entity now"}]},
+ {id:"L6",g:"Legal & Compliance",q:"When we publish a reuse licence — CC-BY (credit required) or CC0 (no strings)?",h:"CC-BY keeps attribution + fuels citations (how Data For India got into an NCERT textbook). Blocked until #384 anyway.",o:[{v:"CC-BY",rec:1},{v:"CC0"},{v:"Decide later"}]},
+ {id:"L7",g:"Legal & Compliance",q:"Confirm: no user accounts until a paid tier truly needs them?",h:"Accounts convert 'no PII' into DPDP Data-Fiduciary duties for no revenue.",o:[{v:"Confirmed — no accounts yet",rec:1},{v:"Want accounts sooner"}]},
+
+ // ---- Brand & Voice ----
+ {id:"B1",g:"Brand & Voice",q:"Primary domain — .in or .com? (buy both, redirect one)",h:"Either works; .in reads India-first, .com reads broader.",o:[{v:".in",rec:1},{v:".com"},{v:"Other (in notes)"}]},
+ {id:"B2",g:"Brand & Voice",q:"Tagline — keep the current one or replace it?",h:"Current: “India's official statistics, finally on a map.”",o:[{v:"Keep current",rec:1},{v:"Replace it (write in notes)"}]},
+ {id:"B3",g:"Brand & Voice",q:"When the brand 'speaks', use…",h:"Sets the voice across site, cards and captions. You've chosen a faceless brand.",o:[{v:"“we”"},{v:"“MapsOfBharat”"},{v:"Neither — impersonal",rec:1}]},
+ {id:"B4",g:"Brand & Voice",q:"Sign outreach emails with your real name while the site stays faceless?",h:"People reply to people; the site can still be brand-only.",o:[{v:"Yes — sign by name",rec:1},{v:"No — stay fully anonymous"}]},
+ {id:"B5",g:"Brand & Voice",q:"Default look for social cards — dark ('ink') or light ('paper')?",h:"Pick one and hold it for grid consistency. The site itself is dark.",o:[{v:"Ink / dark",rec:1},{v:"Paper / light"}]},
+
+ // ---- Content & Social policy ----
+ {id:"C1",g:"Content & Social",q:"What does MoB explicitly NOT claim? (this unblocks captions + moderation — settle first)",h:"The 'fence' that keeps you safe on sensitive data.",o:[{v:"We present official numbers as-is; no causation, no rankings-as-verdicts, estimates aren't exact — all sourced & disclosed",rec:1},{v:"Custom wording (in notes)"}]},
+ {id:"C2",g:"Content & Social",q:"Engage in arguments on hostile social threads?",h:"",o:[{v:"Never — correct once on-site, link it, stop",rec:1},{v:"Engage case-by-case"}]},
+ {id:"C3",g:"Content & Social",q:"Keep religion data on the site but never post it to social?",h:"A dominant-religion post reads politically regardless of framing.",o:[{v:"Yes — on site, not on social",rec:1},{v:"Post it too"}]},
+ {id:"C4",g:"Content & Social",q:"Comments OFF by default on society/crime posts?",h:"",o:[{v:"Yes — comments off",rec:1},{v:"Leave comments on"}]},
+ {id:"C5",g:"Content & Social",q:"Hold single-district 'HOTSPOT' maps off social until we add proportional-symbol maps?",h:"~29 metrics render as a map of one district — the least readable format.",o:[{v:"Yes — hold them",rec:1},{v:"Post them anyway"}]},
+ {id:"C6",g:"Content & Social",q:"Content-bank target before you start seeding?",h:"90 ≈ an 18-week buffer at ~5 posts/week; protects against burnout.",o:[{v:"40 before public, build to 90"},{v:"90 before seeding",rec:1},{v:"More than 90"}]},
+ {id:"C7",g:"Content & Social",q:"Post-scheduling tool?",h:"",o:[{v:"Meta Business Suite (manual)",rec:1},{v:"Self-host Postiz"}]},
+ {id:"C8",g:"Content & Social",q:"Instagram default aspect ratio?",h:"Grid consistency matters for a portfolio brand.",o:[{v:"3:4",rec:1},{v:"4:5"},{v:"1:1"}]},
+ {id:"C9",g:"Content & Social",q:"LinkedIn presence at launch, or later?",h:"Lowest marginal effort of any channel.",o:[{v:"At launch",rec:1},{v:"Later"}]},
+ {id:"C10",g:"Content & Social",q:"Ship vertical 9:16 (Reels/Shorts) before launch or after?",h:"",o:[{v:"After launch (≈ month 2)",rec:1},{v:"Before launch"}]},
+
+ // ---- Creative ----
+ {id:"R1",g:"Creative",q:"Generate posts from data via the compositor (vs hand-making each in Figma)?",h:"The single highest-leverage creative decision — it's what lets you bank content.",o:[{v:"Yes — compositor",rec:1},{v:"No — Figma by hand"}]},
+ {id:"R2",g:"Creative",q:"Profile logo — the disc-and-pin mark, the 'MB' monogram, or test both?",h:"Must read at 32px.",o:[{v:"Disc-and-pin"},{v:"MB monogram"},{v:"Test both at 32px first",rec:1}]},
+ {id:"R3",g:"Creative",q:"Give each content series its own colour family (for a coherent IG grid)?",h:"",o:[{v:"Yes",rec:1},{v:"One palette for all"}]},
+
+ // ---- SEO & Technical ----
+ {id:"S1",g:"SEO & Technical",q:"Per-district 'region' pages — at launch, or phase 2?",h:"Metric pages already shipped; region pages are ~769 more.",o:[{v:"Phase 2",rec:1},{v:"At launch"}]},
+ {id:"S2",g:"SEO & Technical",q:"Region-page URL format?",h:"",o:[{v:"{district}-{state}  e.g. /region/pune-maharashtra",rec:1},{v:"{district} only"},{v:"Other (in notes)"}]},
+ {id:"S3",g:"SEO & Technical",q:"Share-images for all ~769 region pages, or text-only?",h:"Measure generation time before committing to full images.",o:[{v:"Text-only for regions",rec:1},{v:"Full OG images"},{v:"Decide after measuring"}]},
+ {id:"S4",g:"SEO & Technical",q:"Hide the /embed route from Google (noindex + robots disallow)?",h:"",o:[{v:"Yes — noindex /embed",rec:1},{v:"No — let it index"}]},
+ {id:"S5",g:"SEO & Technical",q:"Public data API — publish a documented bulk download, or keep friction?",h:"Bulk is gated on #384 anyway.",o:[{v:"Documented bulk download",rec:1},{v:"Add friction"},{v:"Decide at monetisation"}]},
+ {id:"S6",g:"SEO & Technical",q:"Move off the home server when… ?",h:"A trigger avoids migrating too early or too late.",o:[{v:"Cache-hit <90% or a daily origin-request threshold",rec:1},{v:"Only when monetising"},{v:"Custom (in notes)"}]},
+ {id:"S7",g:"SEO & Technical",q:"Run the full test suite in CI on every push?",h:"Catches regressions; relates to the one flaky test we still have.",o:[{v:"Yes — on every push",rec:1},{v:"Only on main"},{v:"No"}]},
+
+ // ---- Measurement ----
+ {id:"M1",g:"Measurement",q:"In the Share menu, give 'Embed' equal/greater prominence than the PNG download?",h:"Embeds are the distribution loop; PNGs travel as stills.",o:[{v:"Equal prominence",rec:1},{v:"Keep PNG primary"}]},
+ {id:"M2",g:"Measurement",q:"How long to keep analytics data?",h:"",o:[{v:"12 months, then aggregate-only",rec:1},{v:"6 months"},{v:"Indefinite"}]},
+ {id:"M3",g:"Measurement",q:"On a failed search, offer an optional 'email me when this is added' capture?",h:"Useful signal, but it introduces a tiny bit of PII — optional + consented.",o:[{v:"Yes — optional capture",rec:1},{v:"No — keep zero PII"}]},
+
+ // ---- Launch ----
+ {id:"N1",g:"Launch",q:"How long does the site stay quietly live (indexing) before you start posting?",h:"",o:[{v:"2 weeks",rec:1},{v:"1 week"},{v:"4 weeks"}]},
+ {id:"N2",g:"Launch",q:"First community to share with?",h:"",o:[{v:"DataMeet (you use their data)",rec:1},{v:"r/india or r/dataisbeautiful"},{v:"Twitter/X"},{v:"Other (in notes)"}]},
+ {id:"N3",g:"Launch",q:"Backup person who could take the site down or answer a legal notice if you're unreachable?",h:"Bus-factor-of-one mitigation.",type:"text",ph:"Name / relationship, or 'none yet'"},
+
+ // ---- Operations ----
+ {id:"O1",g:"Operations",q:"Adopt the 'single source of truth' canonicity rule + an AGENTS.md operating file?",h:"Prevents spec/agent drift.",o:[{v:"Yes",rec:1},{v:"No"}]},
+ {id:"O2",g:"Operations",q:"Convert the advisory backlog into ordered features.yaml entries now?",h:"",o:[{v:"Yes",rec:1},{v:"Later"}]},
+ {id:"O3",g:"Operations",q:"Is ~5 hours/week a realistic ongoing commitment?",h:"The whole content cadence is sized to your worst week, not your best.",o:[{v:"Yes ~5h/week",rec:1},{v:"Less (in notes)"},{v:"More available"}]},
+
+ // ---- Credibility ----
+ {id:"K1",g:"Credibility",q:"Add a copyable 'To cite this' block (author: 'MapsOfBharat') to metric/region pages?",h:"Works now and survives a future rename; turns readers into citations.",o:[{v:"Yes",rec:1},{v:"Later"}]},
+ {id:"K2",g:"Credibility",q:"Once bulk data ships, deposit versioned releases to Zenodo for a permanent DOI?",h:"Nobody in Indian data-viz does this; it's free and academically expected.",o:[{v:"Yes",rec:1},{v:"No"}]},
+ {id:"K3",g:"Credibility",q:"Never self-cite MoB on Wikipedia (let editors find it)?",h:"Self-citing is a conflict of interest that gets reverted and remembered.",o:[{v:"Yes — never self-cite",rec:1},{v:"No"}]},
+
+ // ---- Monetisation (only built when you monetise) ----
+ {id:"$1",g:"Monetisation",q:"Pull the LGD swap (#384) forward now, or keep it deferred until you actually monetise?",h:"My honest lean: keep deferred — nothing users see needs it, and it's risky (re-checks every Census number). The doc leans pull-forward.",o:[{v:"Keep deferred (my rec)",rec:1},{v:"Pull it forward now"}]},
+ {id:"$2",g:"Monetisation",q:"Which revenue levers interest you most? (pick any — we only build these when you monetise)",h:"My take: Licensed reuse = cheapest first lever; Data-access = highest ceiling (BFSI + agri-fintech are the willing buyers).",type:"multi",o:[{v:"Licensed reuse (image/edit rights)"},{v:"Commissioned viz / studio work"},{v:"Data-access product (API + bulk)"},{v:"Sponsored report / atlas chapter"},{v:"Pro export tier"},{v:"Teaching / workshops"}]},
+ {id:"$3",g:"Monetisation",q:"Confirm: no display ads and no early sponsorship (protect credibility)?",h:"Ads/early sponsorship price the asset at its lowest point and cost the trust that is your only moat.",o:[{v:"Confirmed — no ads / no early sponsorship",rec:1},{v:"Open to it"}]},
+
+ // ---- Quick policy confirms ----
+ {id:"P1",g:"Quick confirms",q:"Forged-card posture: respond if one appears, but do NOT build watermarking/verification?",h:"Anyone can trivially forge a downloadable card; response beats prevention.",o:[{v:"Yes — respond, don't build defences",rec:1},{v:"Build verification"}]},
+ {id:"P2",g:"Quick confirms",q:"If you take a break, announce a pause rather than going silent?",h:"An announced break is recoverable; a silent fade is not.",o:[{v:"Yes — announce pauses",rec:1},{v:"No policy"}]},
+];
+
+const state = JSON.parse(localStorage.getItem("mob_dec")||"{}");
+const qs = document.getElementById("qs");
+let curGroup="";
+Q.forEach(item=>{
+  if(item.g!==curGroup){curGroup=item.g;const h=document.createElement("div");h.className="group";h.textContent=curGroup;qs.appendChild(h);}
+  const card=document.createElement("div");card.className="q";card.id="card-"+item.id;
+  let html=`<div class="qid">${item.id}</div><div class="qt">${item.q}</div>`;
+  if(item.h) html+=`<div class="qh">${item.h}</div>`;
+  if(item.type==="text"){
+    html+=`<input class="notes" id="txt-${item.id}" placeholder="${item.ph||''}" value="${(state[item.id]&&state[item.id].answer||'').replace(/"/g,'&quot;')}">`;
+  } else {
+    item.o.forEach((op,i)=>{
+      const inp = item.type==="multi"?"checkbox":"radio";
+      const rec = op.rec?`<span class="recbadge">REC</span>`:"";
+      html+=`<label class="opt" data-id="${item.id}" data-v="${op.v.replace(/"/g,'&quot;')}"><input type="${inp}" name="q-${item.id}" value="${op.v.replace(/"/g,'&quot;')}"> <span>${op.v}${rec}</span></label>`;
+    });
+  }
+  html+=`<textarea class="notes" id="note-${item.id}" placeholder="Other / notes (optional)">${(state[item.id]&&state[item.id].notes||'')}</textarea>`;
+  card.innerHTML=html;
+  qs.appendChild(card);
+});
+
+function readState(){
+  Q.forEach(item=>{
+    const note=(document.getElementById("note-"+item.id)||{}).value||"";
+    let ans;
+    if(item.type==="text"){ ans=(document.getElementById("txt-"+item.id)||{}).value||""; }
+    else if(item.type==="multi"){ ans=[...document.querySelectorAll(`input[name="q-${item.id}"]:checked`)].map(x=>x.value); }
+    else { const c=document.querySelector(`input[name="q-${item.id}"]:checked`); ans=c?c.value:""; }
+    if((ans&&ans.length)||note) state[item.id]={question:item.q,answer:ans,notes:note};
+    else delete state[item.id];
+  });
+  localStorage.setItem("mob_dec",JSON.stringify(state));
+  paint();
+}
+function answeredCount(){return Q.filter(i=>{const s=state[i.id];return s&&((Array.isArray(s.answer)?s.answer.length:s.answer)||s.notes);}).length;}
+function paint(){
+  const n=answeredCount(),t=Q.length,p=Math.round(n/t*100);
+  document.getElementById("fill").style.width=p+"%";
+  document.getElementById("cnt").textContent=n+" of "+t+" answered";
+  document.getElementById("cnt2").textContent=n+" / "+t+" answered — autosaved";
+  document.getElementById("pct").textContent=p+"%";
+  Q.forEach(i=>{const c=document.getElementById("card-"+i.id);const s=state[i.id];
+    if(c) c.classList.toggle("answered", !!(s&&((Array.isArray(s.answer)?s.answer.length:s.answer)||s.notes)));});
+  document.querySelectorAll("label.opt").forEach(l=>{const inp=l.querySelector("input");l.classList.toggle("sel",inp.checked);});
+}
+document.addEventListener("change",readState);
+document.addEventListener("input",e=>{if(e.target.classList.contains("notes"))readState();});
+
+// restore selections
+Q.forEach(item=>{const s=state[item.id];if(!s)return;
+  if(item.type==="multi"&&Array.isArray(s.answer)){s.answer.forEach(v=>{const el=document.querySelector(`input[name="q-${item.id}"][value="${CSS.escape(v)}"]`);if(el)el.checked=true;});}
+  else if(item.type!=="text"){const el=document.querySelector(`input[name="q-${item.id}"][value="${CSS.escape(s.answer)}"]`);if(el)el.checked=true;}
+});
+paint();
+
+function acceptRec(){
+  Q.forEach(item=>{ if(item.type==="text"||item.type==="multi")return;
+    const rec=item.o.find(o=>o.rec); if(!rec)return;
+    const el=document.querySelector(`input[name="q-${item.id}"][value="${CSS.escape(rec.v)}"]`); if(el)el.checked=true;
+  });
+  readState(); toast("Recommended options filled — review & adjust");
+}
+function clearAll(){ if(!confirm("Clear all answers?"))return; localStorage.removeItem("mob_dec");location.reload(); }
+function payload(){
+  const out={project:"mapsofbharat",generated:new Date().toISOString(),answered:answeredCount(),total:Q.length,answers:[]};
+  Q.forEach(i=>{const s=state[i.id];out.answers.push({id:i.id,group:i.g,question:i.q,answer:s?s.answer:"",notes:s?s.notes:""});});
+  return out;
+}
+function asText(){
+  const p=payload();let t=`Maps of Bharat — decisions (${p.answered}/${p.total} answered) ${p.generated}\n\n`;
+  let g="";p.answers.forEach(a=>{if(a.group!==g){g=a.group;t+=`\n## ${g}\n`;}
+    const ans=Array.isArray(a.answer)?a.answer.join("; "):a.answer;
+    t+=`[${a.id}] ${a.question}\n   -> ${ans||"(skipped)"}${a.notes?"   | notes: "+a.notes:""}\n`;});
+  return t;
+}
+function download(){
+  const blob=new Blob([JSON.stringify(payload(),null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="MoB-decisions-answers.json";a.click();
+  toast("Downloaded — send me the JSON file");
+}
+function copyText(){navigator.clipboard.writeText(asText()).then(()=>toast("Copied — paste it back to me"));}
+let tt;function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(tt);tt=setTimeout(()=>el.classList.remove("show"),2200);}
+</script>
+</body>
+</html>
