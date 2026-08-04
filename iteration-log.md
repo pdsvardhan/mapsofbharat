@@ -1,4 +1,29 @@
 # MapsOfBharat — Iteration Log
+
+## 2026-08-04 — iter-28: 762 card ship, C8 anchor, C7 classification polish (branch iter-28-2026-08-04)
+
+**Ask:** resumed the open visual-QA queue (report 127). Owner directed the build list item-by-item, corrected two of my misreads, approved each deploy. Three iterations shipped to the live preview (121, 123, 127); one comment folded then parked; one licence decision recorded.
+
+**Shipped — each through the anti-gaslight pipeline (independent code verifier + 4/4 social-card E2E on a temp prod container before every deploy):**
+
+- **762 (ec4db7e, iter 121):** wired the layout-preset engine into production `lib/social-export.ts`, default **v7 "Hero Ledger"** — national hero number in the Bay above the Andaman inset, both rank tables abreast in the Tibet band; legend in the Arabian. The independent code verifier caught a dropped `spec.tableN` (the dialog's TABLE ROWS control had silently gone inert in the port); restored it. Nudged the Dadra & Nagar Haveli flung label off the Arabian legend.
+- **C8 (22b40fc, iter 123):** the card anchor summed intensive metrics — UPI ₹/person/mo read "All-India total 89.5 L" while the map frames it per person. Now any compound-unit (contains "/") or explicit per-/rate metric is averaged; bare counts still total. upi → "National average 12.2K", visits → total, literacy → average.
+- **C7 (e522c86, iter 127):** *not a default fix.* Verified the auto-selector (`selectMethod`, item 757) already spreads **86/87** district metrics, so the per-metric `default_scale`-by-skew scheme I first proposed was redundant — and is the skew-threshold approach item-757 already measured and rejected. Built the two genuine additions instead: a **`log` break method** (equal-interval in log space; 8 metrics now default to log, magnitude-preserving; offered only for strictly-positive series; occupancy-checked in the ladder so `pop_density` stays quantile) and a **collapse warning** — a manual pick burying >60% of regions in one class shows an amber hint naming a better method with a one-click switch. Default auto-selector deliberately unchanged.
+
+**Corrections owned to the owner mid-session:** (1) my C7 before/after render implied the default map was monochrome — it isn't; the commenter hit `?brk=equal`, a manual override; corrected the research doc. (2) I first scoped comment C1 as a whole-site mobile-responsive rebuild; the owner clarified the "mobile" comments (C9/C11) were about the downloaded CARD in mobile feeds (satisfied by 762 v7), not the site — parked the site-mobile work.
+
+**Decisions:** **adr-027** — accept the CC-BY-NC-SA census crosswalk while non-commercial; swap to LGD Sub-District (GODL) before enabling ads/paid (resolves the #275 question; #384 is the deferred swap). Curated `cat:product`.
+
+**Friction:**
+- *env* — next-dev E2E is render-timing flaky (the social-card footnote draws last; false-red on dev, 4/4 green on a prod build). Established the **temp-prod-container E2E gate** as the standard pre-deploy path; captured in project memory.
+- *tooling* — Ottomate `/lock` needs a `{}` body (empty → "Invalid JSON"), and posting `verifier-result` before `/lock` resets the verified item back to `locked` and blocks integrate. Correct order captured in memory.
+- *tooling* — the to-do `title` 422 over ~300 chars bit again (the C7 to-do); shortened. Recurring (also 2026-07-16, 2026-07-27) — worth an owner fix on the tracker.
+
+**Next session context:**
+- **PARKED (task #6):** site-presentation comments **C2 (animations), C3 (category icon), C6 (category rows → cards)** — a design session; owner will pick from options.
+- `iter-28-2026-08-04` is a live preview, not merged. `main` still stalled at iter-25; iters 26/27/28 run as previews. Merge to main when the owner wants.
+- Open to-dos: **#384** (SHRUG→LGD when monetising), **#386** (Elections district-level needs a PC→district crosswalk or PC-boundary geometry; PC-wise .xls in raw-new/elections), **#157** (RBI, owner-parked), **#380** (flaky chooser test).
+
 ## 2026-07-27 — iter-26 continued: card fixes, skew-aware classification, attribution sweep, three research briefs
 
 **Ask:** resumed iter-26 (visual-QA batch, report 127). Owner directed work item-by-item across the locked list and the open to-do queue, asking for questions only where a decision was genuinely theirs. Closed 8 iteration items and 11 to-dos; scoped one; opened one design round.
