@@ -150,11 +150,11 @@ test.describe("flow-export-share", () => {
     // the brand MARK (logo), not merely the wordmark
     await expect(page.locator('img[src="/brand/mark.png"]')).toBeVisible({ timeout: 20_000 });
 
-    // link back to the SAME view on the full Atlas: it carries the params and is
-    // not the bare homepage (which would drop the reader's view), opens in a new tab
+    // link back to the metric's canonical page (item 829): /metric/{id}, not the
+    // bare homepage and not the embed route itself, opens in a new tab
     const back = page.getByRole("link", { name: /Maps of Bharat/i });
     await expect(back).toBeVisible();
-    await expect(back).toHaveAttribute("href", /m=literacy_rate/);
+    await expect(back).toHaveAttribute("href", /\/metric\/literacy_rate/);
     await expect(back).not.toHaveAttribute("href", /\/embed/);
     await expect(back).toHaveAttribute("target", "_blank");
 
