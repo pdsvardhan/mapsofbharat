@@ -128,12 +128,37 @@ test.describe("flow-export-share", () => {
     // COPIED indicator is visible — no need to re-open)
     await page.getByRole("menuitem", { name: /Copy embed code/i }).click();
     const clip = await page.evaluate(() => navigator.clipboard.readText());
+    // A complete, self-contained iframe: absolute src at /embed, lazy, titled,
+    // and carrying THIS view's params so the frame renders the same map (item 828)
     expect(clip).toContain("<iframe");
-    expect(clip).toContain("/embed");
+    expect(clip).toMatch(/src="https?:\/\/[^"]+\/embed\?[^"]*m=literacy_rate/);
+    expect(clip).toContain('loading="lazy"');
+    expect(clip).toMatch(/title="Maps of Bharat/);
 
     // a permalink with metric + drilled state restores that exact view
     await page.goto("/?m=literacy_rate&lvl=district&st=23&stn=Madhya%20Pradesh");
     await waitForMapReady(page);
     await expect(page.getByRole("navigation", { name: "Drill trail" })).toContainText("Madhya Pradesh", { timeout: 15_000 });
+  });
+
+  test("the embed view carries the brand mark, a source citation and a link back to the shareable view", async ({ page }) => {
+    // item 828: an iframe travels with no rail or masthead, so /embed must stand
+    // alone — brand mark, attribution and a way home baked into the frame itself.
+    await page.goto("/embed?m=literacy_rate&lvl=state");
+    await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
+
+    // the brand MARK (logo), not merely the wordmark
+    await expect(page.locator('img[src="/brand/mark.png"]')).toBeVisible({ timeout: 20_000 });
+
+    // link back to the SAME view on the full Atlas: it carries the params and is
+    // not the bare homepage (which would drop the reader's view), opens in a new tab
+    const back = page.getByRole("link", { name: /Maps of Bharat/i });
+    await expect(back).toBeVisible();
+    await expect(back).toHaveAttribute("href", /m=literacy_rate/);
+    await expect(back).not.toHaveAttribute("href", /\/embed/);
+    await expect(back).toHaveAttribute("target", "_blank");
+
+    // source citation renders once metric data lands (source · year)
+    await expect(back).toContainText(/·\s*\d{4}/, { timeout: 20_000 });
   });
 });

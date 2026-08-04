@@ -1040,8 +1040,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const copyEmbed = useCallback(() => {
     const url = new URL(window.location.href);
     url.pathname = "/embed";
-    copyText(`<iframe src="${url.toString()}" width="800" height="560" style="border:0" loading="lazy" title="Maps of Bharat"></iframe>`, "embed");
-  }, [copyText]);
+    // Name the frame after the indicator on view — a meaningful title helps the
+    // embedding page and assistive tech, and the src is absolute so it renders
+    // the same view from any origin. Params ride along untouched.
+    const title = `Maps of Bharat${data ? ` — ${data.name.replace(/"/g, "")}` : ""}`;
+    copyText(`<iframe src="${url.toString()}" width="800" height="560" style="border:0" loading="lazy" title="${title}"></iframe>`, "embed");
+  }, [copyText, data]);
 
   // Legacy viewport-screenshot PNG export removed (iter-72 item 568) — the
   // social CARD dialog is the sole image export now.
@@ -1147,6 +1151,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   // ── minimal (embed) chrome ───────────────────────────────────────────────
   if (minimal) {
+    // The embed carries the same view params it was opened with, so the link
+    // back is just this view on the full Atlas: drop the /embed path, keep the
+    // query. Relative on purpose — it resolves to this app's origin even when
+    // the frame is hosted on a third-party page.
+    // TODO(iter-131 #829): point link-back at /metric/{id} once canonical pages land
+    const shareBackHref = typeof window === "undefined" ? "/" : `/${window.location.search}`;
     return (
       <div className="relative h-dvh w-full overflow-hidden bg-background">
         <div ref={ref} style={{ position: "absolute", inset: 0 }} />
@@ -1163,9 +1173,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             )}
           </div>
         )}
-        <a href="/" target="_blank" rel="noopener noreferrer"
-          className="absolute bottom-2 right-2 z-10 border border-border px-2 py-1 text-[10px] text-faint hover:text-accent" style={{ background: "var(--panel)" }}>
-          Maps of Bharat · {data ? `${data.source.split(",")[0]} · ${data.year}` : "official data"}
+        {/* Brand mark + source citation + a link home. An iframe travels with
+            no masthead or rail, so the embed itself carries attribution and a
+            way back to the same view on the full Atlas (item 828). */}
+        <a href={shareBackHref} target="_blank" rel="noopener noreferrer"
+          className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5 border border-border px-2 py-1 text-[10px] text-faint hover:text-accent" style={{ background: "var(--panel)" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark; next/image adds no value for a 14px inline logo */}
+          <img src="/brand/mark.png" alt="" aria-hidden="true" width={14} height={14} className="h-3.5 w-3.5 flex-none object-contain" />
+          <span>Maps of Bharat · {data ? `${data.source.split(",")[0]} · ${data.year}` : "official data"}</span>
         </a>
         {hovered && (
           <div className="pointer-events-none absolute bottom-4 left-4 z-10 border border-border px-3 py-2 text-sm" style={{ background: "var(--panel)" }}>
