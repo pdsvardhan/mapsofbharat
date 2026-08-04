@@ -67,7 +67,10 @@ test.describe("flow-drill-state", () => {
     await expect(page.getByText(/SELECTED · STATE/i)).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: /View \d+ districts/i }).click();
     await expect(page.getByRole("navigation", { name: "Drill trail" })).toContainText("Madhya Pradesh", { timeout: 10_000 });
-    await expect(page.getByText(/districts in Madhya Pradesh/i)).toBeVisible({ timeout: 10_000 });
+    // the drilled scope is named in the rail; since item 830 the coverage-stat
+    // link also carries "... districts in Madhya Pradesh measured", so .first()
+    // keeps this a simple "the scope is shown" check without a strict-mode clash.
+    await expect(page.getByText(/districts in Madhya Pradesh/i).first()).toBeVisible({ timeout: 10_000 });
 
     // Steps 3+4: breadcrumb back -> national view restored
     await page.getByRole("navigation", { name: "Drill trail" }).getByRole("button", { name: "India" }).click();

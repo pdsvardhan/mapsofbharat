@@ -1191,8 +1191,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   const scopeNoun = focusActive && focus ? `districts in ${focus.name}` : level === "district" ? "districts" : "states";
   // "612 of 730 districts measured · 118 inherited" — the trust-surface coverage
-  // stat, over the same rows as coverCounts (item 830).
-  const coverageStatText = data ? coverageStat(coverCounts, entries.length, scopeNoun) : null;
+  // stat, over the same rows as coverCounts (item 830). Suppressed when the scope
+  // is momentarily empty (the state->district focus swap holds stale data for a
+  // frame, which would otherwise flash a meaningless "0 of 0 ... measured").
+  const coverageStatText =
+    data && entries.length > 0 ? coverageStat(coverCounts, entries.length, scopeNoun) : null;
   const toggleCoverageClass = useCallback((cls: ProvenanceClass) => {
     setCoverageHidden((h) => (h.includes(cls) ? h.filter((c) => c !== cls) : [...h, cls]));
   }, []);
