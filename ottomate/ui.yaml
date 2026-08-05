@@ -70,3 +70,17 @@ pages:
     mobile_handling: responsive
     entry_points: []
     components: []
+  - id: page-terms
+    title: Terms of Use
+    route: /terms
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
+  - id: page-privacy
+    title: Privacy
+    route: /privacy
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
