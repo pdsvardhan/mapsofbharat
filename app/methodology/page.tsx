@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CiteBlock } from "@/components/atlas/cite-block";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,9 @@ export default function MethodologyPage() {
         <strong className="font-semibold text-foreground">Coverage</strong> view to shade any
         indicator by provenance.
       </p>
+
+      {/* Platform citation (iter-32 item 846) */}
+      <CiteBlock kind="platform" />
 
       <h2 className="mt-10 border-b border-border-soft pb-2 text-[13px] font-bold tracking-[.12em] text-faint">KNOWN LIMITATIONS</h2>
       <ul className="mt-4 space-y-3 text-[14px] leading-relaxed text-muted">

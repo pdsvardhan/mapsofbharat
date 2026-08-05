@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CiteBlock } from "@/components/atlas/cite-block";
 import { MetricLineage } from "@/components/atlas/metric-lineage";
 import { MetricTable } from "@/components/atlas/metric-table";
 import { MetricShare } from "@/components/atlas/metric-share";
@@ -274,6 +275,16 @@ export default async function MetricPage({
         sourceUrl={detail.source_url}
         scopeNoun={scopeNoun}
         lineage={lineage}
+      />
+
+      {/* To cite this (iter-32 item 846) — sits with the provenance/lineage area.
+          Client island so the "Accessed" date is the reader's real access date. */}
+      <CiteBlock
+        kind="metric"
+        metricName={detail.name}
+        source={detail.source}
+        year={detail.year}
+        metricId={detail.id}
       />
 
       {/* Share / embed */}

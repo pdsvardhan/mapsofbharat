@@ -89,6 +89,25 @@ test.describe("canonical metric page — SSR (item 829)", () => {
     const embed = page.frameLocator('iframe[src*="/embed"]');
     await expect(embed.locator("canvas").first()).toBeVisible({ timeout: 25_000 });
   });
+
+  // iter-32 item 846: the copyable "To cite this" block renders on a metric page.
+  test("renders a copyable citation block in the SSR HTML", async ({ request }) => {
+    const html = await (await request.get(`/metric/${SLUG}`)).text();
+    expect(html).toContain('data-testid="cite-block"');
+    expect(html).toContain('data-testid="cite-copy"');
+    // the citation text is composed server-side from the metric's own fields
+    expect(html).toContain("MapsOfBharat.");
+    expect(html).toContain("Literacy rate");
+    expect(html).toContain("/metric/literacy_rate");
+  });
+
+  test("the citation copy control is a real <button>", async ({ page }) => {
+    await page.goto(`/metric/${SLUG}`);
+    const copy = page.locator('[data-testid="cite-copy"]');
+    await expect(copy).toBeVisible();
+    expect(await copy.evaluate((el) => el.tagName)).toBe("BUTTON");
+    await expect(copy).toHaveAttribute("aria-label", /copy citation/i);
+  });
 });
 
 test.describe("catalogue + sitemap (item 829)", () => {
