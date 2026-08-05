@@ -44,4 +44,22 @@ test.describe("methodology — the trust surface (AC 523)", () => {
     const link = page.locator('a[href="/methodology"]').first();
     await expect(link).toBeVisible({ timeout: 20_000 });
   });
+
+  // iter-32 item 846: the platform citation block renders on the methodology page.
+  test("the platform citation block renders", async ({ page }) => {
+    await page.goto("/methodology");
+    const cite = page.locator('[data-testid="cite-block"]');
+    await expect(cite).toBeVisible();
+    await expect(cite).toContainText("MapsOfBharat.");
+    await expect(page.locator('[data-testid="cite-copy"]')).toBeVisible();
+  });
+
+  // iter-32 item 847: the boundary self-certification section renders.
+  test("the boundary self-certification section renders", async ({ page }) => {
+    await page.goto("/methodology");
+    const boundary = page.locator('[data-testid="boundary-cert"]');
+    await expect(boundary).toBeVisible();
+    await expect(boundary).toContainText(/Boundary self-certification/i);
+    await expect(boundary).toContainText(/Survey of India/i);
+  });
 });

@@ -5,6 +5,9 @@ node_modules
 .env
 .env.*
 data
+# …but the curated corrections log (iter-32 item 848) is a source file the
+# /corrections page imports at build time, so it must be in the build context.
+!data/corrections.json
 *.db
 __pycache__
 **/__pycache__

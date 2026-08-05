@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CiteBlock } from "@/components/atlas/cite-block";
+import { SiteFooter } from "@/components/site-footer";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +55,23 @@ export default function MethodologyPage() {
         <strong className="font-semibold text-foreground">Coverage</strong> view to shade any
         indicator by provenance.
       </p>
+
+      {/* Platform citation (iter-32 item 846) */}
+      <CiteBlock kind="platform" />
+
+      {/* Boundary self-certification (iter-32 item 847). OWNER-REVIEW copy — the
+          standard web-map self-certification form; wording is the owner's to sign off. */}
+      <section className="mt-10" data-testid="boundary-cert">
+        <h2 className="border-b border-border-soft pb-2 text-[13px] font-bold tracking-[.12em] text-faint">BOUNDARY SELF-CERTIFICATION</h2>
+        <p className="mt-4 text-[14px] leading-relaxed text-muted">
+          The maps on Maps of Bharat are schematic representations for statistical visualization.
+          The depiction of India&apos;s external boundaries follows the Survey of India and is
+          published in accordance with the Government of India&apos;s guidelines (National Map
+          Policy / Department of Science &amp; Technology). Jammu &amp; Kashmir, Ladakh, Arunachal
+          Pradesh and Aksai Chin are shown as claimed and administered by India. These maps are not
+          authoritative for legal, administrative, or international-boundary purposes.
+        </p>
+      </section>
 
       <h2 className="mt-10 border-b border-border-soft pb-2 text-[13px] font-bold tracking-[.12em] text-faint">KNOWN LIMITATIONS</h2>
       <ul className="mt-4 space-y-3 text-[14px] leading-relaxed text-muted">
@@ -132,6 +151,8 @@ export default function MethodologyPage() {
           ))}
         </section>
       ))}
+
+      <SiteFooter />
     </main>
   );
 }
