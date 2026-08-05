@@ -81,11 +81,19 @@ export function middleware(req: NextRequest) {
 
   // clickjacking (risk #58): pages refuse framing, except the purpose-built
   // /embed view which any site may iframe
+  const isEmbed = pathname.startsWith("/embed");
   const res = NextResponse.next();
   res.headers.set(
     "Content-Security-Policy",
-    pathname.startsWith("/embed") ? "frame-ancestors *" : "frame-ancestors 'none'"
+    isEmbed ? "frame-ancestors *" : "frame-ancestors 'none'"
   );
+  // The chrome-less /embed view is meant to live inside other pages, never to be a
+  // search result of its own (iter-b item 882). Emit a noindex header here so a
+  // crawler that only reads headers still skips it — belt-and-braces with the
+  // robots metadata on app/embed/layout.tsx. This does NOT touch frame-ancestors.
+  if (isEmbed) {
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
   return res;
 }
 
