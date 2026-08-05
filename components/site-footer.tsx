@@ -1,9 +1,10 @@
 import Link from "next/link";
 
-// Shared content-page footer (iter-32 item 848). Links only to pages that EXIST:
-// Methodology, Coverage, Corrections. Rendered INSIDE each content page's <main>
-// (so it is a generic footer, not a second contentinfo landmark) — never on the
-// full-bleed map explorer `/` or `/embed`.
+// Shared content-page footer (iter-32 item 848; Terms/Privacy added iter-33 item
+// 849). Links only to pages that EXIST: Methodology, Coverage, Corrections, Terms,
+// Privacy. Rendered INSIDE each content page's <main> (so it is a generic footer,
+// not a second contentinfo landmark) — never on the full-bleed map explorer `/`
+// or `/embed`.
 export function SiteFooter() {
   const link = "text-dim hover:text-accent";
   return (
@@ -21,6 +22,8 @@ export function SiteFooter() {
       <Link href="/methodology" className={link}>Methodology</Link>
       <Link href="/coverage" className={link}>Coverage</Link>
       <Link href="/corrections" className={link}>Corrections</Link>
+      <Link href="/terms" className={link}>Terms</Link>
+      <Link href="/privacy" className={link}>Privacy</Link>
     </footer>
   );
 }

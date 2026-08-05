@@ -146,4 +146,33 @@ test.describe("feat-social-export", () => {
     const note = fills.find((t) => /Boundaries per Survey of India/i.test(t));
     expect(note, "boundary self-cert note must be drawn on the card canvas").toBeTruthy();
   });
+
+  test("the card credits a multi-source metric's second dataset (item 850)", async ({ page }) => {
+    // A per-capita / rate metric's number is built from MORE THAN one dataset — here
+    // NCRB crime counts ÷ Census-2011 population. The footer must credit the
+    // denominator dataset alongside the headline source, not just the headline.
+    // Captured via the same fillText interception as the estimate/boundary tests.
+    test.setTimeout(120_000);
+    await page.addInitScript(() => {
+      const w = window as unknown as { __fills: string[] };
+      w.__fills = [];
+      const orig = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (...args) {
+        w.__fills.push(String(args[0]));
+        return orig.apply(this, args as Parameters<typeof orig>);
+      };
+    });
+    await page.goto("/?m=crime_ipc_rate&lvl=district"); // NCRB counts ÷ Census-2011 population
+    await waitForMapReady(page);
+    await page.getByRole("button", { name: /export a social media card/i }).click();
+    await expect(page.getByRole("dialog", { name: /social media card/i })).toBeVisible();
+    await page.waitForTimeout(1500); // preview render draws the card once
+
+    const fills = await page.evaluate(() => (window as unknown as { __fills: string[] }).__fills);
+    // the headline source is still credited …
+    expect(fills.some((t) => /Source:\s*NCRB/i.test(t)), "headline NCRB source line").toBeTruthy();
+    // … and the Census-2011 population denominator is credited alongside it
+    const also = fills.find((t) => /Also:.*Census 2011 \(population\)/i.test(t));
+    expect(also, "multi-source credit for the Census-2011 population denominator must be drawn").toBeTruthy();
+  });
 });

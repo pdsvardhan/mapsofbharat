@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 
 import { correctionsDb } from "@/lib/corrections-db";
+import { hashIp } from "@/lib/ip";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,13 +17,16 @@ export const dynamic = "force-dynamic";
 
 const MAX_MESSAGE = 4000;
 
-/** First 16 hex of sha256(client ip) — never the raw IP (DPDP / project stance). */
-function ipHash(req: Request): string {
-  const ip =
+/** The client IP, using the same header precedence as middleware.ts:
+ *  x-forwarded-for (first hop) → x-real-ip → the literal "unknown". This raw value
+ *  is used ONLY to derive a hash below; it is never persisted (DPDP / project
+ *  stance — see /privacy and lib/ip.ts). */
+function clientIp(req: Request): string {
+  return (
     req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
     req.headers.get("x-real-ip") ||
-    "unknown";
-  return createHash("sha256").update(ip).digest("hex").slice(0, 16);
+    "unknown"
+  );
 }
 
 /** Constant-time token compare; length mismatch short-circuits to false. */
@@ -73,7 +77,7 @@ export async function POST(req: Request) {
     message.slice(0, MAX_MESSAGE),
     location,
     email,
-    ipHash(req),
+    hashIp(clientIp(req)),
     (req.headers.get("user-agent") || "").slice(0, 500)
   );
 

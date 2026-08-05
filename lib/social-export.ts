@@ -44,7 +44,11 @@ export type SocialCardSpec = {
   preset: SocialPreset;
   theme: SocialTheme;
   headline: string;
-  metric: { name: string; unit: string; year: number; source: string; decimals: number };
+  /** `sources` (item 850): compact credits for ANY additional dataset the headline
+   *  number is built from — the second (denominator) source in a per-capita / rate /
+   *  share metric, e.g. ["Census 2011 (population)"]. Absent/empty for single-source
+   *  metrics. Derived by additionalSourceCredits() in lib/metric-raw-source. */
+  metric: { name: string; unit: string; year: number; source: string; decimals: number; sources?: string[] };
   level: "state" | "district";
   focusName: string | null;
   entries: { code: string; name: string; value: number; estimated?: number; estimate_kind?: string | null }[];
@@ -903,7 +907,12 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   }
 
   // ── frame bottom-up: footer, legend (if under), then the map gets the rest ──
-  const footerH = 46;
+  // Multi-source credit (item 850): when the number is built from more than one
+  // dataset an extra "Also: …" line is drawn in the footer, so reserve a line of
+  // height for it up front — this keeps the estimate footnote (item 667/827) and the
+  // boundary note (item 847) from being pushed off the bottom edge on tight layouts.
+  const creditLines = spec.metric.sources ?? [];
+  const footerH = 46 + (creditLines.length ? 16 : 0);
   const footerTop = LH - MARGIN - footerH + 18;
   const legendUnder = L.legend.place === "under";
   const legendH = 76;
@@ -1494,7 +1503,17 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const srcW = LW - MARGIN * 2 - (brandInFooter ? 300 : 20);
   const srcLines = wrap(ctx, note ? `${srcText} · ${note}` : srcText, srcW, 2);
   srcLines.forEach((s, i) => ctx.fillText(s, MARGIN, footerTop + 22 + i * 16));
-  ctx.fillText(`${methodNote} · ${boundaryNote}`, MARGIN, footerTop + 22 + srcLines.length * 16);
+  let footerLine = srcLines.length;
+  // Multi-source credit (item 850): credit EVERY dataset the number is built from —
+  // e.g. a per-capita metric's Census-2011 population denominator. Drawn on its OWN
+  // line, so it is never folded into the source/estimate wrap (item 827) or the
+  // boundary note (item 847), both of which must stay intact.
+  if (creditLines.length) {
+    const alsoText = `Also: ${creditLines.join(" · ")}`;
+    ctx.fillText(wrap(ctx, alsoText, srcW, 1)[0], MARGIN, footerTop + 22 + footerLine * 16);
+    footerLine += 1;
+  }
+  ctx.fillText(`${methodNote} · ${boundaryNote}`, MARGIN, footerTop + 22 + footerLine * 16);
   if (brandInFooter) drawBrand(LW - MARGIN, footerTop + 8, true);
 
   return canvas;
