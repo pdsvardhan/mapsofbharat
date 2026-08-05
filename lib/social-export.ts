@@ -1485,10 +1485,16 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   const methodNote = coverage
     ? "coloured by data provenance"
     : `${nClasses}-class ${METHOD_LABEL[usedMethod].toLowerCase()}`;
+  // Boundary self-certification, compact (iter-32 item 847): every exported card
+  // carries a short "boundaries per Survey of India" note beside the method line,
+  // mirroring the methodology page's boundary self-cert. Drawn on the method line
+  // (never folded into the source/estimate wrap, which must stay intact — item
+  // 827). OWNER-REVIEW copy.
+  const boundaryNote = "Boundaries per Survey of India";
   const srcW = LW - MARGIN * 2 - (brandInFooter ? 300 : 20);
   const srcLines = wrap(ctx, note ? `${srcText} · ${note}` : srcText, srcW, 2);
   srcLines.forEach((s, i) => ctx.fillText(s, MARGIN, footerTop + 22 + i * 16));
-  ctx.fillText(methodNote, MARGIN, footerTop + 22 + srcLines.length * 16);
+  ctx.fillText(`${methodNote} · ${boundaryNote}`, MARGIN, footerTop + 22 + srcLines.length * 16);
   if (brandInFooter) drawBrand(LW - MARGIN, footerTop + 8, true);
 
   return canvas;
