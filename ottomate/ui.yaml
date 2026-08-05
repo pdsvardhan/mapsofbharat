@@ -63,3 +63,10 @@ pages:
     mobile_handling: responsive
     entry_points: []
     components: []
+  - id: page-corrections
+    title: Corrections
+    route: /corrections
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []

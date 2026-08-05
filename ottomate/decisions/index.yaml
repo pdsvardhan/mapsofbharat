@@ -314,3 +314,13 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/adr-027-shrug-crosswalk-accept.md
+  - id: adr-029-no-user-generated-content
+    project_slug: mapsofbharat
+    title: No user-generated content on the public site — sidestepping intermediary
+      liability
+    status: accepted
+    date: 2026-08-05T00:00:00.000Z
+    tags:
+      - curated
+      - cat:security
+    body_path: decisions/adr-029-no-user-generated-content.md

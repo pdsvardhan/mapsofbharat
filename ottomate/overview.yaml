@@ -32,12 +32,6 @@ problem_statement: "Reliable India statistics are scattered across government
   that change over time. MapsOfBharat turns official Indian data into a
   trustworthy, map-first exploration tool: cited, comparable, normalized, and
   downloadable."
-positioning: >-
-  MapsOfBharat is the pre-loaded, provenance-honest atlas of India's official
-  statistics — already cleaned, mapped to current-day boundaries, honest about
-  what is measured versus inherited, and free to read. Not a map tool (BharatViz
-  is free and wider); not a data library (Dataful is deeper) — the pre-loaded,
-  provenance-honest atlas. (canonical home: adr-028; no dedicated tracker column)
 non_goals:
   - Primary data comes only from official/government or top-tier institutional
     sources; no private or paywalled datasets as the source of truth.
@@ -48,8 +42,8 @@ non_goals:
     cited indicators, not unprocessed files.
   - No live/real-time dependence on government portals at request time; all data
     is loaded into our own canonical store via ETL.
-  - No political commentary or advocacy. Editorial framing of headlines and story
-    selection is allowed; the numbers, their classification, and their
+  - No political commentary or advocacy. Editorial framing of headlines and
+    story selection is allowed; the numbers, their classification, and their
     presentation stay neutral, sourced, and methodologically disclosed.
   - India (Bharat) only; not a global statistics tool.
 success_criteria:
