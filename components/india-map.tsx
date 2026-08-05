@@ -26,6 +26,7 @@ import { SearchModal, RegionIdx } from "@/components/atlas/search-modal";
 import { ShareMenu } from "@/components/atlas/share-menu";
 import { SocialExportDialog } from "@/components/atlas/social-export-dialog";
 import type { SocialFeature } from "@/lib/social-export";
+import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
 import { DataTable, ViewToggle } from "@/components/atlas/data-table";
@@ -1581,7 +1582,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       {socialOpen && data && (
         <SocialExportDialog
           onClose={() => setSocialOpen(false)}
-          metric={{ name: data.name, unit: data.unit, year: data.year, source: data.source, decimals: data.decimals }}
+          // `sources` credits any additional dataset the number is built from — a
+          // per-capita metric's population denominator, etc. (item 850). Keyed off
+          // data.id so it matches the same payload that supplies name/source.
+          metric={{ name: data.name, unit: data.unit, year: data.year, source: data.source, decimals: data.decimals, sources: additionalSourceCredits(data.id) }}
           level={level} focusName={focus?.name ?? null}
           entries={entries.map((e) => ({
             code: e.code, name: e.name, value: e.value,

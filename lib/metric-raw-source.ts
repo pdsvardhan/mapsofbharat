@@ -681,6 +681,58 @@ export function hasHostedRaw(id: string): boolean {
   return RAW_SOURCES[id]?.raw.kind === "file";
 }
 
+// ── multi-source card credits (iter-33 item 850) ──────────────────────────────
+//
+// A per-capita / rate / share metric's headline number is built from MORE THAN one
+// dataset: a numerator source (the metric's own `source`) divided by a DENOMINATOR
+// dataset — e.g. Census-2011 population, Census-2011 female population, an RBI GSDP
+// series, or another SCB table. The social export card previously credited only the
+// headline source, so it needs these extra datasets too.
+//
+// They are already recorded structurally on each metric's lineage as `externalInputs`.
+// The ones that are a genuine second DATA source are exactly the ones described as a
+// "denominator". Boundary-harmonisation inputs (the sub-district crosswalk, the
+// boundary polygons) are deliberately NOT credited here — they reshape existing
+// values onto current districts rather than contribute a second measurement, and
+// boundary provenance is already disclosed by the card's "Boundaries per Survey of
+// India" note.
+
+/** Compact, card-sized credit labels for the shared denominator phrases, so the
+ *  same input reads the same short way on every metric that uses it. */
+const DENOMINATOR_CREDIT: Record<string, string> = {
+  [CENSUS_POP]: "Census 2011 (population)",
+  [CENSUS_FEMALE_POP]: "Census 2011 (female population)",
+  [RBI_GSDP]: "RBI Handbook of Statistics (GSDP)",
+};
+
+/** Fallback compaction for any other denominator phrase: drop a trailing
+ *  "(the … denominator)" clause, e.g.
+ *  "RBI HBS Table 155 — SCB deposits (the denominator)" →
+ *  "RBI HBS Table 155 — SCB deposits". */
+function compactDenominator(phrase: string): string {
+  return phrase.replace(/\s*\(the\b[^)]*\)\s*$/i, "").trim();
+}
+
+/**
+ * Compact credits for the ADDITIONAL datasets a metric's headline number is built
+ * from — the second (denominator) source in a per-capita / rate / share metric.
+ * Derived from the lineage's `externalInputs`: an input is a citable second data
+ * source when it names a dataset used as a DENOMINATOR. Returns an empty array for
+ * single-source metrics and for metrics whose only external inputs are boundary /
+ * geometry harmonisation (not a second measurement). Deduped, order-stable so the
+ * card renders deterministically.
+ */
+export function additionalSourceCredits(id: string): string[] {
+  const inputs = RAW_SOURCES[id]?.externalInputs ?? [];
+  const out: string[] = [];
+  for (const phrase of inputs) {
+    if (!/denominator/i.test(phrase)) continue; // only a second DATA source counts
+    const credit = DENOMINATOR_CREDIT[phrase] ?? compactDenominator(phrase);
+    if (credit && !out.includes(credit)) out.push(credit);
+  }
+  return out;
+}
+
 // ---- citation helpers (pure; shared by the download route) --------------------
 
 export type CitationInput = {

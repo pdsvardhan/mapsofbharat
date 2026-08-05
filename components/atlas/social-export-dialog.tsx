@@ -15,7 +15,9 @@ import { track } from "@/lib/analytics";
 
 type Props = {
   onClose: () => void;
-  metric: { name: string; unit: string; year: number; source: string; decimals: number };
+  /** `sources` carries compact credits for any ADDITIONAL dataset the number is
+   *  built from (item 850) — passed straight through to the card spec. */
+  metric: { name: string; unit: string; year: number; source: string; decimals: number; sources?: string[] };
   level: "state" | "district";
   focusName: string | null;
   /** Carries `estimated` / `estimate_kind` so the card can disclose them — a PNG
