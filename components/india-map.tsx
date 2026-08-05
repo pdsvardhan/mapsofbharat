@@ -1285,7 +1285,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             <kbd className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-[9px] text-dim">CTRL K</kbd>
           </button>
         </div>
-        <div className="flex w-[300px] flex-none items-center justify-end">
+        <div className="flex w-[300px] flex-none items-center justify-end gap-4">
+          {/* Corrections / report an error (iter-32 item 848), beside Methodology */}
+          <a
+            href="/corrections" target="_blank" rel="noopener noreferrer"
+            className="text-[11.5px] font-semibold tracking-[.05em] text-muted hover:text-foreground"
+          >
+            CORRECTIONS
+          </a>
           <a
             href="/methodology" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-2 text-[11.5px] font-semibold tracking-[.05em] text-muted hover:text-foreground"

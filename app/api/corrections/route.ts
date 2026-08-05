@@ -1,0 +1,109 @@
+import { NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
+
+import { correctionsDb } from "@/lib/corrections-db";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Private corrections intake (iter-32 item 848).
+// POST  — public: store a report (honeypot-guarded, no raw IP). /api/* is already
+//         per-IP rate-limited by middleware.ts.
+// GET   — owner-only: token-gated read of the stored reports, fail-closed.
+//
+// No user-generated content is ever published from this store; the public
+// corrections LOG is a separately curated data/corrections.json.
+
+const MAX_MESSAGE = 4000;
+
+/** First 16 hex of sha256(client ip) — never the raw IP (DPDP / project stance). */
+function ipHash(req: Request): string {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
+  return createHash("sha256").update(ip).digest("hex").slice(0, 16);
+}
+
+/** Constant-time token compare; length mismatch short-circuits to false. */
+function tokenMatches(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+export async function POST(req: Request) {
+  let body: Record<string, unknown> = {};
+  try {
+    body = await req.json();
+  } catch {
+    // tolerate malformed / empty bodies
+  }
+
+  // Honeypot: a hidden field real users never fill. If it's set, silently accept
+  // and store NOTHING (don't tip off the bot with an error).
+  const honeypot = typeof body.website === "string" ? body.website.trim() : "";
+  if (honeypot) return NextResponse.json({ ok: true });
+
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+  if (!message) {
+    return NextResponse.json({ ok: false, error: "message required" }, { status: 400 });
+  }
+
+  const location =
+    typeof body.location === "string" && body.location.trim()
+      ? body.location.trim().slice(0, 500)
+      : null;
+  const email =
+    typeof body.email === "string" && body.email.trim()
+      ? body.email.trim().slice(0, 320)
+      : null;
+
+  const d = correctionsDb();
+  if (!d) {
+    return NextResponse.json({ ok: false, error: "store unavailable" }, { status: 503 });
+  }
+
+  d.prepare(
+    `INSERT INTO corrections_reports (created_at, message, location, email, ip_hash, user_agent)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(
+    new Date().toISOString(),
+    message.slice(0, MAX_MESSAGE),
+    location,
+    email,
+    ipHash(req),
+    (req.headers.get("user-agent") || "").slice(0, 500)
+  );
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function GET(req: Request) {
+  // Fail closed: with no token configured the endpoint never exposes reports.
+  const expected = process.env.CORRECTIONS_ADMIN_TOKEN;
+  if (!expected) {
+    return NextResponse.json({ error: "not configured" }, { status: 503 });
+  }
+
+  const auth = req.headers.get("authorization") || "";
+  const provided = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
+  if (!tokenMatches(provided, expected)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const d = correctionsDb();
+  if (!d) {
+    return NextResponse.json({ error: "store unavailable" }, { status: 503 });
+  }
+
+  const reports = d
+    .prepare(
+      `SELECT id, created_at, message, location, email, ip_hash, user_agent
+       FROM corrections_reports ORDER BY id DESC`
+    )
+    .all();
+
+  return NextResponse.json({ ok: true, reports });
+}

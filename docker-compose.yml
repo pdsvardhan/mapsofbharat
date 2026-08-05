@@ -21,9 +21,19 @@ services:
     ports:
       - "127.0.0.1:8610:3000"
     volumes:
+      # The /data volume is read-write and also holds the writable corrections
+      # store (corrections.db, iter-32 item 848) beside the canonical read-only DB.
       - ./data:/data
     env_file:
       - .env
+    environment:
+      # Writable corrections-report store (iter-32 item 848). Lives on the /data
+      # volume above, so it persists across restarts.
+      CORRECTIONS_DB_PATH: /data/corrections.db
+      # CORRECTIONS_ADMIN_TOKEN gates the owner-only GET /api/corrections read.
+      # Set it in .env (already loaded via env_file) — intentionally NOT declared
+      # here so an empty shell interpolation can't override the .env value. When
+      # unset the read endpoint fails CLOSED (503); set a strong secret to enable.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 30s

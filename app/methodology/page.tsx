@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CiteBlock } from "@/components/atlas/cite-block";
+import { SiteFooter } from "@/components/site-footer";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -150,6 +151,8 @@ export default function MethodologyPage() {
           ))}
         </section>
       ))}
+
+      <SiteFooter />
     </main>
   );
 }

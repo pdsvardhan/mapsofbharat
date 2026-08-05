@@ -6,6 +6,7 @@ import { CiteBlock } from "@/components/atlas/cite-block";
 import { MetricLineage } from "@/components/atlas/metric-lineage";
 import { MetricTable } from "@/components/atlas/metric-table";
 import { MetricShare } from "@/components/atlas/metric-share";
+import { SiteFooter } from "@/components/site-footer";
 import { estimateFootnote } from "@/lib/estimate-kind";
 import {
   buildMetricRows,
@@ -302,6 +303,8 @@ export default async function MetricPage({
         </Link>{" "}
         for how each number is computed and where it is imperfect.
       </footer>
+
+      <SiteFooter />
     </main>
   );
 }

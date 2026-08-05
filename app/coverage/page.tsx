@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { SiteFooter } from "@/components/site-footer";
 import { getCoverageSummary } from "@/lib/metric-page-data";
 import {
   PROVENANCE_CLASSES,
@@ -160,6 +161,8 @@ export default function CoveragePage() {
         . Estimates are always disclosed at the point the number is read — in the rail, the map
         hover, the region panel and every exported card.
       </footer>
+
+      <SiteFooter />
     </main>
   );
 }
