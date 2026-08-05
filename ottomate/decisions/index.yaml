@@ -324,3 +324,13 @@ decisions:
       - curated
       - cat:security
     body_path: decisions/adr-029-no-user-generated-content.md
+  - id: adr-028-positioning-and-non-goals
+    project_slug: mapsofbharat
+    title: Positioning as the provenance-honest atlas; and non-goals that match
+      shipped behaviour
+    status: accepted
+    date: 2026-08-04T00:00:00.000Z
+    tags:
+      - curated
+      - cat:product
+    body_path: decisions/adr-028-positioning-and-non-goals.md
