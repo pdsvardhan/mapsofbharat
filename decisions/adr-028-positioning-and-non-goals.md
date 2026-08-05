@@ -32,3 +32,12 @@ The three defensible claims underneath it, strongest first: (1) provenance hones
 ## Future guardrail (noted, NOT adopted here)
 
 When composite indices / derived rankings are eventually built, a dedicated ADR must require each to publish its formula, weights, inputs, peer-group definition and version alongside — and never be framed as a verdict. Recorded here so the guardrail is not forgotten; it is not in force until that ADR is written (indices are v2 / monetisation-era).
+
+## Amendment (2026-08-05, iteration #32) — the free/paid line, sharpened
+
+The Phase-1 launch decision pass (`decisions/2026-08-05-launch-decisions-and-plan.md`) refined row 67's free/paid seam into a concrete, data-access framing. Superseding the general wording above **for the purpose of the paywall line**:
+
+- **Free, forever, without an account:** viewing every number on the map, downloading the **social card PNG**, and the **iframe embed**.
+- **Paid (v2, when monetising):** the **table / data view** and **downloading that data** (per-dataset, bulk, and API).
+
+The commitment is framed as **data-access**, not viewing: reading the numbers on the map is always free; paying buys the *tabular data and its export*, not the map. This is the seam the deferred accounts + LGD-crosswalk-swap (adr-027, to-do #384) work will use. No feature changes now — monetisation stays v2.
