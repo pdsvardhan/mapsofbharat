@@ -1,23 +1,36 @@
 "use client";
 
-// Unified Share menu (iter-51 item 394): Copy link · Copy embed code.
-// PNG export sits beside it as the toolbar's primary action. All three are
-// real — no stubs. CSV and Locate retired (items 395/396, adr-015).
+// Unified Share menu (iter-51 item 394): Copy link · Copy embed code · WhatsApp.
+// PNG export sits beside it as the toolbar's primary action. All are real — no
+// stubs. CSV and Locate retired (items 395/396, adr-015). WhatsApp added iter-b
+// item 883.
 
 import { useRef, useState } from "react";
 
 import { useDismiss } from "@/lib/use-dismiss";
 
 export function ShareMenu({
-  disabled, onCopyLink, onCopyEmbed, copied,
+  disabled, onCopyLink, onCopyEmbed, copied, shareCaption,
 }: {
   disabled: boolean;
   onCopyLink: () => void; onCopyEmbed: () => void;
   copied: string | null;
+  /** A short, neutral, sourced caption prepended to the WhatsApp share text — the
+   *  indicator + region on view, no verdict (does-not-claim fence). Optional; the
+   *  bare deep link travels alone when absent. */
+  shareCaption?: string;
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   useDismiss(open, () => setOpen(false), boxRef);
+
+  // WhatsApp deep-share, built from the SAME source Copy link uses — the live
+  // permalink the map's URL-sync effect keeps in window.location.href — so the two
+  // can never diverge (item 883). Read only client-side; the menu that renders this
+  // anchor only ever opens after a click, so window is always defined by then.
+  const deepLink = typeof window !== "undefined" ? window.location.href : "";
+  const waText = shareCaption ? `${shareCaption} ${deepLink}` : deepLink;
+  const waHref = `https://wa.me/?text=${encodeURIComponent(waText)}`;
 
   return (
     <div ref={boxRef} className="relative flex items-stretch">
@@ -48,11 +61,23 @@ export function ShareMenu({
           </button>
           <button
             role="menuitem" onClick={onCopyEmbed}
-            className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-foreground hover:bg-elevated"
+            className="flex w-full items-center justify-between border-b border-border-faint px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-foreground hover:bg-elevated"
           >
             Copy embed code
             <span className="font-mono text-[9px] text-dim">{copied === "embed" ? "COPIED ✓" : "IFRAME"}</span>
           </button>
+          <a
+            role="menuitem"
+            href={waHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Share this view on WhatsApp"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-foreground hover:bg-elevated"
+          >
+            Share on WhatsApp
+            <span className="font-mono text-[9px] text-dim">WHATSAPP</span>
+          </a>
           <div className="border-t border-border-soft px-3.5 py-2 text-[10px] leading-snug text-dim">
             The link and embed carry this exact view — indicator, level, colours and drill.
           </div>

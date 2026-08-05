@@ -1109,6 +1109,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     copyText(`<iframe src="${url.toString()}" width="800" height="560" style="border:0" loading="lazy" title="${title}"></iframe>`, "embed");
   }, [copyText, data, sel]);
 
+  // Neutral, sourced caption for the WhatsApp share (item 883): it names the
+  // indicator and, when one is selected, the region — no verdict, per the
+  // does-not-claim fence. The deep link itself is added inside the share menu
+  // (the live permalink), so this is only the framing text.
+  const shareCaption = data
+    ? `${data.name}${selected ? ` — ${selected.name}` : " — India"} · Maps of Bharat`
+    : "Maps of Bharat — India's official statistics, mapped";
+
   // Legacy viewport-screenshot PNG export removed (iter-72 item 568) — the
   // social CARD dialog is the sole image export now.
 
@@ -1400,7 +1408,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 {compare ? "Comparing" : "Compare"}
               </button>
               <span className="w-px flex-none" style={{ background: "#2a2619" }} />
-              <ShareMenu disabled={false} onCopyLink={copyLink} onCopyEmbed={copyEmbed} copied={copied} />
+              <ShareMenu disabled={false} onCopyLink={copyLink} onCopyEmbed={copyEmbed} copied={copied} shareCaption={shareCaption} />
               <span className="w-px flex-none" style={{ background: "#2a2619" }} />
               <button
                 onClick={() => setSocialOpen(true)} disabled={!data || vintage === "2011"}
