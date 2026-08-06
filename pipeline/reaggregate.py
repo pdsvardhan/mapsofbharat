@@ -167,7 +167,19 @@ if ok and ok_st:
         year INTEGER NOT NULL, license TEXT NOT NULL, fetched_at TEXT NOT NULL,
         loaded_at TEXT NOT NULL, rows_written INTEGER NOT NULL, notes TEXT)""")
 
-    con.execute("DELETE FROM metric_values WHERE year=2011 AND region_level IN ('district','state')")
+    # Guard (to-do #413, 2026-08-06): scope the wipe to ONLY the metric_ids this
+    # script rewrites, so a re-run can never delete sibling 2011 adapters
+    # (census A-01: pop_density/urban_pct/area_km2; religion C-01; assets; language).
+    # The old unqualified DELETE removed every year=2011 district+state row; the
+    # 2026-08-04 re-run of this script left 16 metrics empty on the live site until
+    # they were re-ingested. Deleting only our own ids keeps the write idempotent.
+    _own = {m for vals in results.values() for m in vals} | {m for vals in results_st.values() for m in vals}
+    if _own:
+        _ph = ",".join("?" * len(_own))
+        con.execute(
+            f"DELETE FROM metric_values WHERE year=2011 AND region_level IN ('district','state') AND metric_id IN ({_ph})",
+            tuple(_own),
+        )
     n = 0
     for rid, vals in results.items():
         for mid, v in vals.items():
