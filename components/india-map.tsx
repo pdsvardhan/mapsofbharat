@@ -1388,9 +1388,20 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               />
             )}
 
-            {/* ACTION TOOLBAR */}
+            {/* ACTION TOOLBAR
+                ≤480px reachability (item #419): the bar is anchored bottom-right of
+                the map PLATE, but on a phone the fixed-width right rail squeezes the
+                plate to a sliver, so a right-anchored bar lands off the left edge
+                (the Share trigger measured at x≈-150 at 390px) — every action, incl.
+                the mobile-first WhatsApp share, was unreachable. Below 480px it
+                re-anchors to the VIEWPORT (fixed) and docks bottom-centre, keeping the
+                intact Atlas segmented look but decoupled from the squeezed plate so
+                the whole bar + its share menu stay on-screen. Desktop (≥1024px) is
+                untouched — the max-[480px] overrides simply don't apply. The bar still
+                lives inside the map plate, so it correctly vanishes in table view
+                (the plate is display:none there). */}
             <div
-              className="absolute bottom-3.5 right-3.5 z-[6] flex items-stretch overflow-visible rounded-sm border"
+              className="absolute bottom-3.5 right-3.5 z-[6] flex items-stretch overflow-visible rounded-sm border max-[480px]:fixed max-[480px]:bottom-3 max-[480px]:left-1/2 max-[480px]:right-auto max-[480px]:z-20 max-[480px]:max-w-[calc(100vw-1.5rem)] max-[480px]:-translate-x-1/2"
               style={{ background: "rgba(16,17,13,.96)", borderColor: compare ? "#6b3020" : "#3b3626", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
             >
               <button
