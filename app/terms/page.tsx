@@ -42,7 +42,7 @@ export default function TermsPage() {
         These terms govern use of Maps of Bharat. Using the site means accepting them. Maps of Bharat
         is operated as a sole proprietorship based in India, and these terms are governed by the laws
         of India.
-        {/* PLACEHOLDER: confirm before launch — operator legal name */}
+        {/* operator intentionally faceless (sole proprietorship); a legal operator name is added at the formal pre-public-launch legal review */}
       </p>
 
       <h2 className={H2}>THE DATA IS PROVIDED &ldquo;AS IS&rdquo;</h2>
@@ -115,7 +115,7 @@ export default function TermsPage() {
         <a className="text-accent hover:underline" href="mailto:contact@mapsofbharat.in">
           contact@mapsofbharat.in
         </a>
-        {/* PLACEHOLDER: confirm before launch — general contact email */}.
+        .
       </p>
 
       <SiteFooter />

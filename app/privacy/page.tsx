@@ -46,7 +46,7 @@ export default function PrivacyPage() {
       </p>
       <p className={P}>
         Maps of Bharat is operated as a sole proprietorship based in India.
-        {/* PLACEHOLDER: confirm before launch — operator legal name */}
+        {/* operator intentionally faceless (sole proprietorship); a legal operator name is added at the formal pre-public-launch legal review */}
       </p>
 
       <h2 className={H2}>ANALYTICS</h2>
@@ -136,7 +136,7 @@ export default function PrivacyPage() {
         <a className="text-accent hover:underline" href="mailto:privacy@mapsofbharat.in">
           privacy@mapsofbharat.in
         </a>
-        {/* PLACEHOLDER: confirm before launch — privacy contact email */}. Material changes to this
+        . Material changes to this
         policy are posted on this page.
       </p>
 

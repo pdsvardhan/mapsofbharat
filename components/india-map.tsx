@@ -1388,9 +1388,24 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               />
             )}
 
-            {/* ACTION TOOLBAR */}
+            {/* ACTION TOOLBAR
+                ≤480px reachability (item #419): the bar is anchored bottom-right of
+                the map PLATE, but on a phone the fixed-width right rail squeezes the
+                plate to a sliver, so a right-anchored bar lands off the left edge
+                (the Share trigger measured at x≈-150 at 390px) — every action, incl.
+                the mobile-first WhatsApp share, was unreachable. Below the lg
+                desktop breakpoint (≤1023px) it re-anchors to the VIEWPORT (fixed) and
+                docks bottom-centre, keeping the intact Atlas segmented look but
+                decoupled from the squeezed plate so the whole bar + its share menu
+                stay on-screen. The cutoff is lg, not a narrower value: the fixed-width
+                right rail keeps the plate too narrow for a right-anchored bar well past
+                640px, so earlier 480/640 thresholds left an off-screen dead band
+                (#419 fix-loop). Desktop (≥1024px) keeps the exact original layout —
+                the max-[1024px] overrides simply don't apply. The bar still
+                lives inside the map plate, so it correctly vanishes in table view
+                (the plate is display:none there). */}
             <div
-              className="absolute bottom-3.5 right-3.5 z-[6] flex items-stretch overflow-visible rounded-sm border"
+              className="absolute bottom-3.5 right-3.5 z-[6] flex items-stretch overflow-visible rounded-sm border max-[1024px]:fixed max-[1024px]:bottom-3 max-[1024px]:left-1/2 max-[1024px]:right-auto max-[1024px]:z-20 max-[1024px]:max-w-[calc(100vw-1.5rem)] max-[1024px]:-translate-x-1/2"
               style={{ background: "rgba(16,17,13,.96)", borderColor: compare ? "#6b3020" : "#3b3626", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
             >
               <button
