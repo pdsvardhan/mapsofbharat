@@ -1,0 +1,28 @@
+{
+  "states": {
+    "sha256": "368469f7d4bdb1b6e466ad0723b433105743089d7d361564f3977eefa9638e07",
+    "feature_count": 36,
+    "bbox": [
+      68.101,
+      6.766,
+      97.387,
+      37.077
+    ],
+    "vertex_count": 20982,
+    "coord_checksum": 21594145320,
+    "ids_sha256": "13a7c513cbe695df46f6b6e8182130859c01116f5a817214d9c27c3102ea614a"
+  },
+  "districts": {
+    "sha256": "c91b78361274703d91bd533078a60a098a3ec417f624adaa135fc8a094411c64",
+    "feature_count": 735,
+    "bbox": [
+      68.101,
+      6.766,
+      97.387,
+      37.077
+    ],
+    "vertex_count": 37903,
+    "coord_checksum": 39058382320,
+    "ids_sha256": "5423bbf08e8306ea7190c90781ed282e2769b3deb20799ef342601a508aa5458"
+  }
+}

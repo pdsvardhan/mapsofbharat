@@ -11,11 +11,20 @@ jobs:
       - run: bash scripts/check-adr-refs.sh
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
+      # Survey-of-India boundary gate (#405): checksum + geometry fingerprint (vs
+      # scripts/boundary-fingerprint.json) + always-on extent asserts. Blocks any commit that
+      # silently changes the boundary geojson or crops claimed territory (J&K/Ladakh/Aksai
+      # Chin/Arunachal). Intentional edits: `node scripts/check-boundaries.mjs --write` (reviewed).
+      - run: node scripts/check-boundaries.mjs
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint --if-present || echo "lint warnings (non-blocking)"
       - run: npm run build
-  tests:                        # gated behind RUN_TESTS; prebuilt Playwright (no per-run download)
+  # Full Playwright e2e needs a SERVED app + the canonical DB (gitignored, ~12MB), which CI
+  # doesn't have — so it stays gated behind the RUN_TESTS repo variable. The full flow_test
+  # matrix runs nightly on the server (03:30 cron, per the feature-verifier design) where the
+  # DB lives. To run e2e in CI you'd seed a fixture DB + serve the standalone build first.
+  tests:
     if: ${{ vars.RUN_TESTS == 'true' }}
     runs-on: ubuntu-latest
     container:

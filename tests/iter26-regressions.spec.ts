@@ -36,6 +36,11 @@ test.describe("indicator chooser taxonomy (items 750, 751)", () => {
 
     const dialog = await openChooser(page);
     const topics = dialog.locator("button").filter({ hasText: /^\w+\s*\d+ indicator/ });
+    // #380: the topic buttons render asynchronously after the dialog opens; without an
+    // explicit wait, allInnerTexts() can race the first paint and return [] (flaky on next dev).
+    // Wait for the full set to populate — count must reach the live category count — before reading.
+    await expect(topics.first()).toBeVisible({ timeout: 15_000 });
+    await expect.poll(async () => topics.count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(live.length);
     const names = (await topics.allInnerTexts()).map((t) => t.split("\n")[0].trim().toLowerCase());
     // no category may be missing from the browse path — the 750 bug hid 11 of 20
     for (const c of live) expect(names).toContain(c.toLowerCase());
