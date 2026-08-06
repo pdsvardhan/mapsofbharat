@@ -293,3 +293,66 @@ features:
         test_status: passing
         linked_test: tests/social-card.spec.ts
     dependencies: []
+  - id: feat-symbol-choropleth
+    title: Symbol / proportional-symbol maps
+    short_description: Proportional-symbol maps for HOTSPOT metrics where a
+      choropleth misleads (single-district spikes, raw counts). Unblocks roughly
+      29 district metrics — about a third of the library.
+    type: ui
+    status: planned
+    priority: P1
+    size: L
+    test_status: not-tested
+    notes: "Roadmap #408 (product growth), sequenced FIRST. See ROADMAP.md."
+    acceptance_criteria: []
+    dependencies: []
+  - id: feat-categorical-maps
+    title: Categorical / qualitative maps
+    short_description: Categorical map rendering for non-continuous indicators (e.g.
+      the dominant category per region), with a legend of discrete classes.
+    type: ui
+    status: planned
+    priority: P2
+    size: M
+    test_status: not-tested
+    notes: "Roadmap #408 (product growth). See ROADMAP.md."
+    acceptance_criteria: []
+    dependencies: []
+  - id: feat-vsup-uncertainty
+    title: VSUP uncertainty encoding toggle
+    short_description: A value-suppressing-uncertainty toggle that folds confidence
+      / coverage into the colour, so estimated or thin-coverage values read as
+      less certain.
+    type: ui
+    status: planned
+    priority: P2
+    size: M
+    test_status: not-tested
+    notes: "Roadmap #408 (product growth). Complements the estimate-disclosure work
+      (adr-019)."
+    acceptance_criteria: []
+    dependencies: []
+  - id: feat-hex-cartogram
+    title: Hex-state and cartogram views
+    short_description: Hex-state and population-cartogram layouts that give small or
+      dense regions fair visual weight versus a geographic choropleth.
+    type: ui
+    status: planned
+    priority: P2
+    size: M
+    test_status: not-tested
+    notes: "Roadmap #408 (product growth). See ROADMAP.md."
+    acceptance_criteria: []
+    dependencies: []
+  - id: feat-bivariate-map
+    title: Bivariate choropleth
+    short_description: Two curated metrics on one map via a 2D colour matrix, with
+      pairings chosen at build time. Parked to post-launch per the launch plan.
+    type: ui
+    status: planned
+    priority: P2
+    size: M
+    test_status: not-tested
+    notes: "Roadmap #408 (product growth); adr-plan parks bivariate to post-launch."
+    acceptance_criteria: []
+    dependencies: []
