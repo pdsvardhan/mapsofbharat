@@ -7,9 +7,14 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 // of the MAP PLATE. On a phone the fixed-width right rail squeezes that plate to a
 // sliver, so a right-anchored bar landed off the left edge: a feature verifier
 // measured the Share trigger's box at x≈-150 at a 390px viewport, making the whole
-// toolbar (and thus the mobile-first WhatsApp share) unreachable. Below 480px the
-// bar now re-anchors to the viewport and docks bottom-centre. These specs pin that
-// down at 390px and confirm the desktop layout still works.
+// toolbar (and thus the mobile-first WhatsApp share) unreachable.
+//
+// The bar now re-anchors to the VIEWPORT (fixed, bottom-centre) below the lg desktop
+// breakpoint (≤1023px). The cutoff is lg, not a narrower value: the fixed-width right
+// rail keeps the plate too narrow for a right-anchored bar well past 640px, so earlier
+// 480px and 640px thresholds each left an off-screen dead band (caught in the #419
+// fix-loop). These specs sweep the whole sub-desktop range and confirm the ≥1024px
+// desktop layout still works unchanged.
 
 const METRIC = "/?m=literacy_rate"; // a known real id (shared with the smoke/share suites)
 
@@ -21,66 +26,62 @@ async function expectHorizontallyOnScreen(page: Page, loc: Locator, label: strin
   const vw = page.viewportSize()!.width;
   // The regression is a negative left edge (x≈-150); the assertion is that the
   // whole box lies within [0, viewport width]. A 0.5px epsilon absorbs subpixel
-  // rounding without admitting the ~150px off-screen overflow this guards against.
+  // rounding without admitting the off-screen overflow this guards against.
   expect(box!.x, `${label} left edge off-screen (x=${box!.x})`).toBeGreaterThanOrEqual(-0.5);
   expect(box!.x + box!.width, `${label} right edge past viewport (${box!.x + box!.width} > ${vw})`)
     .toBeLessThanOrEqual(vw + 0.5);
 }
 
-test("at 390px every toolbar action and the share menu are on-screen and operable", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 780 });
-  await page.goto(METRIC);
-
-  // toolbar chrome renders with the app shell; wait on the Share trigger itself
+/** The full reachability + operability contract for the toolbar at the current width. */
+async function runToolbarChecks(page: Page, label: string) {
   const share = page.getByRole("button", { name: /Share this view/i });
-  await expect(share).toBeVisible({ timeout: 20_000 });
+  await expect(share, `Share trigger ${label} should render`).toBeVisible({ timeout: 20_000 });
 
   // 1) all three toolbar actions sit fully within the viewport width
-  await expectHorizontallyOnScreen(page, page.getByRole("button", { name: /^Compare$|^Comparing$/ }), "Compare");
-  await expectHorizontallyOnScreen(page, share, "Share trigger");
-  await expectHorizontallyOnScreen(page, page.getByRole("button", { name: /Export a social media card/i }), "CARD export");
+  await expectHorizontallyOnScreen(page, page.getByRole("button", { name: /^Compare$|^Comparing$/ }), `Compare ${label}`);
+  await expectHorizontallyOnScreen(page, share, `Share trigger ${label}`);
+  await expectHorizontallyOnScreen(page, page.getByRole("button", { name: /Export a social media card/i }), `CARD export ${label}`);
 
   // 2) the Share trigger is genuinely operable — click() runs Playwright's
-  // actionability hit-test, so a covered or off-screen trigger fails here, not just
-  // a mis-measured box. Opening the menu proves the bar reaches above the rail.
+  // actionability hit-test, so a covered or off-screen trigger fails here.
   await share.click();
   const menu = page.getByRole("menu", { name: /Share options/i });
-  await expect(menu).toBeVisible();
+  await expect(menu, `Share menu ${label} should open`).toBeVisible();
 
   // 3) every share-menu item — incl. the mobile-first WhatsApp share — is visible
   // and fully within the viewport, so the menu opened inside the screen, not off it.
-  const copyLink = menu.getByRole("menuitem", { name: /Copy link/i });
-  const copyEmbed = menu.getByRole("menuitem", { name: /Copy embed code/i });
   const whatsapp = menu.getByRole("menuitem", { name: /Share this view on WhatsApp/i });
-  await expectHorizontallyOnScreen(page, copyLink, "Copy link item");
-  await expectHorizontallyOnScreen(page, copyEmbed, "Copy embed item");
-  await expectHorizontallyOnScreen(page, whatsapp, "WhatsApp item");
+  await expectHorizontallyOnScreen(page, menu.getByRole("menuitem", { name: /Copy link/i }), `Copy link ${label}`);
+  await expectHorizontallyOnScreen(page, menu.getByRole("menuitem", { name: /Copy embed code/i }), `Copy embed ${label}`);
+  await expectHorizontallyOnScreen(page, whatsapp, `WhatsApp item ${label}`);
 
-  // WhatsApp behaviour is preserved: a wa.me deep-share carrying the live view URL
+  // WhatsApp behaviour is preserved: a wa.me deep-share carrying the live view URL,
+  // and the item is itself operable (trial hit-test, without following target=_blank).
   const href = await whatsapp.getAttribute("href");
-  expect(href, "WhatsApp href").toBeTruthy();
+  expect(href, `WhatsApp href ${label}`).toBeTruthy();
   expect(href!).toContain("wa.me/?text=");
   expect(href!).toContain(encodeURIComponent(page.url()));
-
-  // the WhatsApp item is itself operable (actionability hit-test), without actually
-  // following the target=_blank link (trial run only)
   await expect(whatsapp).toBeEnabled();
   await whatsapp.click({ trial: true });
-});
+}
 
-test("at desktop width the toolbar and share menu remain on-screen", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(METRIC);
+// Sub-desktop viewports — including the previously-broken bands (480px and 640px).
+// Every width below the 1024px desktop cutoff must keep the toolbar + share menu
+// fully on-screen and operable.
+for (const width of [360, 390, 480, 559, 700, 1000]) {
+  test(`at ${width}px every toolbar action and the share menu are on-screen and operable`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 780 });
+    await page.goto(METRIC);
+    await runToolbarChecks(page, `@${width}px`);
+  });
+}
 
-  const share = page.getByRole("button", { name: /Share this view/i });
-  await expect(share).toBeVisible({ timeout: 20_000 });
-
-  await expectHorizontallyOnScreen(page, page.getByRole("button", { name: /^Compare$|^Comparing$/ }), "Compare (desktop)");
-  await expectHorizontallyOnScreen(page, share, "Share trigger (desktop)");
-  await expectHorizontallyOnScreen(page, page.getByRole("button", { name: /Export a social media card/i }), "CARD export (desktop)");
-
-  await share.click();
-  const menu = page.getByRole("menu", { name: /Share options/i });
-  await expect(menu).toBeVisible();
-  await expectHorizontallyOnScreen(page, menu.getByRole("menuitem", { name: /Share this view on WhatsApp/i }), "WhatsApp item (desktop)");
-});
+// At/above the 1024px desktop cutoff the toolbar keeps its original right-anchored
+// (absolute) layout — and must still be on-screen.
+for (const width of [1024, 1280]) {
+  test(`at ${width}px the toolbar (desktop layout) remains on-screen`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(METRIC);
+    await runToolbarChecks(page, `@${width}px desktop`);
+  });
+}
