@@ -425,3 +425,24 @@ Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it
 **Artifacts:** `planning/2026-08-05/MoB-master-backlog.csv`, `MoB-the-whole-picture.html`.
 **Friction:** none blocking (one API session-limit interruption mid-session; a coder interrupted at commit but the commit had landed — verified).
 **Next session context:** BUILD next session. Start **Phase 1** (trust/legal/brand): citation block + boundary self-cert + no-UGC ADR + corrections page. Owner tasks in parallel: buy mapsofbharat.in, secure @maps_of_bharat handles, flip Cloudflare cache rule. Post-launch tracks (product growth / content machine / paid tier v2) recorded as PENDING to-dos.
+
+## Session 2026-08-06 — V1 milestone + V2 hardening slice
+
+**Stage:** Stage 4 (iterate) + a pack of direct fixes / deliverables. Long multi-part session.
+
+**What changed (all verified + deployed unless noted):**
+- **iter-32** (Phase-1 batch 1): copyable citation block, boundary self-certification (SoI/DST) + card note, public Corrections page + private token-gated report route; ADR **adr-029** (no-UGC). Two independent verifiers (code + feature); deployed.
+- **iter-33** (Phase-1 batch 2): Terms + Privacy pages, cite-all-contributing-sources on export cards (23 multi-source metrics), `hashIp()` extracted + no-raw-IP verified, favicon/avatar from logo A; docs VOICE.md + does-not-claim.md; **adr-028** amended (paywall line). Deployed.
+- **Parallel streams A ∥ B** (worktree-isolated): A = governance docs (AGENTS.md canonicity rule, DECISIONS.md 28-ADR register, ROADMAP.md, moderation-policy + response-playbook) — also caught + fixed **adr-028 missing from adr-index**; B = SEO floor (app/robots.ts + app/sitemap.ts, 124 metric URLs), noindex /embed, WhatsApp share. B verified by two CONCURRENT verifiers in separate worktrees. Deployed.
+- **#413 (P0)**: 16 wiped 2011 metrics re-ingested (census A-01, religion, assets, language) — all 124/124 metrics serve values (validate_drift OK); `reaggregate.py` DELETE scoped to its own metric_ids + tested (re-run no longer wipes siblings). DB backed up.
+- **#404**: promoted 5 planned product features (symbol-choropleth P1, categorical, VSUP, hex/cartogram, bivariate) into features.yaml.
+- **#419 + #414**: responsive action toolbar so Compare/Share/WhatsApp reach at every sub-desktop width (fix-loop: max-[480px] → max-[640px] → max-[1024px], each narrower version caught by the feature verifier); legal-copy placeholders finalized. Deployed.
+- **#417 / #416**: v0/V1/V2/V3 orientation board + friends-&-family test kit (planning/).
+- **#415**: pre-test QA sweep — desktop clean across the 3 critical paths + trust surface; found the mobile explorer layout collapses at phone widths → logged **#424**; first test round set to desktop-only.
+- **V2 hardening**: Survey-of-India boundary CI gate (`scripts/check-boundaries.mjs` + golden fingerprint; tested PASS/block-on-Arunachal-drop/restore) wired into the on-push quality job; flaky **#380** fixed (expect.poll on topic-button count).
+
+**Decisions:** adr-029 (no-UGC); adr-028 amendment (paywall = data-access, viewing free); desktop-only first friends&family test with the mobile overhaul (#424) deferred to V2.
+
+**Friction:** (1) `output: standalone` + `next start` serves `/_next/static/*` as 400 → a zombie `next start` on a reused port masqueraded as a code regression; root-caused + the standalone-serve recipe now lives in every verifier brief [tooling]. (2) Todo-title validation rejects `<`/`>` and long strings [API-quirk]. (3) Two off-by-one breakpoint iterations on #419, each caught by the independent feature verifier [verification working as intended].
+
+**Next session context:** V1 done except **#416** (owner runs the desktop test). Next automatable: **#406 perf/a11y audit** or **#424 mobile overhaul**. Owner-gated: **#407** (domain/handles/Cloudflare/CORRECTIONS_ADMIN_TOKEN), **#405** infra (off-box backup target, uptime monitor, warm standby, R2 geometry CDN). Legal: real operator name before public launch.
