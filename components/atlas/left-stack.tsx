@@ -151,12 +151,22 @@ export function LevelColourCard({
             <div className="flex border border-border">
               {([["current", "TODAY"], ["2011", "2011 AS REPORTED"]] as const).map(([v, label]) => {
                 const on = (vintage ?? "current") === v;
-                // px-2 below, not the px-2.5 the other rows use: this is the
-                // widest pair in the card and at px-2.5 it fits the column with
-                // 0.00px to spare. The stack is a scroll container now, and
-                // .atl-scroll reserves a 6px bar when it engages — with no slack
-                // that would push this row straight back into overflow. The
-                // tighter padding buys 8px of headroom.
+                // px-2 below, not the px-2.5 the other rows use — this is the
+                // widest pair in the card and it sits hard against the column.
+                //
+                // What actually keeps it safe is that it WRAPS: dropping the
+                // whitespace-nowrap this row briefly carried is what lets the
+                // label reflow instead of bursting its border. Measured by
+                // forcing the styled 6px .atl-scroll bar to take layout width
+                // (scrollbar-gutter: stable): the group narrows 181.89 -> 175.89,
+                // overflow stays 0 and no button is cut. The padding is a small
+                // saving on top, not the mechanism — an earlier version of this
+                // comment claimed it bought 8px of headroom, and the measured
+                // intra-group slack is 0.11px either way.
+                //
+                // Note this Chromium renders OVERLAY scrollbars, so the 6px
+                // never takes layout width here at all; the reserve had to be
+                // forced to test it.
                 return (
                   <button
                     key={v} onClick={() => onVintage(v)} aria-pressed={on}
