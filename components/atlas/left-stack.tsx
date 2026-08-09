@@ -161,8 +161,10 @@ export function LevelColourCard({
                 // (scrollbar-gutter: stable): the group narrows 181.89 -> 175.89,
                 // overflow stays 0 and no button is cut. The padding is a small
                 // saving on top, not the mechanism — an earlier version of this
-                // comment claimed it bought 8px of headroom, and the measured
-                // intra-group slack is 0.11px either way.
+                // comment claimed it bought 8px of headroom, and the intra-group
+                // slack measures sub-pixel either way (0.11px on one verifier's
+                // probe, 0.000px on the other's; the point is that it is not the
+                // 8px claimed, and neither reading makes the padding load-bearing).
                 //
                 // Note this Chromium renders OVERLAY scrollbars, so the 6px
                 // never takes layout width here at all; the reserve had to be
