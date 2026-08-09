@@ -141,13 +141,15 @@ export function RegionProfile({
           <span className="atl-liveDot inline-block h-1.5 w-1.5 rounded-full bg-accent" />
           SELECTED · {sel.kind.toUpperCase()}
         </span>
-        {/* Negative margin keeps the visual position while the padding grows the
-            hit area to ~26px — it was a bare 12px glyph. text-dim measures
-            3.17:1 on the panel, under the 4.5:1 AA floor, so the rest colour
-            moves to text-muted at 6.91:1 (report 154 #9). */}
+        {/* An explicit 26px square rather than padding round the glyph: padding
+            alone gave 24.6 × 22.5, because the ✕ is taller than it is wide, and
+            a target that passes on one axis only is not a 24px target (WCAG 2.2
+            target-size minimum). The negative margin holds the original visual
+            position. text-dim measures 3.17:1 on the panel, under the 4.5:1 AA
+            floor, so the rest colour moves to text-muted at 6.91:1 (report 154 #9). */}
         <button
           onClick={onClear} aria-label="Clear selection" title="Clear selection"
-          className="-m-1.5 rounded-sm p-1.5 text-[13px] leading-none text-muted hover:bg-elevated hover:text-foreground"
+          className="-m-[5px] inline-flex h-[26px] w-[26px] items-center justify-center rounded-sm text-[13px] leading-none text-muted hover:bg-elevated hover:text-foreground"
         >
           ✕
         </button>

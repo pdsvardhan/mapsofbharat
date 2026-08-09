@@ -119,3 +119,60 @@ test.describe("corrections — public log + private report (item 848)", () => {
     expect(Array.isArray(json.reports)).toBe(true);
   });
 });
+
+test.describe("corrections — concurrent-resubmit dedup (item 923, to-do #412)", () => {
+  // The defect the iter-32 feature verifier found (report 49): the UI disables the
+  // submit button, so a human double-click already produced one row, but two
+  // genuinely concurrent POSTs produced two. These assert the STORE, not the
+  // response body — a route can answer ok and still have written twice.
+
+  test("two concurrent identical POSTs leave exactly one row", async ({ request }) => {
+    test.skip(!TOKEN, "needs CORRECTIONS_ADMIN_TOKEN to read the store back");
+    const marker = `dup-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const body = { message: marker, location: "/metric/literacy_rate", email: "dup@example.com" };
+
+    const [a, b] = await Promise.all([
+      request.post("/api/corrections", { data: body }),
+      request.post("/api/corrections", { data: body }),
+    ]);
+    expect(a.ok() && b.ok()).toBeTruthy();
+
+    const rows = (await readReports(request)).filter((r) => r.message === marker);
+    expect(rows, "the racing pair collapses onto one stored report").toHaveLength(1);
+
+    // exactly one of the two answered as the duplicate
+    const flags = [(await a.json()).duplicate, (await b.json()).duplicate];
+    expect(flags.filter(Boolean)).toHaveLength(1);
+  });
+
+  test("a sequential identical resubmit also collapses", async ({ request }) => {
+    test.skip(!TOKEN, "needs CORRECTIONS_ADMIN_TOKEN to read the store back");
+    const marker = `seq-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const body = { message: marker };
+
+    await request.post("/api/corrections", { data: body });
+    const second = await request.post("/api/corrections", { data: body });
+    expect((await second.json()).duplicate).toBe(true);
+
+    const rows = (await readReports(request)).filter((r) => r.message === marker);
+    expect(rows).toHaveLength(1);
+  });
+
+  test("the same message with a corrected email is kept, not swallowed", async ({ request }) => {
+    test.skip(!TOKEN, "needs CORRECTIONS_ADMIN_TOKEN to read the store back");
+    // The over-dedup guard. Someone who submits, spots a typo in their own email
+    // and resubmits is filing a SECOND, better report. Keying on message + IP
+    // alone would silently discard it — so the key carries location and email too.
+    const marker = `fix-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    await request.post("/api/corrections", { data: { message: marker, email: "typo@exmaple.com" } });
+    const corrected = await request.post("/api/corrections", {
+      data: { message: marker, email: "right@example.com" },
+    });
+    expect((await corrected.json()).duplicate).toBe(false);
+
+    const rows = (await readReports(request)).filter((r) => r.message === marker);
+    expect(rows, "both the original and the corrected report survive").toHaveLength(2);
+    expect(rows.map((r) => r.email).sort()).toEqual(["right@example.com", "typo@exmaple.com"]);
+  });
+});
