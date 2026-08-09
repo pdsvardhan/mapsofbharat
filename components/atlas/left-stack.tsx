@@ -14,7 +14,7 @@ import {
   type CoverageCounts,
 } from "@/lib/coverage";
 import { useDismiss } from "@/lib/use-dismiss";
-import { ViewToggle } from "@/components/atlas/data-table";
+import { SEGMENTED_WIDTH, ViewToggle } from "@/components/atlas/data-table";
 
 /** Legend view mode — shared with india-map's Mode. */
 type LegendMode = "value" | "vs_avg" | "coverage";
@@ -75,9 +75,14 @@ export function IndicatorCard({
       {/* Link to the crawlable catalogue of canonical per-metric pages (item 829),
           right where a reader browses indicators. Each metric there has its own
           permanent, cited, embeddable page. */}
+      {/* Sized and coloured as a real secondary button beside the primary above
+          it: at 11px faint text on one line it read as a caption and was missed
+          (report 154 #3). text-muted is 6.91:1 on the panel where text-faint was
+          5.02:1, and the hover moves to accent-hover (5.25:1) rather than accent
+          (4.35:1), which fell under the 4.5:1 AA floor for text. */}
       <Link
         href="/metric"
-        className="mt-2 block text-center text-[11px] font-semibold text-faint hover:text-accent"
+        className="mt-2 block w-full rounded-sm border border-border px-3 py-2 text-center text-[11.5px] font-semibold text-muted transition-colors hover:border-accent-border hover:bg-elevated hover:text-accent-hover"
       >
         Browse all metrics →
       </Link>
@@ -110,12 +115,12 @@ export function LevelColourCard({
       {view && onView && (
         <div className="mb-3 flex items-center justify-between">
           <span className="text-[10px] font-bold tracking-[.12em] text-faint">VIEW</span>
-          <ViewToggle view={view} onView={onView} />
+          <ViewToggle view={view} onView={onView} fill />
         </div>
       )}
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold tracking-[.12em] text-faint">LEVEL</span>
-        <div className="flex border border-border">
+        <div className={`flex border border-border ${SEGMENTED_WIDTH}`}>
           {(["state", "district"] as const).map((l) => {
             const on = level === l;
             const disabled = !!levelLock && levelLock !== l;
@@ -123,7 +128,7 @@ export function LevelColourCard({
               <button
                 key={l} onClick={() => !disabled && onLevel(l)} aria-pressed={on}
                 disabled={disabled} title={lockMsg(l)}
-                className="px-2.5 py-1 text-[10.5px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex-1 px-2.5 py-1 text-[10.5px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
                 style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
               >
                 {l === "state" ? "STATES" : "DISTRICTS"}
@@ -136,7 +141,7 @@ export function LevelColourCard({
         <>
           <div className="mt-3 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-[.12em] text-faint">BOUNDARIES</span>
-            <div className="flex border border-border">
+            <div className={`flex border border-border ${SEGMENTED_WIDTH}`}>
               {([["current", "TODAY"], ["2011", "2011 AS REPORTED"]] as const).map(([v, label]) => {
                 const on = (vintage ?? "current") === v;
                 return (
@@ -145,7 +150,7 @@ export function LevelColourCard({
                     title={v === "2011"
                       ? "Render this census metric on the districts the 2011 census actually reported"
                       : "Render on current-day districts (2011 counts reaggregated via the crosswalk)"}
-                    className="px-2.5 py-1 text-[10.5px] font-bold"
+                    className="whitespace-nowrap px-2.5 py-1 text-[10.5px] font-bold"
                     style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
                   >
                     {label}
@@ -189,7 +194,7 @@ export function LegendCard({
   metricName, unit, decimals, min, max, values, method, mapEdges, paletteFn, reverse,
   mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
   avgNote, scope, countLabel, source, license, cohortNote,
-  scaleOpen, onToggleScale,
+  scaleOpen, onToggleScale, onReverse,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -209,6 +214,9 @@ export function LegendCard({
   avgNote: string | null; scope: string; countLabel: string; source: string; license: string;
   cohortNote: string | null;
   scaleOpen: boolean; onToggleScale: () => void;
+  /** Flip the ramp. Same state the ⚙ SCALE popover's DIRECTION row drives — this
+   *  is a second trigger for one setting, not a second setting. */
+  onReverse: () => void;
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
@@ -337,6 +345,24 @@ export function LegendCard({
           </a>
           <span aria-hidden>·</span>
           <span data-legend-method-detail>{methodMeta.detail}</span>
+          {/* Direction sits ON the legend, beside the rule that built it — the
+              ⚙ SCALE popover's DIRECTION row is the same setting, but two clicks
+              deep, and a reader looking at the ramp did not find it (report 154
+              #1). Value mode only: vs-avg paints a fixed diverging ramp that
+              ignores `reverse`, so offering the control there would lie. */}
+          {mode === "value" && (
+            <button
+              type="button" onClick={onReverse} aria-pressed={reverse} data-legend-reverse
+              title={reverse ? "Colour scale reversed — click to restore" : "Reverse the colour scale"}
+              className="ml-auto rounded-sm border px-1.5 py-0.5 text-[9.5px] font-bold tracking-[.05em] hover:bg-elevated"
+              style={{
+                borderColor: reverse ? "#6b3020" : "#3b3626",
+                color: reverse ? "#e0603d" : "#a49d8c",
+              }}
+            >
+              ↔ REVERSE{reverse ? " ON" : ""}
+            </button>
+          )}
         </div>
       )}
       {/* Per-metric coverage stat — the trust surface, shown in every mode (item

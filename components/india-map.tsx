@@ -1362,6 +1362,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   source={data.source} license={data.license ?? ""}
                   cohortNote={cohortActive ? `${activeCohortDef!.name} · dimming others` : null}
                   scaleOpen={scaleOpen} onToggleScale={() => setScaleOpen((o) => !o)}
+                  onReverse={() => setReverse((r) => !r)}
                 />
               </div>
             )}

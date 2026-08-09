@@ -141,7 +141,16 @@ export function RegionProfile({
           <span className="atl-liveDot inline-block h-1.5 w-1.5 rounded-full bg-accent" />
           SELECTED · {sel.kind.toUpperCase()}
         </span>
-        <button onClick={onClear} aria-label="Clear selection" className="text-[12px] text-dim hover:text-foreground">✕</button>
+        {/* Negative margin keeps the visual position while the padding grows the
+            hit area to ~26px — it was a bare 12px glyph. text-dim measures
+            3.17:1 on the panel, under the 4.5:1 AA floor, so the rest colour
+            moves to text-muted at 6.91:1 (report 154 #9). */}
+        <button
+          onClick={onClear} aria-label="Clear selection" title="Clear selection"
+          className="-m-1.5 rounded-sm p-1.5 text-[13px] leading-none text-muted hover:bg-elevated hover:text-foreground"
+        >
+          ✕
+        </button>
       </div>
       <div className="mt-1.5 flex items-baseline justify-between gap-2.5">
         <div className="min-w-0">
@@ -173,11 +182,18 @@ export function RegionProfile({
           ▸ {drillLabel}
         </button>
       )}
+      {/* A bare line of faint text directly under a bordered button read as a
+          caption rather than a control (report 154 #7). Bordered and padded like
+          the drill button above but one step quieter, since this expands in place
+          rather than navigating. The chevron moves to the right — the
+          conventional disclosure position, and it stops the label shifting
+          sideways each time it flips. aria-expanded was missing entirely. */}
       <button
-        onClick={loadAll}
-        className="mt-2.5 block w-full text-left text-[10.5px] font-semibold tracking-wide text-faint hover:text-foreground"
+        onClick={loadAll} aria-expanded={allOpen}
+        className="mt-2.5 flex w-full items-center justify-between gap-2 rounded-sm border border-border-soft px-2 py-1.5 text-[10.5px] font-bold tracking-[.08em] text-muted hover:border-border hover:bg-elevated hover:text-foreground"
       >
-        {allOpen ? "▾ ALL INDICATORS" : "▸ ALL INDICATORS"}
+        <span>ALL INDICATORS</span>
+        <span aria-hidden className="text-[9px] text-faint">{allOpen ? "▾" : "▸"}</span>
       </button>
       {allOpen && (
         <div className="atl-scroll mt-1.5 max-h-56 overflow-y-auto pr-1">

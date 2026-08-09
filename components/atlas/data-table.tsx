@@ -25,25 +25,41 @@ const SHAKY_COLOR = "#e0a92e";
 
 export type SortKey = "rank" | "name" | "value";
 
+/** Shared minimum width for the left stack's segmented control groups (VIEW,
+ *  LEVEL, BOUNDARIES). A minimum rather than a fixed width: the longest pair
+ *  ("TODAY | 2011 AS REPORTED") is free to exceed it instead of clipping, while
+ *  every shorter pair snaps to the same edge. Lives here because ViewToggle is
+ *  one of the three and is defined in this file. */
+export const SEGMENTED_WIDTH = "min-w-[188px]";
+
 /** The map ⇄ table view control. Styled to match the LEVEL / VALUE segmented
  *  buttons in the left stack and legend, so the toggle reads as one of the atlas
  *  controls. Exported so the map view (its VIEW row in the left stack) and the
  *  table view (the table's own header) drive one shared control rather than
  *  drifting two copies apart. */
 export function ViewToggle({
-  view, onView,
+  view, onView, fill = false,
 }: {
   view: "map" | "table";
   onView: (v: "map" | "table") => void;
+  /** Stretch to the shared control width the left stack's control rows use, so
+   *  VIEW / LEVEL / BOUNDARIES line up instead of each group sizing to its own
+   *  labels — MAP|TABLE is the shortest pair, so it was the visibly odd one out
+   *  (report 154 #8). Off for the standalone use in the table header, which has
+   *  no siblings to line up with and should size to content. */
+  fill?: boolean;
 }) {
   return (
-    <div className="flex border border-border" role="group" aria-label="Choose map or table view">
+    <div
+      className={`flex border border-border${fill ? " " + SEGMENTED_WIDTH : ""}`}
+      role="group" aria-label="Choose map or table view"
+    >
       {(["map", "table"] as const).map((v) => {
         const on = view === v;
         return (
           <button
             key={v} onClick={() => onView(v)} aria-pressed={on}
-            className="px-2.5 py-1 text-[10.5px] font-bold"
+            className={`px-2.5 py-1 text-[10.5px] font-bold${fill ? " flex-1" : ""}`}
             style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
           >
             {v === "map" ? "MAP" : "TABLE"}
