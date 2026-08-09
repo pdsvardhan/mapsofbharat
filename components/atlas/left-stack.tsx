@@ -141,7 +141,14 @@ export function LevelColourCard({
         <>
           <div className="mt-3 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-[.12em] text-faint">BOUNDARIES</span>
-            <div className={`flex border border-border ${SEGMENTED_WIDTH}`}>
+            {/* Deliberately NOT on the shared minimum. This pair's labels need
+                ~194px, and the card's content column cannot give it that beside
+                the BOUNDARIES label — forcing the minimum here made the group
+                overflow its own border by 8px and pushed its right edge 6px past
+                the two rows above, which is the opposite of the alignment item
+                #916 asked for. Left to size itself, it lands flush on the same
+                right edge as VIEW and LEVEL, which is what reads as lined up. */}
+            <div className="flex border border-border">
               {([["current", "TODAY"], ["2011", "2011 AS REPORTED"]] as const).map(([v, label]) => {
                 const on = (vintage ?? "current") === v;
                 return (
@@ -150,7 +157,7 @@ export function LevelColourCard({
                     title={v === "2011"
                       ? "Render this census metric on the districts the 2011 census actually reported"
                       : "Render on current-day districts (2011 counts reaggregated via the crosswalk)"}
-                    className="whitespace-nowrap px-2.5 py-1 text-[10.5px] font-bold"
+                    className="px-2.5 py-1 text-[10.5px] font-bold"
                     style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
                   >
                     {label}
@@ -354,7 +361,7 @@ export function LegendCard({
             <button
               type="button" onClick={onReverse} aria-pressed={reverse} data-legend-reverse
               title={reverse ? "Colour scale reversed — click to restore" : "Reverse the colour scale"}
-              className="ml-auto rounded-sm border px-1.5 py-0.5 text-[9.5px] font-bold tracking-[.05em] hover:bg-elevated"
+              className="ml-auto inline-flex min-h-[24px] items-center rounded-sm border px-2 text-[9.5px] font-bold tracking-[.05em] hover:bg-elevated"
               style={{
                 borderColor: reverse ? "#6b3020" : "#3b3626",
                 color: reverse ? "#e0603d" : "#a49d8c",

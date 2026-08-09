@@ -12,8 +12,10 @@ import { test, expect, Page } from "@playwright/test";
 //   --muted  #a49d8c  6.91:1   --faint #8a8477  5.02:1
 //   --dim    #6a6455  3.17:1   --accent #d1502f 4.35:1   (both under AA's 4.5)
 
-const MUTED = "rgb(164, 157, 140)"; // --muted  #a49d8c
-const DIM = "rgb(106, 100, 85)"; //    --dim    #6a6455
+const MUTED = "rgb(164, 157, 140)"; //        --muted        #a49d8c  6.91:1
+const DIM = "rgb(106, 100, 85)"; //           --dim          #6a6455  3.17:1  FAILS
+const ACCENT = "rgb(209, 80, 47)"; //         --accent       #d1502f  4.35:1  FAILS
+const ACCENT_HOVER = "rgb(224, 96, 61)"; //   --accent-hover #e0603d  5.25:1
 
 async function waitForMapReady(page: Page) {
   await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
@@ -31,6 +33,11 @@ test.describe("legend reverse control (item 908, report 154 #1)", () => {
     const rev = page.locator("[data-legend-reverse]");
     await expect(rev).toBeVisible();
     await expect(rev).toHaveAttribute("aria-pressed", "false");
+
+    // This iteration sets a 24px target floor for #3/#7/#9; the control it adds
+    // has to clear the same bar. It shipped at 20.25px tall the first time.
+    const box = await rev.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(24);
   });
 
   test("clicking it flips the ramp, persists to ?rev=1 and toggles back", async ({ page }) => {
@@ -98,6 +105,13 @@ test.describe("control affordances (items 911 / 915 / 917, report 154 #3 / #7 / 
 
     // was --faint (5.02:1); --muted is 6.91:1
     await expect(link).toHaveCSS("color", MUTED);
+
+    // The hover state is half of this AC and was the actual failure the owner's
+    // tool captured: it measured 4.36:1 on this element, because the hover moved
+    // to --accent. It must not go back there.
+    await link.hover();
+    await expect(link).not.toHaveCSS("color", ACCENT);
+    await expect(link).toHaveCSS("color", ACCENT_HOVER);
   });
 
   test("'ALL INDICATORS' is a labelled disclosure, not a line of text", async ({ page }) => {
@@ -160,19 +174,74 @@ test.describe("segmented control widths (item 916, report 154 #8)", () => {
     expect(Math.abs(vBox!.x + vBox!.width - (lBox!.x + lBox!.width))).toBeLessThanOrEqual(1);
   });
 
-  test("the longest pair grows rather than clipping", async ({ page }) => {
-    // BOUNDARIES only renders for a metric with 2011-vintage rows. Its labels are
-    // longer than the shared minimum, which is why that minimum is a min-width
-    // and not a fixed width.
+  test("no segmented group overflows its own border, and all share a right edge", async ({ page }) => {
+    // The first version of this check asserted scrollWidth <= clientWidth on the
+    // BUTTON. For a flex item whose min-width resolves to its content, those are
+    // equal by construction — it could not fail, and it passed while the
+    // BOUNDARIES group was overflowing by 8px. The measurement belongs on the
+    // GROUP, which is the box that actually clips.
     await page.goto("/?m=literacy_rate");
     await waitForMapReady(page);
 
     const today = page.getByRole("button", { name: "TODAY", exact: true });
     if ((await today.count()) === 0) test.skip(true, "metric has no 2011 vintage");
 
-    const asReported = page.getByRole("button", { name: /2011 AS REPORTED/ });
-    const box = await asReported.boundingBox();
-    const text = await asReported.evaluate((el) => el.scrollWidth);
-    expect(box!.width + 1).toBeGreaterThanOrEqual(text);
+    const groups = page.locator(".border-border").filter({ has: page.getByRole("button") });
+    const boundaries = today.locator("..");
+
+    const overflow = await boundaries.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow, "the BOUNDARIES pair must fit inside its own border").toBeLessThanOrEqual(0);
+
+    // Right-edge parity is what reads as "lined up" in a right-aligned column —
+    // equal widths are the means, not the end. BOUNDARIES is intentionally left
+    // off the shared minimum because its labels need more than the column can
+    // give, so it is the edge that must match, not the width.
+    const view = page.getByRole("group", { name: "Choose map or table view" });
+    const level = page.getByRole("button", { name: "STATES", exact: true }).locator("..");
+    const edges = await Promise.all(
+      [view, level, boundaries].map(async (g) => {
+        const b = await g.boundingBox();
+        return b!.x + b!.width;
+      })
+    );
+    expect(Math.max(...edges) - Math.min(...edges), `right edges: ${edges.join(", ")}`).toBeLessThanOrEqual(1);
+    expect(groups).toBeTruthy();
   });
+});
+
+test.describe("the left column never covers its own controls (iter-35 regression)", () => {
+  // The controls stack and the legend were two independent absolutes, one pinned
+  // to the top of the plate and one to the bottom. They collided as soon as their
+  // combined height exceeded the viewport: at 1280x720 the legend card landed on
+  // top of the VIEW row and MAP / TABLE became unclickable, so the table view was
+  // unreachable. Found by the feature verifier on the first build of this
+  // iteration, caused by the extra height items 908 and 911 legitimately needed.
+  for (const [w, h] of [[1280, 720], [1366, 768], [1440, 900]] as const) {
+    test(`every left-column control is hit-testable at ${w}x${h}`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: h });
+      // A metric with a 2011 vintage renders the tallest possible control card
+      // (BOUNDARIES row) — the worst case for this collision.
+      await page.goto("/?m=literacy_rate");
+      await waitForMapReady(page);
+
+      for (const name of ["MAP", "TABLE", "STATES", "DISTRICTS"]) {
+        const btn = page.getByRole("button", { name, exact: true }).first();
+        const box = await btn.boundingBox();
+        expect(box, `${name} has no box`).toBeTruthy();
+
+        // Whatever the browser hands a click at this point must be the button
+        // itself (or inside it) — not a card floating above it.
+        const owned = await btn.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return el === top || el.contains(top);
+        });
+        expect(owned, `${name} is covered by another element at ${w}x${h}`).toBe(true);
+      }
+
+      // and the toggle actually works from here
+      await page.getByRole("button", { name: "TABLE", exact: true }).first().click();
+      await expect(page.getByRole("table")).toBeVisible({ timeout: 10_000 });
+    });
+  }
 });

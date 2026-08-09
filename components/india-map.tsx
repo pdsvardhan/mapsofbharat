@@ -1326,8 +1326,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           >
             <div ref={ref} style={{ position: "absolute", inset: 0 }} />
 
-            {/* LEFT STACK */}
-            <div className="absolute left-3.5 top-3.5 z-[5] flex w-[300px] flex-col gap-2.5">
+            {/* LEFT COLUMN — the controls stack and the legend share ONE bounded
+                column so they cannot overlap. They used to be two independent
+                absolutes, one pinned to the top and one to the bottom, which
+                collided the moment their combined height exceeded the plate: at
+                1280x720 the legend covered the VIEW row and the table view became
+                unreachable altogether (found by the iter-35 feature verifier;
+                the palette swatches were already being covered before that).
+                Shaving pixels off the cards only moves the cliff, so the column
+                is bounded instead and the controls scroll when they must.
+                pointer-events-none on the wrapper keeps the map draggable in the
+                gap between the two. */}
+            <div className="pointer-events-none absolute inset-y-3.5 left-3.5 z-[5] flex w-[300px] flex-col gap-2.5">
+            <div className="atl-scroll pointer-events-auto flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">
               <Crumbs items={crumbs} hasBack={hasBack} onBack={onBack} />
               <IndicatorCard
                 metricName={meta?.name ?? null}
@@ -1344,9 +1355,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               />
             </div>
 
-            {/* LEGEND */}
+            {/* LEGEND — flex-none, so it keeps its natural height and the stack
+                above it yields instead. */}
             {data && meta && (
-              <div className="absolute bottom-3.5 left-3.5 z-[5] w-[300px]">
+              <div className="pointer-events-auto flex-none">
                 <LegendCard
                   metricName={data.name} unit={data.unit} decimals={data.decimals}
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}
@@ -1366,6 +1378,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 />
               </div>
             )}
+            </div>
             {scaleOpen && (
               <ScalePopover
                 method={brkMethod} onMethod={(m) => {
