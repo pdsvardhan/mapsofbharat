@@ -275,4 +275,49 @@ test.describe("the left column never covers its own controls (iter-35 regression
       expect(owner, `the ${Math.round(band)}px band below the controls must hit the map`).toBe("CANVAS");
     });
   }
+
+  // Below 720px the controls no longer fit and the column is meant to SCROLL
+  // rather than hide them. The legend is flex-none, so if it ever grows it
+  // squeezes the stack toward zero — and nothing above this line would notice,
+  // because every other case here is 720px or taller. The feature verifier
+  // measured 560/500/450 by hand and pointed out the gap; this freezes it.
+  for (const h of [640, 560, 480] as const) {
+    test(`the controls are still reachable by scrolling at 1280x${h}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: h });
+      await page.goto("/?m=literacy_rate");
+      await waitForMapReady(page);
+
+      const stack = page.locator(".atl-scroll.pointer-events-auto").first();
+      const legend = page.locator("[data-legend-method-line]").locator("..");
+
+      // the legend keeps its full height and stays on screen
+      const legendBox = (await legend.boundingBox())!;
+      expect(legendBox.y, "legend pushed off the top").toBeGreaterThanOrEqual(0);
+      expect(legendBox.y + legendBox.height, "legend runs past the bottom").toBeLessThanOrEqual(h + 1);
+
+      // the stack yields instead, and yields to something still usable
+      const geom = await stack.evaluate((el) => ({
+        scrollable: el.scrollHeight > el.clientHeight + 1,
+        clientH: el.clientHeight,
+      }));
+      expect(geom.scrollable, "the stack should scroll once it cannot fit").toBe(true);
+      expect(geom.clientH, "the stack was squeezed to nothing").toBeGreaterThan(40);
+
+      // and scrolling actually reaches the view toggle. Scroll TO the control,
+      // not to the bottom of the stack: VIEW is the first row of the last card,
+      // so scrollHeight puts it back off the top again — which is what a user
+      // scrolling past it would also do, and is not a defect.
+      const table = page.getByRole("button", { name: "TABLE", exact: true }).first();
+      await table.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(150);
+      const owned = await table.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return el === top || el.contains(top);
+      });
+      expect(owned, `TABLE unreachable after scrolling at 1280x${h}`).toBe(true);
+      await table.click();
+      await expect(page.getByRole("table")).toBeVisible({ timeout: 10_000 });
+    });
+  }
 });
