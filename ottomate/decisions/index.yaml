@@ -334,3 +334,12 @@ decisions:
       - curated
       - cat:product
     body_path: decisions/adr-028-positioning-and-non-goals.md
+  - id: adr-030-component-pick-gate-scope
+    project_slug: mapsofbharat
+    title: The component-pick gate applies to new components, not to fixes on
+      existing ones
+    status: accepted
+    date: 2026-08-09T00:00:00.000Z
+    tags:
+      - curated
+    body_path: decisions/adr-030-component-pick-gate-scope.md

@@ -446,3 +446,33 @@ Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it
 **Friction:** (1) `output: standalone` + `next start` serves `/_next/static/*` as 400 → a zombie `next start` on a reused port masqueraded as a code regression; root-caused + the standalone-serve recipe now lives in every verifier brief [tooling]. (2) Todo-title validation rejects `<`/`>` and long strings [API-quirk]. (3) Two off-by-one breakpoint iterations on #419, each caught by the independent feature verifier [verification working as intended].
 
 **Next session context:** V1 done except **#416** (owner runs the desktop test). Next automatable: **#406 perf/a11y audit** or **#424 mobile overhaul**. Owner-gated: **#407** (domain/handles/Cloudflare/CORRECTIONS_ADMIN_TOKEN), **#405** infra (off-box backup target, uptime monitor, warm standby, R2 geometry CDN). Legal: real operator name before public launch.
+
+## Session 2026-08-09 — iteration 35: the 4-Aug comment batch, and a backlog census
+
+**Stage:** Stage 4 (iterate), branch `iter-35-2026-08-09`, served as the live preview.
+
+**What happened.** The session opened on a request for a full inventory of everything ever planned and never built. Reconciling six registers — 13 open to-dos, `features.yaml`, iteration 112, three pending reports, the 5-Aug master backlog CSV (195 rows) and the deduplicated whole-picture (77) — against what actually shipped on 5–6 August produced **110 open items**. Three were invisible to every existing surface: report 154 (the owner's 4-Aug visual-QA batch) had sat **unclassified for five days**, iteration 112 had been stuck at `building` since 26 July, and the analytics plan was specified in full and built in no part.
+
+**Iteration 35** then took the six smallest items from that census. 15 items were extracted from report 154's 12 comments plus one hand-added from to-do #412; **6 locked, 9 soft-rejected pre-lock with reasons**, each carried to a to-do so nothing was dropped silently, and the two comments the owner had marked "drop" were honoured.
+
+- **908 reverse scale** — the control *already existed* in the ⚙ SCALE popover's DIRECTION row, persisted to `?rev=1`. The comment was a discoverability failure, not a missing feature. Built as a second **trigger** on the legend method line wired to the same `useState`, value-mode only (vs-avg paints a fixed diverging ramp that ignores `reverse`, so offering it there would lie).
+- **911 / 915 / 917 affordances** — `--faint` 5.02:1 → `--muted` 6.91:1 and hover `--accent` 4.35:1 → `--accent-hover` 5.25:1 on the metrics link (the 4.35 is exactly what the owner's own tool measured); `aria-expanded` added to a disclosure that had none; the clear-selection cross from `--dim` 3.17:1 and a 9.9×17.7 target to 6.91:1 and a 26px square — padding alone had cleared 24px on one axis only.
+- **916 widths** — VIEW and LEVEL share a 188px minimum and a right edge; BOUNDARIES is deliberately **off** that minimum.
+- **923 corrections dedup** — identical resubmission from the same hashed IP inside 60s collapses onto the stored row under `BEGIN IMMEDIATE`. The key carries location and email, wider than the bug report's wording: a corrected email on a resend is a second, better report.
+
+**Three verifier rounds, and every defect was found by them, not by the coder.** Round 1 BLOCKed on a **table-view regression** — 908 and 911 each added height to a column with ~1px of clearance, so at 1280×720 the legend covered the VIEW row and the table view became unreachable — plus a BOUNDARIES overflow. Round 2 APPROVEd all six items but found that the column fix had introduced a **300px-wide invisible dead zone** over the map that swallowed drags, 76px at 1440×900 and 616px at 1920×1440. Round 3 verified the fix with real mouse drags at all three sizes. Both verifiers hit an API session limit mid-round-3 and were resumed.
+
+They also caught a **tautological test** (`scrollWidth <= clientWidth` on a button, where those are equal by construction — it passed while the thing it guarded was broken), a missing hover-contrast assertion, a reverse control shipped at 20.25px under the 24px floor this same iteration was enforcing, and a **code comment that was plausible and measurably wrong** about why the BOUNDARIES row is safe (the label wraps; the padding is not the mechanism).
+
+**Decisions:** **adr-030** — the component-pick gate applies to new components, not to corrective fixes on existing ones. Recorded as an explicit override rather than relabelling three items to dodge the gate. Curated, no category tag.
+
+**Found while here, not fixed, filed:**
+- **#441 launch blocker.** `POST /api/corrections` has answered **503 in production since it shipped in iteration 32** — the container runs as uid 1001 while `/data` is uid 1000 mode 775, so `corrections.db` has never been creatable. Every reader reporting a data error gets a failure. Item 923's dedup is correct but unexercisable in production until that volume permission changes; it was verified only on an isolated server.
+- **#454** Saitual district is absent from `region_keys` entirely — Mizoram carries 10 districts where it should have 11, and its two sibling 2019 splits *did* land, so the gap is specific rather than a vintage cutoff. This is the unresolved half of report 18, and the cause is not the crosswalk mis-assignment that report assumed.
+- **#440** the sitemap spec is red on `main` too.
+
+**Bookkeeping:** reports 16 and 18 classified and closed with reasons (Aizawl verified fixed at 411,735 against the 50,777 reported in June); iteration 112 unstuck — 762 superseded by iteration 121, 752–755 and 765 deferred-with-reason to to-dos #432 and #455. 14 to-dos filed.
+
+**Friction:** (1) both verifier agents terminated on an API session limit mid-round; resuming them from transcript worked and cost nothing but wall time. (2) The to-do title cap is 300 chars and a POST over it fails with no usable error — hit once. (3) A verifier dispatch of mine named port 8620 for a throwaway server; 8620 is the live Umami dashboard. The agent caught it and routed around it. Ports for scratch servers must be checked against `docker ps` first.
+
+**Next session context:** V1 remains done except #416 (owner runs the desktop test) and #424 (mobile at 390px). The launch-blocking item is now **#441**, which is a permissions change on the volume the canonical DB lives on. `main` is still stalled at iter-25 since 19 July with iterations 26, 27, 28, 35 all running as branch previews — merging it is a standing owner decision this session did not take.

@@ -104,6 +104,12 @@ features:
           to drill into its districts
         test_status: not-tested
         linked_test: null
+      - content: The colour scale can be reversed from the legend itself in value mode,
+          without opening the scale popover; the choice persists to the URL as
+          rev=1 and is the same setting the popover DIRECTION row drives, not a
+          second one
+        test_status: passing
+        linked_test: tests/iter35-controls.spec.ts
       - content: Choropleth colouring uses a continuous scale with a min/max legend
         test_status: not-tested
         linked_test: null
@@ -124,6 +130,10 @@ features:
       - content: User can switch the metric and the map recolours
         test_status: not-tested
         linked_test: null
+      - content: The ALL INDICATORS disclosure on the selected-region panel reads as a
+          control and exposes its open/closed state via aria-expanded
+        test_status: passing
+        linked_test: tests/iter35-controls.spec.ts
       - content: Metrics are grouped by topic category in the selector (demographics,
           poverty, agriculture, health, …); picking a category filters the list
           to that topic
