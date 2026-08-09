@@ -488,3 +488,20 @@ claim was repeated in iteration 144's trace report and in commit `72dfb54`'s mes
 edited in place; this note is the correction of record. Lesson: a "standing decision" quoted from an older log
 entry is a claim about the past, not a reading of current state — check `git branch --merged` before repeating
 one.
+
+### Addendum (same session, after integrate) — main merged, and #441 fixed
+
+**`main` merged.** Fast-forwarded to `72dfb54`, pushed, container rebuilt from `main`; suite unchanged. See the correction note above for why the "main is stalled" claim was wrong.
+
+**#441 fixed — and it was two bugs, not one.** The image runs `chown nextjs:nodejs /data`, but the bind mount replaces that directory with the host's, owned uid 1000 mode 775, while the process runs as **uid 1001**. The chown is defeated at mount time (`docker exec … touch /data/.probe` → Permission denied). Casualties:
+
+- `POST /api/corrections` answered **503 on every submission since iteration 32**. `corrections.db` had never been created. A reader reporting a data error got a failure, on a trust surface that shipped verified-green.
+- `lib/log.ts` degrades to stdout *by design* when its file sink is unwritable, so `/api/log` had never written `app.log` either. Invisible precisely because quiet degradation is what it was built to do.
+
+Fix: a dedicated `./data-rw` bind owned `1001:pdsv` with setgid — so the owner can read and back it up without root — holding `corrections.db` and `logs/app.log`. `./data` is now mounted **`:ro`**, enforcing what `lib/db.ts` already declares (`readonly` + `query_only`); safe because the canonical DB is in `delete` journal mode and needs no `-wal`/`-shm` sidecars. A host bind rather than a named volume on purpose: reader error reports have trust value and #405's off-box backup work needs to see them.
+
+Verified in production, not inferred: a submission stores a row with a 16-hex `ip_hash` and no raw IP · an identical resubmission returns `duplicate:true` and leaves one row, so **iteration 35's dedup is now exercisable where it never was** · the honeypot stores nothing · `app.log` is written · the canonical DB still serves 124 metrics through the read-only mount. `corrections.spec.ts:54` — one of the two standing failures — now passes. **Suite 154 pass / 7 skip / 1 fail**, the remainder being the sitemap case (#440). Probe rows cleared; the store self-creates on first submission, proven by deleting it and re-posting.
+
+**Still open, and it matters:** `CORRECTIONS_ADMIN_TOKEN` is unset, so the owner-only GET fails closed at 503 — reports are now *stored* but cannot be *read back*, and 7 store-assertion tests skip against the live container. A skip reads as green, which is how this bug survived four days in the first place. To-do **#463**, alongside #407.
+
+**Lesson worth keeping:** every defect this session — the two regressions, the tautological test, the wrong comment, the stale main claim, and this permission bug — was caught by something that *drove the real thing* rather than reasoned about it. The unit suite was green through all of them.
