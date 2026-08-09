@@ -21,19 +21,38 @@ services:
     ports:
       - "127.0.0.1:8610:3000"
     volumes:
-      # The /data volume is read-write and also holds the writable corrections
-      # store (corrections.db, iter-32 item 848) beside the canonical read-only DB.
-      - ./data:/data
+      # READ-ONLY. The canonical atlas DB lives here and lib/db.ts opens it with
+      # readonly + query_only, so the mount now enforces what the code already
+      # declares. It is in `delete` journal mode, not WAL, so a reader needs no
+      # -shm/-wal sidecars and no write access to this directory.
+      #
+      # This directory is owned by uid 1000 on the host while the container runs
+      # as uid 1001, so it was never writable ANYWAY — the Dockerfile's
+      # `chown nextjs:nodejs /data` is defeated by the bind mount. Two features
+      # quietly depended on writing here and neither worked in production:
+      # corrections (503 on every submission since iteration 32) and the
+      # /api/log file sink (degraded to stdout silently, by design). Both now
+      # live on the writable mount below. To-do #441.
+      - ./data:/data:ro
+      # WRITABLE. Host-owned by uid 1001 so the container can actually write,
+      # and group 1000 so the owner can still read and back it up without root.
+      # A host bind rather than a named volume specifically so the corrections
+      # store is visible to the off-box backup work in #405 — these are reader
+      # error reports, not disposable cache.
+      - ./data-rw:/data-rw
     env_file:
       - .env
     environment:
-      # Writable corrections-report store (iter-32 item 848). Lives on the /data
-      # volume above, so it persists across restarts.
-      CORRECTIONS_DB_PATH: /data/corrections.db
+      # Writable corrections-report store (iter-32 item 848).
+      CORRECTIONS_DB_PATH: /data-rw/corrections.db
+      # Error-sink file (lib/log.ts). Same permission bug, same fix.
+      LOG_PATH: /data-rw/logs/app.log
       # CORRECTIONS_ADMIN_TOKEN gates the owner-only GET /api/corrections read.
       # Set it in .env (already loaded via env_file) — intentionally NOT declared
       # here so an empty shell interpolation can't override the .env value. When
       # unset the read endpoint fails CLOSED (503); set a strong secret to enable.
+      # NOTE: submissions are stored regardless; the token only gates READING
+      # them back. Still outstanding as to-do #407.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 30s

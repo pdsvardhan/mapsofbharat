@@ -54,3 +54,7 @@ __pycache__/
 *.pyc
 pipeline/raw-new/
 test-results/
+
+# Writable runtime store (corrections.db + error-sink log). Owned by the
+# container uid; never committed. See docker-compose.yml and to-do #441.
+/data-rw
