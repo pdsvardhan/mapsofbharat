@@ -475,4 +475,16 @@ They also caught a **tautological test** (`scrollWidth <= clientWidth` on a butt
 
 **Friction:** (1) both verifier agents terminated on an API session limit mid-round; resuming them from transcript worked and cost nothing but wall time. (2) The to-do title cap is 300 chars and a POST over it fails with no usable error — hit once. (3) A verifier dispatch of mine named port 8620 for a throwaway server; 8620 is the live Umami dashboard. The agent caught it and routed around it. Ports for scratch servers must be checked against `docker ps` first.
 
-**Next session context:** V1 remains done except #416 (owner runs the desktop test) and #424 (mobile at 390px). The launch-blocking item is now **#441**, which is a permissions change on the volume the canonical DB lives on. `main` is still stalled at iter-25 since 19 July with iterations 26, 27, 28, 35 all running as branch previews — merging it is a standing owner decision this session did not take.
+**Next session context:** V1 remains done except #416 (owner runs the desktop test) and #424 (mobile at 390px). The launch-blocking item is now **#441**, which is a permissions change on the volume the canonical DB lives on. `main` is current: this iteration merged into it (fast-forward to `72dfb54`) and the container now builds from `main`.
+
+
+**Correction (same session, after the entry above was written).** That paragraph originally said `main` was
+"still stalled at iter-25 since 19 July with iterations 26, 27, 28, 35 all running as branch previews". That
+was **wrong** — it repeated a note from the 2026-08-03 entry as if it were current. `git branch --merged main`
+shows `iter-26`, `iter-27`, `iter-28` and `iter-131` were **all** already ancestors of `main`; the 2026-08-06
+session merged them. `main` was behind by this iteration alone. It has since been fast-forwarded to `72dfb54`,
+pushed, and the container rebuilt from `main` (suite 153 pass / 7 skip / 2 fail, unchanged). The same stale
+claim was repeated in iteration 144's trace report and in commit `72dfb54`'s message, neither of which can be
+edited in place; this note is the correction of record. Lesson: a "standing decision" quoted from an older log
+entry is a claim about the past, not a reading of current state — check `git branch --merged` before repeating
+one.
