@@ -1338,7 +1338,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 pointer-events-none on the wrapper keeps the map draggable in the
                 gap between the two. */}
             <div className="pointer-events-none absolute inset-y-3.5 left-3.5 z-[5] flex w-[300px] flex-col gap-2.5">
-            <div className="atl-scroll pointer-events-auto flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">
+            {/* Content-sized, NOT flex-1. flex-1 stretched this box to the full
+                column even when the cards were short, and since it is the box
+                that carries pointer-events-auto, the empty slack below the last
+                card became an invisible 300px-wide trap that swallowed map drags
+                — 35px tall at 900px viewport height, 235px at 1100px, growing
+                1:1 with the window. The default flex-initial keeps the box on
+                its content while min-h-0 still lets it shrink and scroll when
+                the column is tight. */}
+            <div className="atl-scroll pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto">
               <Crumbs items={crumbs} hasBack={hasBack} onBack={onBack} />
               <IndicatorCard
                 metricName={meta?.name ?? null}
@@ -1355,10 +1363,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               />
             </div>
 
-            {/* LEGEND — flex-none, so it keeps its natural height and the stack
-                above it yields instead. */}
+            {/* LEGEND — flex-none so it keeps its natural height and the stack
+                above yields instead; mt-auto pins it to the bottom of the column
+                now that the stack no longer stretches to fill it. */}
             {data && meta && (
-              <div className="pointer-events-auto flex-none">
+              <div className="pointer-events-auto mt-auto flex-none">
                 <LegendCard
                   metricName={data.name} unit={data.unit} decimals={data.decimals}
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}

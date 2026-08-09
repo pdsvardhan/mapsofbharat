@@ -151,13 +151,19 @@ export function LevelColourCard({
             <div className="flex border border-border">
               {([["current", "TODAY"], ["2011", "2011 AS REPORTED"]] as const).map(([v, label]) => {
                 const on = (vintage ?? "current") === v;
+                // px-2 below, not the px-2.5 the other rows use: this is the
+                // widest pair in the card and at px-2.5 it fits the column with
+                // 0.00px to spare. The stack is a scroll container now, and
+                // .atl-scroll reserves a 6px bar when it engages — with no slack
+                // that would push this row straight back into overflow. The
+                // tighter padding buys 8px of headroom.
                 return (
                   <button
                     key={v} onClick={() => onVintage(v)} aria-pressed={on}
                     title={v === "2011"
                       ? "Render this census metric on the districts the 2011 census actually reported"
                       : "Render on current-day districts (2011 counts reaggregated via the crosswalk)"}
-                    className="px-2.5 py-1 text-[10.5px] font-bold"
+                    className="px-2 py-1 text-[10.5px] font-bold"
                     style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
                   >
                     {label}

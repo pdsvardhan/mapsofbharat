@@ -186,7 +186,6 @@ test.describe("segmented control widths (item 916, report 154 #8)", () => {
     const today = page.getByRole("button", { name: "TODAY", exact: true });
     if ((await today.count()) === 0) test.skip(true, "metric has no 2011 vintage");
 
-    const groups = page.locator(".border-border").filter({ has: page.getByRole("button") });
     const boundaries = today.locator("..");
 
     const overflow = await boundaries.evaluate((el) => el.scrollWidth - el.clientWidth);
@@ -205,7 +204,6 @@ test.describe("segmented control widths (item 916, report 154 #8)", () => {
       })
     );
     expect(Math.max(...edges) - Math.min(...edges), `right edges: ${edges.join(", ")}`).toBeLessThanOrEqual(1);
-    expect(groups).toBeTruthy();
   });
 });
 
@@ -242,6 +240,39 @@ test.describe("the left column never covers its own controls (iter-35 regression
       // and the toggle actually works from here
       await page.getByRole("button", { name: "TABLE", exact: true }).first().click();
       await expect(page.getByRole("table")).toBeVisible({ timeout: 10_000 });
+    });
+  }
+
+  // The first version of the fix stretched the scroll container with flex-1.
+  // Because that container is the element carrying pointer-events-auto, the empty
+  // slack below the last card became an invisible 300px-wide trap over the map —
+  // 76px tall at 900px viewport height, 616px at 1440. Both verifiers found it
+  // independently by dragging there and getting no pan.
+  for (const [w, h] of [[1440, 900], [1600, 1200]] as const) {
+    test(`the empty space below the controls belongs to the map at ${w}x${h}`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await page.goto("/?m=literacy_rate");
+      await waitForMapReady(page);
+
+      // The controls card is the last thing in the stack; the legend is pinned to
+      // the bottom. Everything between them is slack that belongs to the map.
+      const controls = page.getByRole("button", { name: "STATES", exact: true }).locator("../../..");
+      // The legend CARD, not its method line — the method line sits near the
+      // card's bottom, so measuring from it puts the probe point inside the
+      // legend and hits one of its own buttons.
+      const legend = page.locator("[data-legend-method-line]").locator("..");
+
+      const controlsBox = (await controls.boundingBox())!;
+      const legendBox = (await legend.boundingBox())!;
+      const band = legendBox.y - (controlsBox.y + controlsBox.height);
+      expect(band, "expected real slack between the controls and the legend at this height")
+        .toBeGreaterThan(20);
+
+      const owner = await page.evaluate(
+        ([x, y]) => document.elementFromPoint(x as number, y as number)?.tagName ?? "none",
+        [controlsBox.x + controlsBox.width / 2, controlsBox.y + controlsBox.height + band / 2]
+      );
+      expect(owner, `the ${Math.round(band)}px band below the controls must hit the map`).toBe("CANVAS");
     });
   }
 });
