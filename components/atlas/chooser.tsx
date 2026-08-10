@@ -65,7 +65,7 @@ export function ChooserModal({
           {/* right metric list */}
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex flex-none items-center gap-3 border-b border-border-faint px-6 pb-3 pt-5">
-              <span className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-lg" style={{ background: hexA(accent, 0.16) }}>
+              <span data-role="swatch" className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-lg" style={{ background: hexA(accent, 0.16) }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                   <path d={CAT_ICON[cat] ?? CAT_ICON.demographics} />
                 </svg>
@@ -75,12 +75,18 @@ export function ChooserModal({
                 <div className="text-[11.5px] text-faint">{CAT_DESC[cat] ?? "Official statistics"}</div>
               </div>
             </div>
-            <div className="atl-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-2">
+            {/* Design-round stamps (2026-08-10): data-oid/data-role are read by the
+                Ottomate design pipeline's decompose() to work out what a round may
+                vary, and by the computed pass's cross-component coherence check,
+                which asserts that the same data-role resolves to the same styling
+                across the chooser, the region rail and the /metric index. Presentational
+                no-ops — they add no styling and no behaviour. */}
+            <div data-oid="chooser-metric-list" data-role="category-list" className="atl-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-2">
               {inCat.map((m, i) => {
                 const active = m.id === selected;
                 return (
                   <button
-                    key={m.id} onClick={() => onPick(m.id)}
+                    key={m.id} onClick={() => onPick(m.id)} data-role="category-row"
                     className="flex w-full items-baseline gap-3 border-b border-border-faint px-3 py-3 text-left transition-colors hover:bg-elevated"
                     style={{ background: active ? "#241a12" : undefined }}
                   >

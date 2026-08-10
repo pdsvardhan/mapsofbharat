@@ -132,7 +132,12 @@ export function RegionProfile({
   };
 
   return (
+    // Design-round stamps (2026-08-10): data-oid/data-role feed the Ottomate design
+    // pipeline's decompose() and the computed pass's cross-component coherence check,
+    // which asserts a given data-role resolves to the same styling here, in the chooser
+    // and on the /metric index. Presentational no-ops — no styling, no behaviour.
     <div
+      data-oid="region-indicator-panel" data-role="panel"
       className="flex-none border-b border-border-soft px-[18px] py-[15px]"
       style={{ borderLeft: "2px solid #d1502f", background: "linear-gradient(90deg,rgba(209,80,47,.07),transparent)" }}
     >
@@ -160,7 +165,7 @@ export function RegionProfile({
           <div className="text-[10.5px] text-faint">{sel.sub}</div>
         </div>
         {hasMetric && sel.value != null && (
-          <span className="whitespace-nowrap font-mono text-[24px] font-semibold leading-none text-bright">
+          <span data-role="metric" className="whitespace-nowrap font-mono text-[24px] font-semibold leading-none text-bright">
             <CountUp value={sel.value} format={fmtFull} />
           </span>
         )}
@@ -169,7 +174,7 @@ export function RegionProfile({
         <>
           <div className="mt-3 flex h-6 items-end gap-0.5" aria-hidden>
             {bins.map((b, i) => (
-              <span key={i} className="rankbar flex-1" style={{ height: `${b.h}%`, background: b.on ? "#d1502f" : "#3b3626" }} />
+              <span key={i} data-role="bar" className="rankbar flex-1" style={{ height: `${b.h}%`, background: b.on ? "#d1502f" : "#3b3626" }} />
             ))}
           </div>
           <div className="mt-2 text-[12px] text-muted">{sentence}</div>
@@ -198,7 +203,7 @@ export function RegionProfile({
         <span aria-hidden className="text-[9px] text-faint">{allOpen ? "▾" : "▸"}</span>
       </button>
       {allOpen && (
-        <div className="atl-scroll mt-1.5 max-h-56 overflow-y-auto pr-1">
+        <div data-role="category-list" className="atl-scroll mt-1.5 max-h-56 overflow-y-auto pr-1">
           {allRows === null && <div className="py-2 text-[11px] text-dim">Loading…</div>}
           {allRows?.length === 0 && <div className="py-2 text-[11px] text-dim">No indicators for this region.</div>}
           {allRows && allRows.length > 0 &&
@@ -206,7 +211,7 @@ export function RegionProfile({
               <div key={cat} className="mb-2">
                 <div className="mb-1 text-[9px] font-bold uppercase tracking-[.14em] text-dim">{cat}</div>
                 {allRows.filter((m) => m.category === cat).map((m) => (
-                  <div key={m.id} className="flex items-baseline justify-between gap-2 border-b border-border-faint py-1">
+                  <div key={m.id} data-role="category-row" className="flex items-baseline justify-between gap-2 border-b border-border-faint py-1">
                     <span className="min-w-0 flex-1">
                       <a
                         href={m.source_url} target="_blank" rel="noopener noreferrer" title={`${m.source} · ${m.year}`}

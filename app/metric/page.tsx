@@ -36,7 +36,13 @@ export default function MetricCatalogue() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
+    // Design-round stamps (2026-08-10): data-oid/data-role feed the Ottomate design
+    // pipeline's decompose() and the computed pass's cross-component coherence check,
+    // which asserts a given data-role resolves to the same styling here, in the atlas
+    // chooser and in the region rail. Presentational no-ops. data-oid sits on <main>
+    // rather than the <ul> because there is one <ul> per category and an oid must be
+    // unique in the document.
+    <main data-oid="metric-catalogue" className="mx-auto max-w-4xl px-6 py-12">
       <Link href="/" className="text-[13px] font-semibold text-accent hover:underline">
         ← Back to the map
       </Link>
@@ -63,11 +69,12 @@ export default function MetricCatalogue() {
           <h2 className="border-b border-border-soft pb-2 text-[13px] font-bold uppercase tracking-[.12em] text-faint">
             {cat} <span className="font-normal text-dim">· {ms.length}</span>
           </h2>
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <ul data-role="category-list" className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {ms.map((m) => (
               <li key={m.id}>
                 <Link
                   href={`/metric/${m.id}`}
+                  data-role="category-row"
                   className="flex items-baseline justify-between gap-3 border border-border px-4 py-3 hover:border-faint"
                   style={{ background: "var(--panel)" }}
                 >
