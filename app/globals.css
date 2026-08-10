@@ -76,7 +76,17 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+  /* var(--font-hanken), NOT var(--font-sans). `@theme inline` deliberately does not
+     emit its entries as custom properties — it inlines them into the utilities it
+     generates — so `var(--font-sans)` resolved to nothing here and this rule fell
+     through to Tailwind's preflight default. Measured on production 2026-08-10:
+     computed font-family was `ui-sans-serif, system-ui, sans-serif`, and the string
+     "Institutional deliveries" rendered 444.3px where Hanken Grotesk gives 396px.
+     The face was loading fine (document.fonts.check true) and --font-hanken was set
+     on <body> by next/font — only this indirection was broken, so the site had never
+     once rendered its own brand type. The `font-sans` UTILITY was unaffected and
+     still works, which is why this survived so long. */
+  font-family: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
