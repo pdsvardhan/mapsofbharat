@@ -37,17 +37,17 @@ export function MetricShare({
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => copy(pageUrl, "link")} className={btn}>
           Copy link
-          <span className="font-mono text-[9px] text-dim">{copied === "link" ? "COPIED ✓" : "URL"}</span>
+          <span className="font-mono text-[9px] text-faint">{copied === "link" ? "COPIED ✓" : "URL"}</span>
         </button>
         <button type="button" onClick={() => copy(embedSnippet, "embed")} className={btn}>
           Copy embed code
-          <span className="font-mono text-[9px] text-dim">{copied === "embed" ? "COPIED ✓" : "IFRAME"}</span>
+          <span className="font-mono text-[9px] text-faint">{copied === "embed" ? "COPIED ✓" : "IFRAME"}</span>
         </button>
         <a href={atlasUrl} className={btn}>
           Open in the interactive atlas →
         </a>
       </div>
-      <code className="atl-scroll block overflow-x-auto whitespace-pre border border-border-soft bg-panel-solid px-3 py-2 font-mono text-[10.5px] leading-relaxed text-dim">
+      <code className="atl-scroll block overflow-x-auto whitespace-pre border border-border-soft bg-panel-solid px-3 py-2 font-mono text-[10.5px] leading-relaxed text-muted">
         {embedSnippet}
       </code>
     </div>

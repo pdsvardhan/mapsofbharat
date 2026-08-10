@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { CorrectionsForm } from "@/components/atlas/corrections-form";
 import { SiteFooter } from "@/components/site-footer";
-import { CANONICAL_URL } from "@/lib/site";
+import { SITE_URL } from "@/lib/site";
 import correctionsLog from "@/data/corrections.json";
 
 // Public corrections log + private report intake (iter-32 item 848). The log is a
@@ -18,7 +18,9 @@ export const metadata: Metadata = {
   title: "Corrections",
   description:
     "Corrections log for Maps of Bharat, and a private form to report an error in the data or maps. Reports are sent privately and are never published.",
-  alternates: { canonical: `${CANONICAL_URL}/corrections` },
+  // SITE_URL, not CANONICAL_URL — see the note in app/terms/page.tsx. A canonical
+  // on a host that does not resolve is a de-index instruction.
+  alternates: { canonical: `${SITE_URL}/corrections` },
 };
 
 export default function CorrectionsPage() {
@@ -26,7 +28,7 @@ export default function CorrectionsPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <Link href="/" className="text-[13px] font-semibold text-accent hover:underline">
+      <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">
         ← Back to the map
       </Link>
 
@@ -51,7 +53,7 @@ export default function CorrectionsPage() {
       </h2>
       <div data-testid="corrections-log" className="mt-4">
         {log.length === 0 ? (
-          <p className="text-[13px] text-dim">No corrections logged yet.</p>
+          <p className="text-[13px] text-muted">No corrections logged yet.</p>
         ) : (
           <ul className="space-y-3">
             {log.map((c, i) => (
@@ -62,7 +64,7 @@ export default function CorrectionsPage() {
               >
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="font-mono text-[11px] text-faint">{c.date}</span>
-                  <span className="text-[11px] font-bold uppercase tracking-[.1em] text-accent">
+                  <span className="text-[11px] font-bold uppercase tracking-[.1em] text-accent-text">
                     {c.area}
                   </span>
                 </div>

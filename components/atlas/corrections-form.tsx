@@ -42,7 +42,11 @@ export function CorrectionsForm() {
   };
 
   const field =
-    "w-full border border-border bg-panel-solid px-3 py-2 text-[13px] text-foreground placeholder:text-dim focus:border-faint";
+    // placeholder:text-faint, not text-dim: a placeholder is read like any other
+    // text and takes the same 4.5:1 floor (3.17:1 -> 5.02:1, items 431/473).
+    // focus:border-faint is now a second cue behind the authored :focus-visible
+    // ring rather than the only mark of focus (item 470).
+    "w-full border border-border bg-panel-solid px-3 py-2 text-[13px] text-foreground placeholder:text-faint focus:border-faint";
   const label = "block text-[11px] font-bold uppercase tracking-[.1em] text-faint";
 
   return (
@@ -60,7 +64,7 @@ export function CorrectionsForm() {
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="corr-message" className={label}>
-          What&apos;s wrong? <span className="text-accent">*</span>
+          What&apos;s wrong? <span className="text-accent-text">*</span>
         </label>
         <textarea
           id="corr-message"
@@ -76,7 +80,7 @@ export function CorrectionsForm() {
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="corr-location" className={label}>
-          Where? <span className="font-normal normal-case tracking-normal text-dim">(optional — a page URL or map view)</span>
+          Where? <span className="font-normal normal-case tracking-normal text-faint">(optional — a page URL or map view)</span>
         </label>
         <input
           id="corr-location"
@@ -90,7 +94,7 @@ export function CorrectionsForm() {
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="corr-email" className={label}>
-          Email <span className="font-normal normal-case tracking-normal text-dim">(optional — only so we can follow up)</span>
+          Email <span className="font-normal normal-case tracking-normal text-faint">(optional — only so we can follow up)</span>
         </label>
         <input
           id="corr-email"

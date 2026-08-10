@@ -17,6 +17,7 @@ import {
   type MetricListItem,
 } from "@/lib/metric-page-data";
 import { getMetricLineage } from "@/lib/metric-raw-source";
+import { SITE_URL } from "@/lib/site";
 
 // Canonical, server-rendered, indexable page for one metric (iter-131 item 829).
 // The ranked table, coverage stats and every citation line are in the SSR HTML so
@@ -24,8 +25,6 @@ import { getMetricLineage } from "@/lib/metric-raw-source";
 // /embed iframe) and the sort/copy controls hydrate. Data comes from the DB via
 // lib/metric-page-data — this page never HTTP-fetches its own API to render.
 export const dynamic = "force-dynamic";
-
-const SITE_URL = "https://mapsofbharat.vault7a.xyz";
 
 /** Prefer district-level (the ranked-table default); fall back to state for the
  *  state-only series (RBI finance, etc.). Mirrors india-map's level pick. */
@@ -61,17 +60,34 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const m = getMetricMeta(slug);
-  if (!m) return { title: "Metric not found", robots: { index: false } };
+  // An unknown slug 404s in the page body; make sure it also can't inherit the
+  // root layout's `/` canonical while it is being rendered.
+  if (!m)
+    return {
+      title: "Metric not found",
+      robots: { index: false, follow: false },
+      alternates: { canonical: null },
+    };
   const url = `${SITE_URL}/metric/${m.id}`;
   const description = describe(m);
   const title = `${m.name} across India`;
-  // og:image / twitter:image come from opengraph-image.tsx (file convention).
+  // og:image / twitter:image come from opengraph-image.tsx (file convention) —
+  // deliberately NOT listed here, because declaring openGraph.images would
+  // override the generated per-metric card. That route also supplies
+  // og:image:width/height/type/alt, which is what makes WhatsApp render the
+  // large preview instead of a thumbnail (or nothing).
+  //
+  // Next merges metadata shallowly per top-level key, so `openGraph` here
+  // REPLACES the root layout's — siteName and locale must be restated or the
+  // per-metric card silently loses them.
   return {
     title,
     description,
     alternates: { canonical: url },
     openGraph: {
       type: "article",
+      siteName: "Maps of Bharat",
+      locale: "en_IN",
       title: `${title} · Maps of Bharat`,
       description,
       url,
@@ -80,6 +96,8 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: `${title} · Maps of Bharat`,
       description,
+      site: "@maps_of_bharat",
+      creator: "@maps_of_bharat",
     },
   };
 }

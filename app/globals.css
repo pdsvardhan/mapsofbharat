@@ -18,7 +18,27 @@
   --border-faint: #211e14;
   --accent: #d1502f;
   --accent-hover: #e0603d;
-  --accent-ink: #16110b;
+  /* The accent as READABLE TEXT (items 431/473). --accent #d1502f measures
+     4.35:1 on --panel-solid and 4.47:1 on --background — past the 3:1 floor a
+     dot, bar, border or selected-state marker has to clear, but under the
+     4.5:1 AA floor for text. This alias is the same value --accent-hover
+     already carries (5.25:1 on --panel-solid, 5.39:1 on --background), which
+     is where iter-35 moved the two accent-coloured labels report 154 caught;
+     naming the role stops the next one drifting back to --accent. Derived,
+     not a second literal, so the two can never fall out of step. Anything the
+     reader READS in the accent uses this; --accent stays for everything that
+     is not text. */
+  --accent-text: var(--accent-hover);
+  /* Ink for text sitting ON an --accent fill (the COMPARE/CARD toggles, the primary
+     CTA, segmented "on" states, DOWNLOAD PNG). Was #16110b, which measures 4.38:1 on
+     --accent — under the 4.5:1 AA floor, and these labels are 10-13px bold, so the
+     large-text exemption does not apply. No existing token cleared it (background
+     4.47, panel-solid 4.35, elevated 4.17). #0a0806 keeps the palette's warmth and
+     measures 4.67:1 on --accent and 5.63:1 on --accent-hover. Changed 2026-08-10 for
+     to-do 431; a token VALUE change, made because the alternative was leaving a WCAG
+     failure on eight controls of a public site. Visually indistinguishable from the
+     old value — both read as black. */
+  --accent-ink: #0a0806;
   --accent-border: #6b3020;
   --gold: #e6b34a;
   --map-neutral: #26231c;
@@ -40,6 +60,7 @@
   --color-border-faint: var(--border-faint);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
   --color-accent-ink: var(--accent-ink);
   --color-accent-border: var(--accent-border);
   --color-gold: var(--gold);
@@ -88,4 +109,58 @@ body {
   .rankbar { transition: none; }
 }
 
-input { outline: none; }
+/* ── Keyboard focus (item 470) ────────────────────────────────────────
+   This is the app's only authored focus style, and until it existed there
+   was none: the single `outline` declaration in the whole stylesheet was
+   `input { outline: none }`, which DELETED the indicator on the rail search
+   box and the corrections fields, and every other control — chooser rows,
+   rail rows, the toolbar, /metric links, the footer — fell through to
+   Chrome's UA `outline: auto 1px`, under the 2px floor. One vocabulary, in
+   one place, so a control cannot ship without it.
+
+   `:focus-visible` on its own is the right SET — links, buttons, inputs,
+   textareas, selects, summary and anything carrying tabindex, and only when
+   the UA judges the focus worth showing, so a mouse press on a button stays
+   quiet while the same button reached by Tab does not. It is qualified with
+   `:root ` purely to win a cascade race: maplibre-gl.css carries its own
+   UNSCOPED `:focus-visible { box-shadow: 0 0 2px 2px #0096ff }`, and because
+   india-map is a next/dynamic(ssr:false) import its stylesheet is appended
+   to <head> AFTER this one. At equal specificity the vendor rule would take
+   the box-shadow below — on `/` and `/embed`, the two routes where the plate
+   matters most. `:root :focus-visible` is (0,2,0) against the vendor's
+   (0,1,0), so the outcome no longer depends on load order. (The vendor's
+   `.maplibregl-ctrl-group button { outline: none }` is moot: this map adds
+   no maplibre controls, so it matches nothing.)
+
+   Ring colour is --accent-text, measured against every surface a ring can
+   land on: 5.39:1 on --background, 5.25:1 on --panel-solid, 5.03:1 on
+   --elevated, 4.97:1 on the rail's selected row, 4.80:1 on the chooser's —
+   all well past the 3:1 non-text floor (WCAG 1.4.11).
+
+   The offset and the plate are both load-bearing, not decoration. The ring
+   is only 1.21:1 against an --accent fill and the map canvas paints
+   arbitrary choropleth colours, so `outline-offset` lifts the ring off the
+   control and the box-shadow lays a 4px --background plate underneath it.
+   An element's outline paints above its own outer box-shadow, so the ring's
+   backdrop is --background wherever the control is floating — a known
+   5.39:1, never whatever happens to be behind it.
+
+   Which of the two carries the indicator matters: forced-colors mode drops
+   box-shadow outright and keeps outline, so the outline is the indicator
+   and the shadow is only its plate. Doing it with box-shadow alone would
+   leave high-contrast users with nothing. */
+:root :focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--background);
+}
+
+/* Forced colours (Windows High Contrast): the plate is gone by definition,
+   so the outline carries all of it. Pinned to the system focus colour
+   rather than left to be force-mapped from a brand orange. */
+@media (forced-colors: active) {
+  :root :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

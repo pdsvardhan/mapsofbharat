@@ -1,0 +1,129 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "Maps of Bharat — Atlas v3 living-almanac editorial theme as a DTCG 3-tier model (primitive -> semantic -> pairings). GROUNDED in the app's real app/globals.css as of 2026-08-10, not invented: every primitive below is a literal copied from that file. Authored to close to-do 474 — with no theme file the pre-publish theme-contrast gate SKIPped on every design round, and it says explicitly that a skip is NOT a pass.",
+  "$meta": {
+    "theme": "mapsofbharat",
+    "source": "/mnt/storage/websites/mapsofbharat/app/globals.css",
+    "authored": "2026-08-10",
+    "schemes": ["dark"],
+    "scheme_note": "DARK ONLY. The light theme was retired with the Observatory design (adr-015) and palette_light in the Ottomate ui-master-plan is a mirror of dark, not a real second scheme. Declaring one scheme is deliberate, not an omission.",
+    "contract": ["color.surface", "color.on-surface", "color.border", "color.action", "radius", "motion"]
+  },
+
+  "primitive": {
+    "color": {
+      "ink": {
+        "canvas":       { "$type": "color", "$value": "#0d0f14" },
+        "panel":        { "$type": "color", "$value": "#12130f" },
+        "elevated":     { "$type": "color", "$value": "#1a1712" },
+        "rail-selected":    { "$type": "color", "$value": "#17130e" },
+        "chooser-selected": { "$type": "color", "$value": "#241a12" },
+        "cohort-selected":  { "$type": "color", "$value": "#1f1b14" }
+      },
+      "cream": {
+        "fg":     { "$type": "color", "$value": "#e9e3d5" },
+        "bright": { "$type": "color", "$value": "#eae4d6" },
+        "muted":  { "$type": "color", "$value": "#a49d8c" },
+        "faint":  { "$type": "color", "$value": "#8a8477" },
+        "dim":    { "$type": "color", "$value": "#6a6455" }
+      },
+      "hairline": {
+        "border": { "$type": "color", "$value": "#3b3626" },
+        "soft":   { "$type": "color", "$value": "#2a2619" },
+        "faint":  { "$type": "color", "$value": "#211e14" }
+      },
+      "madder": {
+        "base":   { "$type": "color", "$value": "#d1502f" },
+        "hover":  { "$type": "color", "$value": "#e0603d" },
+        "ink":    { "$type": "color", "$value": "#0a0806" },
+        "border": { "$type": "color", "$value": "#6b3020" }
+      },
+      "gold":        { "$type": "color", "$value": "#e6b34a" },
+      "map-neutral": { "$type": "color", "$value": "#26231c" },
+      "map-nodata":  { "$type": "color", "$value": "#2a271d" }
+    },
+    "dimension": {
+      "radius-none": { "$type": "dimension", "$value": "0" },
+      "radius-sm":   { "$type": "dimension", "$value": "0.125rem" },
+      "radius-md":   { "$type": "dimension", "$value": "0.375rem" },
+      "radius-lg":   { "$type": "dimension", "$value": "0.5rem" },
+      "focus-ring-width":  { "$type": "dimension", "$value": "2px" },
+      "focus-ring-offset": { "$type": "dimension", "$value": "2px" }
+    },
+    "duration": {
+      "state":  { "$type": "duration", "$value": "160ms" },
+      "reveal": { "$type": "duration", "$value": "220ms" },
+      "bar":    { "$type": "duration", "$value": "550ms" }
+    }
+  },
+
+  "semantic": {
+    "dark": {
+      "color": {
+        "surface":          { "$type": "color", "$value": "{primitive.color.ink.panel}" },
+        "surface-sunken":   { "$type": "color", "$value": "{primitive.color.ink.canvas}" },
+        "surface-raised":   { "$type": "color", "$value": "{primitive.color.ink.elevated}" },
+        "surface-selected": { "$type": "color", "$value": "{primitive.color.ink.chooser-selected}" },
+        "surface-selected-rail": { "$type": "color", "$value": "{primitive.color.ink.rail-selected}" },
+
+        "on-surface":        { "$type": "color", "$value": "{primitive.color.cream.fg}" },
+        "on-surface-bright": { "$type": "color", "$value": "{primitive.color.cream.bright}" },
+        "on-surface-muted":  { "$type": "color", "$value": "{primitive.color.cream.muted}" },
+        "on-surface-subtle": { "$type": "color", "$value": "{primitive.color.cream.faint}" },
+        "on-surface-vestigial": { "$type": "color", "$value": "{primitive.color.cream.dim}" },
+
+        "border":       { "$type": "color", "$value": "{primitive.color.hairline.border}" },
+        "border-soft":  { "$type": "color", "$value": "{primitive.color.hairline.soft}" },
+        "border-faint": { "$type": "color", "$value": "{primitive.color.hairline.faint}" },
+
+        "action":        { "$type": "color", "$value": "{primitive.color.madder.base}" },
+        "on-action":     { "$type": "color", "$value": "{primitive.color.madder.ink}" },
+        "action-text":   { "$type": "color", "$value": "{primitive.color.madder.hover}" },
+        "action-border": { "$type": "color", "$value": "{primitive.color.madder.border}" },
+        "focus-ring":    { "$type": "color", "$value": "{primitive.color.madder.hover}" },
+
+        "chart-1": { "$type": "color", "$value": "{primitive.color.madder.base}" },
+        "chart-2": { "$type": "color", "$value": "{primitive.color.gold}" },
+        "chart-3": { "$type": "color", "$value": "{primitive.color.map-neutral}" },
+        "chart-4": { "$type": "color", "$value": "{primitive.color.map-nodata}" }
+      }
+    }
+  },
+
+  "$extensions": {
+    "com.ottomate.contrast": {
+      "$comment": "Pairings the per-theme contrast gate enforces. kind sets the floor: text=4.5, large=3, ui=3 (WCAG 1.4.11 non-text); decorative and chart are advisory. Token paths are relative to semantic.dark. These pairings encode the outcome of to-dos 431/470/473: on-surface-vestigial (--dim) is declared DECORATIVE and never as text, because at 3.17:1 on surface it cannot carry text — the app was using it for source attribution and that was the defect. Likewise `action` appears only as ui: the accent is a marker, never readable text; `action-text` is the readable alias.",
+      "pairings": [
+        { "fg": "color.on-surface",        "bg": "color.surface",          "kind": "text", "role": "primary text on a panel" },
+        { "fg": "color.on-surface-bright", "bg": "color.surface",          "kind": "text", "role": "emphasised heading on a panel" },
+        { "fg": "color.on-surface-muted",  "bg": "color.surface",          "kind": "text", "role": "secondary sentences on a panel" },
+        { "fg": "color.on-surface-subtle", "bg": "color.surface",          "kind": "text", "role": "inline metadata beside brighter content" },
+
+        { "fg": "color.on-surface",        "bg": "color.surface-sunken",   "kind": "text", "role": "primary text on the page canvas" },
+        { "fg": "color.on-surface-muted",  "bg": "color.surface-sunken",   "kind": "text", "role": "secondary text on the page canvas" },
+        { "fg": "color.on-surface-subtle", "bg": "color.surface-sunken",   "kind": "text", "role": "metadata on the page canvas" },
+
+        { "fg": "color.on-surface-muted",  "bg": "color.surface-raised",   "kind": "text", "role": "text on a hover/elevated surface" },
+        { "fg": "color.on-surface-subtle", "bg": "color.surface-raised",   "kind": "text", "role": "metadata on a hover/elevated surface" },
+
+        { "fg": "color.on-surface-subtle", "bg": "color.surface-selected", "kind": "text", "role": "metadata on the chooser's selected row — the worst case in the app" },
+        { "fg": "color.on-surface-muted",  "bg": "color.surface-selected-rail", "kind": "text", "role": "text on the rail's selected row" },
+
+        { "fg": "color.on-action",   "bg": "color.action",         "kind": "text", "role": "label on an accent-filled control (10-13px bold, so no large-text exemption)" },
+        { "fg": "color.action-text", "bg": "color.surface",        "kind": "text", "role": "accent used as readable text on a panel" },
+        { "fg": "color.action-text", "bg": "color.surface-sunken", "kind": "text", "role": "accent used as readable text on the canvas" },
+
+        { "fg": "color.focus-ring", "bg": "color.surface",        "kind": "ui", "role": "keyboard focus ring on a panel" },
+        { "fg": "color.focus-ring", "bg": "color.surface-sunken", "kind": "ui", "role": "keyboard focus ring on the canvas" },
+        { "fg": "color.action",     "bg": "color.surface",        "kind": "ui", "role": "accent as a NON-TEXT marker: dots, rank bars, selected markers, borders" },
+        { "fg": "color.action",     "bg": "color.surface-sunken", "kind": "ui", "role": "accent marker on the canvas" },
+
+        { "fg": "color.border",                "bg": "color.surface", "kind": "decorative", "role": "hairline panel border" },
+        { "fg": "color.on-surface-vestigial",  "bg": "color.surface", "kind": "decorative", "role": "--dim: aria-hidden empty-cell glyph ONLY. Declared decorative deliberately — at 3.17:1 it must never carry text again (to-do 473)" },
+
+        { "fg": "color.chart-1", "bg": "color.surface", "kind": "chart", "role": "choropleth / rank bar" },
+        { "fg": "color.chart-2", "bg": "color.surface", "kind": "chart", "role": "secondary data series" }
+      ]
+    }
+  }
+}

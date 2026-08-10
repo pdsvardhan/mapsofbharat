@@ -6,11 +6,20 @@ import type { MetadataRoute } from "next";
 // home-screen install crops cleanly inside the safe zone.
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    // A stable `id` is what keeps an installed app pointing at this site if
+    // start_url ever changes (it will, at the mapsofbharat.in switchover);
+    // without it the browser derives the identity FROM start_url and a moved
+    // site installs as a second, unrelated app.
+    id: "/",
     name: "Maps of Bharat",
     short_name: "MapsOfBharat",
     description:
       "Map-first data visualization for India. Official statistics as interactive choropleths, drilling India to state to district, fully cited.",
     start_url: "/",
+    scope: "/",
+    lang: "en-IN",
+    dir: "ltr",
+    categories: ["education", "government", "news", "utilities"],
     display: "standalone",
     background_color: "#0b0c10",
     theme_color: "#0b0c10",

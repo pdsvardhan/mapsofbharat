@@ -32,7 +32,7 @@ export function Crumbs({
       style={{ background: "var(--panel)" }}
     >
       {hasBack && (
-        <button onClick={onBack} aria-label="Back" className="text-dim hover:text-foreground">‹</button>
+        <button onClick={onBack} aria-label="Back" className="text-muted hover:text-foreground">‹</button>
       )}
       {items.map((c, i) => (
         <span key={c.label + i} className="flex items-center gap-2">
@@ -61,7 +61,7 @@ export function IndicatorCard({
         </>
       ) : (
         <>
-          <div className="text-[10px] font-bold tracking-[.12em] text-accent">START HERE</div>
+          <div className="text-[10px] font-bold tracking-[.12em] text-accent-text">START HERE</div>
           <div className="mt-1.5 text-[21px] font-extrabold leading-tight text-bright">Choose an indicator</div>
           <div className="mt-1 text-[12.5px] leading-normal text-muted">The map stays quiet until you pick a statistic to colour it by.</div>
         </>
@@ -185,7 +185,7 @@ export function LevelColourCard({
             </div>
           </div>
           {vintage === "2011" && (
-            <div className="mt-1.5 text-[9.5px] leading-snug text-dim">
+            <div className="mt-1.5 text-[9.5px] leading-snug text-muted">
               As the 2011 census reported it — no crosswalk, no estimates. Delhi is
               drawn whole (nine 2011 districts) and Mumbai City sits with Suburban,
               matching this map&apos;s current-day polygons. View-only: drill,
@@ -288,7 +288,7 @@ export function LegendCard({
           {mode !== "coverage" && (
             <button
               onClick={onToggleScale} aria-expanded={scaleOpen} data-scale-toggle
-              className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent hover:bg-elevated"
+              className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated"
             >
               ⚙ SCALE
             </button>
@@ -314,13 +314,13 @@ export function LegendCard({
                   style={{ background: hidden ? PROVENANCE_MUTED : PROVENANCE_COLOR[cls] }}
                 />
                 <span className="flex-1 text-[10px] font-semibold text-faint">{PROVENANCE_LABEL[cls]}</span>
-                <span data-coverage-count className="flex-none font-mono text-[9.5px] text-dim">
+                <span data-coverage-count className="flex-none font-mono text-[9.5px] text-faint">
                   {coverageCounts[cls].toLocaleString("en-IN")}
                 </span>
               </button>
             );
           })}
-          <div className="pt-0.5 text-[9px] leading-snug text-dim">
+          <div className="pt-0.5 text-[9px] leading-snug text-muted">
             Coloured by data provenance. Tap a class to show or hide it.
           </div>
         </div>
@@ -342,7 +342,7 @@ export function LegendCard({
                 <span className="h-2 w-4 flex-none" style={{ background: fn(arr.length <= 1 ? 0 : i / (arr.length - 1)) }} />
                 <span data-legend-label className="flex-1">{label}</span>
                 {counts[i] != null && (
-                  <span data-legend-count className="flex-none text-dim">{counts[i]}</span>
+                  <span data-legend-count className="flex-none text-faint">{counts[i]}</span>
                 )}
               </div>
             ))}
@@ -359,12 +359,12 @@ export function LegendCard({
       {mode !== "coverage" && (
         <div
           data-legend-method-line
-          className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-dim"
+          className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-faint"
         >
           <a
             href={`/methodology#${methodMeta.anchor}`} target="_blank" rel="noopener noreferrer"
             data-legend-method
-            className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent"
+            className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
           >
             {methodMeta.label}
           </a>
@@ -393,19 +393,19 @@ export function LegendCard({
       {/* Per-metric coverage stat — the trust surface, shown in every mode (item
           830). One click from the /coverage league table. */}
       {coverageStat && (
-        <div className="mt-2 text-[9.5px] leading-snug text-dim">
-          <a href="/coverage" target="_blank" rel="noopener noreferrer" data-coverage-stat className="hover:text-accent">
+        <div className="mt-2 text-[9.5px] leading-snug text-muted">
+          <a href="/coverage" target="_blank" rel="noopener noreferrer" data-coverage-stat className="hover:text-accent-text">
             {coverageStat}
           </a>
         </div>
       )}
       {cohortNote && (
-        <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent">{cohortNote}</div>
+        <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent-text">{cohortNote}</div>
       )}
       <div className="mt-2 text-[10.5px] text-faint">{countLabel} · {unit}</div>
-      <div className="text-[10px] leading-tight text-dim">
+      <div className="text-[10px] leading-tight text-faint">
         Source: {source}{license ? ` · ${license}` : ""} ·{" "}
-        <a href="/methodology" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">methodology</a>
+        <a href="/methodology" target="_blank" rel="noopener noreferrer" className="text-accent-text hover:underline">methodology</a>
       </div>
     </div>
   );
@@ -442,7 +442,7 @@ export function ScalePopover({
     >
       <div className="flex items-baseline justify-between border-b border-border-soft pb-2">
         <span className="text-[15px] font-extrabold text-bright">Scale</span>
-        <button onClick={onClose} aria-label="Close scale options" className="text-[12px] text-dim hover:text-foreground">✕</button>
+        <button onClick={onClose} aria-label="Close scale options" className="text-[12px] text-muted hover:text-foreground">✕</button>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-y-2">
         <span className="text-[10px] font-bold tracking-[.12em] text-faint">METHOD</span>
@@ -463,7 +463,10 @@ export function ScalePopover({
         <button
           onClick={onReverse}
           className="border border-border px-2.5 py-1 text-[10px] font-bold hover:text-foreground"
-          style={{ color: reverse ? "#d1502f" : "#a49d8c" }}
+          // The legend's own REVERSE control already used #e0603d for its ON label
+          // (iter-35); this popover row is the same setting and still carried the raw
+          // accent at 4.35:1. Same role, same token now (items 431/473).
+          style={{ color: reverse ? "var(--accent-text)" : "#a49d8c" }}
         >
           ↔ REVERSE {reverse ? "ON" : "OFF"}
         </button>
@@ -482,7 +485,7 @@ export function ScalePopover({
         </div>
       )}
       {autoReason && (
-        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug text-dim" data-auto-reason>
+        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug text-muted" data-auto-reason>
           <span className="font-bold tracking-[.1em] text-faint">CHOSEN FOR THIS METRIC — </span>
           {autoReason}
         </div>

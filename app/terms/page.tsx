@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SiteFooter } from "@/components/site-footer";
-import { CANONICAL_URL } from "@/lib/site";
+import { SITE_URL } from "@/lib/site";
 
 // Terms of use (iter-33 item 849). Plain-language, impersonal, factual voice —
 // no "we"/"I". OWNER-REVIEW copy: a legal page whose wording is the operator's to
@@ -14,7 +14,11 @@ export const metadata: Metadata = {
   title: "Terms of Use",
   description:
     "Terms of use for Maps of Bharat: official data presented as is without warranty, boundaries per the Survey of India, attribution-based reuse, and permitted embeds.",
-  alternates: { canonical: `${CANONICAL_URL}/terms` },
+  // SITE_URL, not CANONICAL_URL: a canonical must name a host that resolves.
+  // mapsofbharat.in is not bought yet (to-do 407), and a canonical pointing at a
+  // dead domain is a de-index instruction, not a redirect hint. One line in
+  // lib/site.ts flips every URL at the domain move.
+  alternates: { canonical: `${SITE_URL}/terms` },
 };
 
 const H2 =
@@ -24,7 +28,7 @@ const P = "mt-4 text-[14px] leading-relaxed text-muted";
 export default function TermsPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <Link href="/" className="text-[13px] font-semibold text-accent hover:underline">
+      <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">
         ← Back to the map
       </Link>
 
@@ -50,7 +54,7 @@ export default function TermsPage() {
         The figures on Maps of Bharat are aggregated from official and government publications and
         other top-tier institutional sources, harmonised onto current-day boundaries, and kept with
         their citations (see the{" "}
-        <Link href="/methodology" className="text-accent hover:underline">
+        <Link href="/methodology" className="text-accent-text hover:underline">
           methodology
         </Link>
         ). The data is presented <strong className="font-semibold text-foreground">&ldquo;as
@@ -77,7 +81,7 @@ export default function TermsPage() {
         published in accordance with the Government of India&apos;s guidelines. The maps are
         schematic representations for statistical visualization and are not authoritative for legal,
         administrative, or international-boundary purposes. Further detail is on the{" "}
-        <Link href="/methodology" className="text-accent hover:underline">
+        <Link href="/methodology" className="text-accent-text hover:underline">
           methodology
         </Link>{" "}
         page.
@@ -96,7 +100,7 @@ export default function TermsPage() {
       <h2 className={H2}>EMBEDS AND FAIR USE OF THE SERVICE</h2>
       <p className={P}>
         Maps may be embedded on other sites using the purpose-built{" "}
-        <Link href="/embed" className="text-accent hover:underline">
+        <Link href="/embed" className="text-accent-text hover:underline">
           embed
         </Link>{" "}
         view. Automated access that degrades the service — high-volume scraping, or requests that
@@ -112,7 +116,7 @@ export default function TermsPage() {
       <h2 className={H2}>CHANGES AND CONTACT</h2>
       <p className={P}>
         Changes to these terms are posted on this page. Questions about these terms can be sent to{" "}
-        <a className="text-accent hover:underline" href="mailto:contact@mapsofbharat.in">
+        <a className="text-accent-text hover:underline" href="mailto:contact@mapsofbharat.in">
           contact@mapsofbharat.in
         </a>
         .
