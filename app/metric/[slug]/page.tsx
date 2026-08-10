@@ -163,16 +163,16 @@ export default async function MetricPage({
       />
 
       <div className="flex items-center justify-between gap-4">
-        <Link href="/" className="text-[13px] font-semibold text-accent hover:underline">
+        <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">
           ← Back to the map
         </Link>
-        <Link href="/metric" className="text-[13px] font-semibold text-faint hover:text-accent">
+        <Link href="/metric" className="text-[13px] font-semibold text-faint hover:text-accent-text">
           All metrics →
         </Link>
       </div>
 
       <header className="mt-5">
-        <div className="text-[10px] font-bold uppercase tracking-[.12em] text-accent">
+        <div className="text-[10px] font-bold uppercase tracking-[.12em] text-accent-text">
           {detail.category}
         </div>
         <div className="mt-2 flex items-center gap-3">
@@ -205,7 +205,7 @@ export default async function MetricPage({
           <div className="mt-1 font-mono text-[22px] font-bold text-bright">
             {detail.stats_count ? fmtUnit(detail.mean) : "—"}
           </div>
-          <div className="mt-1 text-[11px] text-dim">
+          <div className="mt-1 text-[11px] text-muted">
             over {detail.stats_count.toLocaleString("en-IN")} {scopeNoun}
           </div>
         </div>
@@ -214,14 +214,14 @@ export default async function MetricPage({
           <div className="mt-1 font-mono text-[16px] font-bold text-bright">
             {detail.stats_count ? `${fmtUnit(detail.min)} – ${fmtUnit(detail.max)}` : "—"}
           </div>
-          <div className="mt-1 text-[11px] text-dim">lowest to highest{unitLabel ? ` (${detail.unit})` : ""}</div>
+          <div className="mt-1 text-[11px] text-muted">lowest to highest{unitLabel ? ` (${detail.unit})` : ""}</div>
         </div>
         <div className="border border-border px-4 py-3" style={{ background: "var(--panel)" }}>
           <div className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">Coverage</div>
           <div className="mt-1 font-mono text-[16px] font-bold text-bright">
             {measured.toLocaleString("en-IN")} of {detail.count.toLocaleString("en-IN")} {scopeNoun}
           </div>
-          <div className="mt-1 text-[11px] text-dim">
+          <div className="mt-1 text-[11px] text-muted">
             measured directly
             {detail.estimated_count > 0
               ? ` · ${detail.estimated_count.toLocaleString("en-IN")} estimated`
@@ -237,7 +237,7 @@ export default async function MetricPage({
       <div className="mt-3 font-mono text-[11px] text-faint">
         Source:{" "}
         <a
-          className="text-accent hover:underline"
+          className="text-accent-text hover:underline"
           href={detail.source_url}
           target="_blank"
           rel="noopener noreferrer"
@@ -314,9 +314,9 @@ export default async function MetricPage({
         <MetricShare pageUrl={pageUrl} embedSnippet={embedSnippet} atlasUrl={atlasUrl} />
       </section>
 
-      <footer className="mt-10 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-dim">
+      <footer className="mt-10 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-muted">
         Values are harmonized onto current-day boundaries and keep their citation. See the{" "}
-        <Link className="text-accent hover:underline" href="/methodology">
+        <Link className="text-accent-text hover:underline" href="/methodology">
           methodology &amp; sources
         </Link>{" "}
         for how each number is computed and where it is imperfect.
