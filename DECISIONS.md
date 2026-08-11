@@ -35,5 +35,6 @@ The canonical index of architecture decisions for Maps of Bharat. Each row links
 | [adr-027](decisions/adr-027-shrug-crosswalk-accept.md) | 2026-08-04 | product | Accept the CC-BY-NC-SA census crosswalk while non-commercial; swap to LGD before monetising |
 | [adr-028](decisions/adr-028-positioning-and-non-goals.md) | 2026-08-04 | product | Positioning as the provenance-honest atlas; non-goals matched to shipped behaviour (+ 2026-08-05 paywall-line amendment) |
 | [adr-029](decisions/adr-029-no-user-generated-content.md) | 2026-08-05 | security | No user-generated content on the public site — sidestepping intermediary liability |
+| [adr-030](decisions/adr-030-component-pick-gate-scope.md) | 2026-08-09 | internal | The component-pick gate applies to new components, not to fixes on existing ones |
 | [adr-031](decisions/adr-031-saitual-no-derivable-boundary.md) | 2026-08-11 | reliability | A district we cannot draw honestly is left undrawn, and the cost is published |
 | [adr-032](decisions/adr-032-stack-no-orm-no-chart-lib.md) | 2026-08-11 | system | No ORM and no chart library: the stack the code actually has (supersedes adr-007) |
