@@ -6,7 +6,7 @@ normalized (handles "Kameng East" vs "East Kameng") -> alias map (known renames)
 police districts (NCRB) should pre-aggregate City/Rural/Commissionerate splits
 into the base name before calling match().
 """
-import datetime, difflib, os, re, sqlite3
+import atexit, datetime, difflib, os, re, sqlite3, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "data", "mapsofbharat.db")
@@ -172,7 +172,85 @@ def upsert_metric(con, mid, name, category, unit, decimals, higher_is_better,
          description, source, source_url, license_, year, methodology, now))
 
 
+# Citations in district_estimate_source that no longer explain a live estimate.
+# Shared verbatim by the exit warning below, validate_drift.py and test_pipeline.py,
+# so all three state the same invariant in the same terms.
+ORPHAN_CITATION_SQL = """SELECT COUNT(*) FROM district_estimate_source s
+    WHERE NOT EXISTS (
+      SELECT 1 FROM metric_values v WHERE v.region_code=s.region_code
+      AND v.metric_id=s.metric_id AND v.year=s.year
+      AND v.region_level='district' AND v.estimated=1)"""
+
+
+# --- inherited-estimate loss detector (adr-018) ------------------------------
+# write_values DELETEs by (metric, level, year), so it also removes the estimated=1
+# rows fill_new_districts.py inherited into post-2011 districts inside that scope. A
+# full rebuild is fine — the inheritance pass runs last and rewrites them — but
+# re-running ONE adapter standalone (a new vintage, a fixed alias) drops them with
+# nothing to put them back, and those districts render grey.
+#
+# They are deleted rather than preserved, and that is deliberate. An inherited value
+# is a COPY of its donor's current real value; carrying it across a re-ingest that
+# moved the donor would leave a number its own citation no longer explains — exactly
+# the drift adr-020 exists to prevent. Grey is honest; a stale estimate wearing a
+# citation is not.
+#
+# So the loss is made impossible to miss instead: reported at exit here, and left
+# detectable in the store as citations that explain no estimate — the invariant
+# fill_new_districts.py asserts and validate_drift.py now enforces. The standing
+# per-metric drift check cannot catch this alone: dropping all 14 inherited rows
+# from a 706-district metric is 1.98% drift, just under the 2% tolerance.
+_dropped_inherited: dict[tuple[str, int], int] = {}
+
+
+def _note_inherited_in_scope(con, mid, level, year):
+    """Tally inherited rows that the next write_values DELETE is about to remove."""
+    if level != "district":
+        return
+    n = con.execute(
+        "SELECT COUNT(*) FROM metric_values "
+        "WHERE metric_id=? AND region_level=? AND year=? AND estimated=1",
+        (mid, level, year)).fetchone()[0]
+    if not n:
+        return
+    if not _dropped_inherited:
+        atexit.register(_report_inherited_loss)
+    _dropped_inherited[(mid, year)] = _dropped_inherited.get((mid, year), 0) + n
+
+
+def _report_inherited_loss():
+    """Warn at exit — but only about damage that actually reached the store.
+
+    Re-reads the COMMITTED DB rather than trusting the in-memory tally: an adapter
+    that raised before con.commit() lost nothing and must not be told that it did.
+    """
+    try:
+        con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+        orphans = con.execute(ORPHAN_CITATION_SQL).fetchone()[0]
+        con.close()
+    except sqlite3.Error:
+        return      # no store, or no citation table — nothing was inherited yet
+    if not orphans:
+        return      # rolled back, or the rows were rewritten before exit
+    lines = ["", "!" * 78,
+             f"! INHERITED ESTIMATES DROPPED — {orphans} district value(s) now missing.",
+             "!",
+             "! This run deleted sibling-inherited rows (adr-018) that it cannot itself",
+             "! rewrite. Those post-2011 districts now render GREY:"]
+    for (mid, yr), n in sorted(_dropped_inherited.items()):
+        lines.append(f"!     {mid} ({yr}): {n} row(s)")
+    lines += ["!",
+              "! Restore them (idempotent, safe to run at any time):",
+              "!     pipeline/.venv/bin/python pipeline/fill_new_districts.py",
+              "!",
+              "! Until then the store stays detectably broken: validate_drift.py and",
+              "! test_pipeline.py both fail while a citation explains no estimate.",
+              "!" * 78]
+    print("\n".join(lines), file=sys.stderr)
+
+
 def write_values(con, mid, level, year, values: dict):
+    _note_inherited_in_scope(con, mid, level, year)
     con.execute(
         "DELETE FROM metric_values WHERE metric_id=? AND region_level=? AND year=?",
         (mid, level, year))

@@ -46,6 +46,8 @@ import os
 import sqlite3
 import statistics
 
+from region_match import log_load
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "data", "mapsofbharat.db")
 
@@ -179,6 +181,17 @@ def main():
                     "(region_code,metric_id,year,source_code,source_name,divergence,shaky) "
                     "VALUES(?,?,?,?,?,?,?)",
                     (r, mid, yr, src, name.get(src, ""), divergence(r, src), is_shaky(r, src)))
+
+    # Record the pass in load_log so the pipeline's ORDER is auditable, not just its
+    # contents. Every ingest_*.py logs its load; without an entry here nothing in the
+    # store says whether inheritance ran before or after them, and "an adapter ran
+    # last" is exactly the condition that leaves districts grey (adr-018).
+    log_load(con, "fill_new_districts.py", "sibling inheritance (adr-018/020/026)",
+             0, "n/a", "n/a", fills,
+             f"{fills} inherited values across {len(groups)} sibling groups; "
+             f"{len(source_of)} citations. Must be the LAST data pass — any adapter "
+             f"re-run after this one deletes the inherited rows in its (metric, "
+             f"level, year) scope.")
 
     con.commit()
     filled_dists = len({r for (r, _mid, _yr) in source_of})

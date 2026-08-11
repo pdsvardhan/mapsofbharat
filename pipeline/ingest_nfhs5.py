@@ -4,6 +4,8 @@ Source: IIPS/MoHFW district factsheet compilation (raw-new/health/). District
 level only — state factsheets are published separately and unweighted district
 averages would be wrong, so no state rows here.
 Run: pipeline/.venv/bin/python pipeline/ingest_nfhs5.py
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import os, sqlite3
 import pandas as pd

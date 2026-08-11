@@ -19,6 +19,8 @@ Metrics (district, category education):
   aser_govt_school      children 6-14 enrolled in government schools (%)
 
 Run: pipeline/.venv/bin/python pipeline/ingest_aser.py
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import glob
 import os
