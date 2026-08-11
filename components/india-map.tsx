@@ -29,7 +29,7 @@ import type { SocialFeature } from "@/lib/social-export";
 import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
-import { DataTable, ViewToggle } from "@/components/atlas/data-table";
+import { DataTable } from "@/components/atlas/data-table";
 
 const INDIA_BOUNDS: [number, number, number, number] = [67, 6, 98, 37];
 const NEUTRAL = "#26231c"; // no indicator picked
@@ -164,6 +164,31 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // ── phone / small-tablet chrome (to-do 424) ──────────────────────────────
+  // Below the lg desktop breakpoint the atlas cannot hold three fixed columns
+  // (300px controls + map + 322px rail) — at 390px that left the map a 34px
+  // sliver. Sub-desktop it reflows to ONE full-bleed map with two collapsible
+  // docks: the controls stack behind a bar at the top of the plate, the ranking
+  // rail as a bottom sheet. Both default closed so the map owns the screen.
+  const [ctrlOpen, setCtrlOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  // The two dock HANDLES are the only mobile-only DOM, and they are rendered
+  // rather than merely CSS-hidden on desktop. `lg:hidden` would leave them in
+  // the tree, and this suite reaches for controls with raw CSS selectors that do
+  // not skip display:none — `aside button` filtered by /\d/ (iter26-regressions)
+  // would have matched the rail handle instead of a ranking row at 1280px.
+  // Layout itself stays CSS-driven (`max-lg:` variants), so nothing reflows on
+  // this state; only the two toggles wait for mount.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    // 1023.98 not 1023: matches Tailwind's `max-lg` (`width < 64rem`) exactly, so
+    // the handles appear on precisely the widths whose layout the variants change.
+    const mq = window.matchMedia("(max-width: 1023.98px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const levelRef = useRef(level);
   const vintageRef = useRef(vintage);
@@ -688,10 +713,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets, coverageHidden]);
 
-  // The map lives in a plate that is display:none while the table view is up, so
-  // MapLibre holds its last canvas size until the plate is shown again. Resize on
-  // the way back so the choropleth fills the plate instead of rendering at the
-  // stale size it had when it was hidden.
+  // The MapLibre host is display:none while the table view is up (the plate around
+  // it stays), so MapLibre holds its last canvas size until the host is shown
+  // again. Resize on the way back so the choropleth fills the plate instead of
+  // rendering at the stale size it had when it was hidden.
   useEffect(() => {
     if (view !== "map") return;
     const map = mapRef.current;
@@ -1211,6 +1236,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const activeCohortDef = cohortDefs.find((c) => c.key === cohort);
   const cohortActive = level === "state" && cohort !== "all" && !!activeCohortDef?.codes;
 
+  // What the rail is ranking, in words. Hoisted out of the rail's props because
+  // the mobile bottom-sheet handle (to-do 424) shows the SAME line while the rail
+  // itself is collapsed — a sheet you must open to find out what is in it is a
+  // sheet nobody opens. One expression, so the two can never drift.
+  const railScopeSub = data
+    ? focusActive && focus
+      ? `${entries.length} districts in ${focus.name}${estCount ? ` · ${estCount} estimated` : ""}`
+      : districtsAll
+        ? `${entries.length} districts nationwide${estCount ? ` · ${estCount} estimated` : ""}`
+        : `${entries.length} states${cohortActive ? ` · ${activeCohortDef!.name}` : ""}`
+    : "Pick an indicator to rank";
+
   const hoverValue = hovered ? valuesRef.current[hovered.code] : null;
   const hoverRank = hovered ? rankOf[hovered.code] : null;
   const hoverEst = !!(hovered && estimatedRef.current[hovered.code] === 1);
@@ -1248,7 +1285,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 has to be on the embed itself — hovering is not a disclosure for a
                 reader who never hovers (item 643). */}
             {embedEstimateNote && (
-              <div className="mt-1 max-w-40 text-[9px] leading-snug text-dim">{embedEstimateNote}</div>
+              <div className="mt-1 max-w-40 text-[9px] leading-snug text-muted">{embedEstimateNote}</div>
             )}
           </div>
         )}
@@ -1256,7 +1293,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             no masthead or rail, so the embed itself carries attribution and a
             way back to the same view on the full Atlas (item 828). */}
         <a href={shareBackHref} target="_blank" rel="noopener noreferrer"
-          className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5 border border-border px-2 py-1 text-[10px] text-faint hover:text-accent" style={{ background: "var(--panel)" }}>
+          className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5 border border-border px-2 py-1 text-[10px] text-faint hover:text-accent-text" style={{ background: "var(--panel)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark; next/image adds no value for a 14px inline logo */}
           <img src="/brand/mark.png" alt="" aria-hidden="true" width={14} height={14} className="h-3.5 w-3.5 flex-none object-contain" />
           <span>Maps of Bharat · {data ? `${data.source.split(",")[0]} · ${data.year}` : "official data"}</span>
@@ -1276,55 +1313,92 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(90% 120% at 50% -10%, #15140f, #0b0c10 60%)" }} />
 
-      {/* MASTHEAD */}
-      <header className="relative z-10 flex h-16 flex-none items-center border-b px-5" style={{ borderColor: "#2a2619" }}>
-        <div className="flex w-[300px] flex-none items-center gap-3">
+      {/* MASTHEAD
+          The three fixed tracks (300 + 360 + 300 = 960 minimum) put the search
+          box and both links off a phone screen: measured at 390px, the search
+          button's box started at x=320 and the METHODOLOGY link ran to x=980,
+          i.e. 590px past the right edge, clipped away by the root's
+          overflow-hidden rather than scrollable to (to-do 424).
+          Sub-desktop the side tracks size to their content and the search takes
+          the slack; the two links keep their glyph and drop their label, in a
+          26px square — the size right-rail.tsx:150 already settled on for a
+          touch target here, over WCAG 2.2's 24px floor. */}
+      <header className="relative z-10 flex h-16 flex-none items-center gap-3 border-b px-5 max-lg:gap-2 max-lg:px-3" style={{ borderColor: "#2a2619" }}>
+        <div className="flex flex-none items-center gap-3 lg:w-[300px]">
           {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark; next/image adds no value for a 30px inline logo */}
-          <img src="/brand/mark.png" alt="" aria-hidden="true" width={30} height={30} className="h-[30px] w-[30px] flex-none object-contain" />
-          <span className="text-[17px] font-bold leading-none tracking-tight text-bright">Maps of Bharat</span>
+          <img src="/brand/mark.png" alt="" aria-hidden="true" width={30} height={30} className="h-[30px] w-[30px] flex-none object-contain max-lg:h-6 max-lg:w-6" />
+          {/* The wordmark is the one thing here a phone can spare: the mark
+              beside it carries the same identity in 24px. Below sm only — at
+              640-1023px the row still has room for it. */}
+          <span className="text-[17px] font-bold leading-none tracking-tight text-bright max-sm:hidden">Maps of Bharat</span>
         </div>
-        <div className="flex flex-1 justify-center">
+        <div className="flex min-w-0 flex-1 justify-center">
           <button
             onClick={() => setSearchOpen(true)} aria-label="Search places and indicators (Ctrl+K)"
-            className="flex w-[360px] items-center gap-2.5 rounded-sm border border-border px-3 py-2 text-left hover:border-faint"
+            className="flex w-[360px] max-w-full items-center gap-2.5 rounded-sm border border-border px-3 py-2 text-left hover:border-faint"
             style={{ background: "rgba(18,19,15,.5)" }}
           >
             <span className="h-[13px] w-[13px] flex-none rounded-full border-[1.5px] border-faint" />
-            <span className="flex-1 text-[13.5px] text-faint">Search a place or indicator…</span>
-            <kbd className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-[9px] text-dim">CTRL K</kbd>
+            <span className="min-w-0 flex-1 truncate text-[13.5px] text-faint">Search a place or indicator…</span>
+            {/* A phone has no Ctrl key — the hint is only ever noise there, and
+                it is the widest thing in the box after the placeholder. */}
+            <kbd className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-[9px] text-faint max-lg:hidden">CTRL K</kbd>
           </button>
         </div>
-        <div className="flex w-[300px] flex-none items-center justify-end gap-4">
+        <div className="flex flex-none items-center justify-end gap-4 max-lg:gap-2 lg:w-[300px]">
           {/* Corrections / report an error (iter-32 item 848), beside Methodology */}
           <a
             href="/corrections" target="_blank" rel="noopener noreferrer"
-            className="text-[11.5px] font-semibold tracking-[.05em] text-muted hover:text-foreground"
+            // Spelled out because the glyph stands alone below lg. It OPENS with
+            // the visible desktop label, so the accessible name still contains it
+            // (WCAG 2.5.3) and is one stable name at every width.
+            aria-label="CORRECTIONS — report an error"
+            className="flex items-center gap-2 text-[11.5px] font-semibold tracking-[.05em] text-muted hover:text-foreground max-lg:h-[26px] max-lg:w-[26px] max-lg:justify-center max-lg:rounded-sm max-lg:border max-lg:border-border"
           >
-            CORRECTIONS
+            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lg:hidden">
+              <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            <span className="max-lg:hidden">CORRECTIONS</span>
           </a>
           <a
             href="/methodology" target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-2 text-[11.5px] font-semibold tracking-[.05em] text-muted hover:text-foreground"
+            aria-label="METHODOLOGY &amp; SOURCES"
+            className="flex items-center gap-2 text-[11.5px] font-semibold tracking-[.05em] text-muted hover:text-foreground max-lg:h-[26px] max-lg:w-[26px] max-lg:justify-center max-lg:rounded-sm max-lg:border max-lg:border-border"
           >
-            <span className="inline-flex h-[15px] w-[15px] items-center justify-center rounded-full border-[1.5px] border-current text-[9px]">i</span>
-            METHODOLOGY &amp; SOURCES
+            <span aria-hidden="true" className="inline-flex h-[15px] w-[15px] flex-none items-center justify-center rounded-full border-[1.5px] border-current text-[9px]">i</span>
+            <span className="max-lg:hidden">METHODOLOGY &amp; SOURCES</span>
           </a>
         </div>
       </header>
 
       {/* BODY */}
       <div className="relative flex min-h-0 flex-1">
-        {/* MAP PLATE */}
-        <div className="relative min-w-0 flex-1 p-4">
-          {/* The map plate stays MOUNTED in table view (display:none) — unmounting
-              would orphan MapLibre and lose the drill/selection it holds. The table
-              plate below reads the same computed entries, so the swap is view-only. */}
+        {/* PLATE — ONE framed region for BOTH views (items 909 / 910).
+            The table used to be a SECOND plate that stood in for this one while it
+            was display:none, which took the whole left column down with it: the
+            table then sprawled the full plate width with none of the atlas
+            furniture framing it (measured at 1440x900: the table ran x=17..1101,
+            where the map keeps x<331 clear for the controls column), and the VIEW
+            toggle had to be redrawn inside the table's own header — so the control
+            JUMPED from (127,356) to (980,97) the moment it was used. One plate
+            keeps the table inside the map's bounds, keeps the left stack and the
+            right rail framing it, and leaves the toggle in the single place it
+            already lives: the VIEW row of the left stack. */}
+        {/* Sub-desktop the rail leaves the flow for a bottom sheet, so the plate
+            is the only column and takes the whole width. The bottom padding is
+            the sheet's collapsed handle (46px) plus the 8px gutter, so the plate
+            ends where the handle starts instead of hiding the map under it. */}
+        <div className="relative min-w-0 flex-1 p-4 max-lg:p-2 max-lg:pb-[54px]">
           <div
-            className={`relative h-full border border-border${view === "table" ? " hidden" : ""}`}
+            className="relative h-full border border-border"
             style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" }}
             onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY })}
           >
-            <div ref={ref} style={{ position: "absolute", inset: 0 }} />
+            {/* The MapLibre host stays MOUNTED in table view (display:none) —
+                unmounting would orphan the map and lose the drill / selection it
+                holds. Only the HOST hides now, not the plate around it; the resize
+                effect above restores the canvas size on the way back. */}
+            <div ref={ref} className={view === "table" ? "hidden" : undefined} style={{ position: "absolute", inset: 0 }} />
 
             {/* LEFT COLUMN — the controls stack and the legend share ONE bounded
                 column so they cannot overlap. They used to be two independent
@@ -1337,7 +1411,74 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 is bounded instead and the controls scroll when they must.
                 pointer-events-none on the wrapper keeps the map draggable in the
                 gap between the two. */}
-            <div className="pointer-events-none absolute inset-y-3.5 left-3.5 z-[5] flex w-[300px] flex-col gap-2.5">
+            {/* SCRIM behind the expanded mobile controls. The cards are
+                var(--panel) — rgba(...,.93) — which is invisible over the map
+                plate it was designed against, but at 390px the panel spans the
+                full plate and in table view that 7% put the table's rows through
+                the cards as legible ghost text. It doubles as the dismissal a
+                sheet is expected to have: tap off the panel to close it. */}
+            {narrow && ctrlOpen && (
+              <div
+                data-controls-scrim
+                className="absolute inset-0 z-[4]"
+                style={{ background: "rgba(11,12,16,.92)" }}
+                onClick={() => setCtrlOpen(false)}
+                aria-hidden
+              />
+            )}
+            {/* top-3.5/bottom-3.5 rather than inset-y-3.5, and the same for the
+                mobile overrides: `inset-y-*` compiles to the LOGICAL
+                `inset-block`, `top-*` to physical `top`, and a variant of one
+                does not reliably beat the base of the other. Every edge here is
+                one property with one override. */}
+            <div className="pointer-events-none absolute bottom-3.5 left-3.5 top-3.5 z-[5] flex w-[300px] flex-col gap-2.5 max-lg:bottom-2 max-lg:left-2 max-lg:right-2 max-lg:top-2 max-lg:w-auto max-lg:gap-2">
+            {/* MOBILE CONTROLS BAR (to-do 424) — the always-visible head of the
+                controls stack below lg. A 300px column over a 374px plate is the
+                same defect as the rail: it leaves no map. Collapsed, this bar is
+                all the stack shows, and it earns its 44px by carrying the two
+                things a reader needs without opening anything — WHICH indicator
+                is on view, and the ramp to read its colours by. Everything
+                operable stays in the cards below, rendered exactly once. */}
+            {narrow && (
+              <button
+                type="button"
+                onClick={() => setCtrlOpen((o) => !o)}
+                aria-expanded={ctrlOpen}
+                aria-label={ctrlOpen ? "Hide map controls" : "Show map controls"}
+                className="pointer-events-auto flex min-h-[44px] w-full flex-none items-center gap-3 border border-border px-3 py-2 text-left"
+                style={{ background: "var(--panel)", boxShadow: "0 4px 18px rgba(0,0,0,.35)" }}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[9.5px] font-bold tracking-[.12em] text-faint">
+                    {ctrlOpen ? "CONTROLS" : meta ? "SHOWING" : "START HERE"}
+                  </span>
+                  <span className="block truncate text-[13px] font-extrabold leading-tight text-bright">
+                    {meta?.name ?? "Choose an indicator"}
+                  </span>
+                </span>
+                {/* Map-only, value-mode-only. A ramp beside a table would key
+                    nothing, and vs-avg / coverage paint scales this gradient is
+                    not — the same reason the MAP COLOUR row is gated on view. */}
+                {view === "map" && data && !ctrlOpen && (
+                  mode === "value" ? (
+                    <span className="flex w-[84px] flex-none flex-col gap-0.5">
+                      <span
+                        className="h-1.5 w-full"
+                        style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => PALETTES[palette].fn(reverse ? 1 - t : t)).join(", ")})` }}
+                      />
+                      <span className="flex justify-between font-mono text-[9px] leading-none text-faint">
+                        <span>{fmtVal(scopeMin)}</span><span>{fmtVal(scopeMax)}</span>
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="flex-none font-mono text-[9px] tracking-[.1em] text-faint">
+                      {mode === "vs_avg" ? "VS AVG" : "COVERAGE"}
+                    </span>
+                  )
+                )}
+                <span aria-hidden className="flex-none text-[11px] text-muted">{ctrlOpen ? "▲" : "▼"}</span>
+              </button>
+            )}
             {/* Content-sized, NOT flex-1. flex-1 stretched this box to the full
                 column even when the cards were short, and since it is the box
                 that carries pointer-events-auto, the empty slack below the last
@@ -1346,7 +1487,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 1:1 with the window. The default flex-initial keeps the box on
                 its content while min-h-0 still lets it shrink and scroll when
                 the column is tight. */}
-            <div className="atl-scroll pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto">
+            {/* Collapsed sub-desktop = display:none, not opacity or a zero
+                height: the cards must leave the tab order and the a11y tree with
+                the pixels, and this is also what keeps the mobile-only branch out
+                of every desktop-width selector in the suite. */}
+            <div className={`atl-scroll pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto max-lg:gap-2 ${ctrlOpen ? "" : "max-lg:hidden"}`}>
               <Crumbs items={crumbs} hasBack={hasBack} onBack={onBack} />
               <IndicatorCard
                 metricName={meta?.name ?? null}
@@ -1365,9 +1510,16 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
             {/* LEGEND — flex-none so it keeps its natural height and the stack
                 above yields instead; mt-auto pins it to the bottom of the column
-                now that the stack no longer stretches to fill it. */}
-            {data && meta && (
-              <div className="pointer-events-auto mt-auto flex-none">
+                now that the stack no longer stretches to fill it.
+                Map-only, unlike the controls stack above it: the legend is the KEY
+                to a colour ramp, and its mode / coverage rows drive the paint. With
+                the table up there is no ramp on screen and those rows would be
+                controls that provably do nothing — the line item 908 already drew
+                when it dropped REVERSE from vs-avg mode. It is pinned to the BOTTOM
+                of the column, so dropping it moves nothing above it: the VIEW
+                toggle keeps its position across the swap. */}
+            {view === "map" && data && meta && (
+              <div className={`pointer-events-auto mt-auto flex-none ${ctrlOpen ? "" : "max-lg:hidden"}`}>
                 <LegendCard
                   metricName={data.name} unit={data.unit} decimals={data.decimals}
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}
@@ -1388,7 +1540,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               </div>
             )}
             </div>
-            {scaleOpen && (
+            {/* Opened from the legend's gear, so it follows the legend out of the
+                table view rather than floating over the table alone. */}
+            {view === "map" && scaleOpen && (
               <ScalePopover
                 method={brkMethod} onMethod={(m) => {
                   pickedForMetricRef.current = true;
@@ -1424,11 +1578,33 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 right rail keeps the plate too narrow for a right-anchored bar well past
                 640px, so earlier 480/640 thresholds left an off-screen dead band
                 (#419 fix-loop). Desktop (≥1024px) keeps the exact original layout —
-                the max-[1024px] overrides simply don't apply. The bar still
-                lives inside the map plate, so it correctly vanishes in table view
-                (the plate is display:none there). */}
+                the max-lg overrides simply don't apply.
+                Compare picks regions ON the map and CARD renders the map, so the
+                bar is map furniture and hides with the map. It used to get that
+                for free by riding the plate's display:none; the plate now stays up
+                for the table, so it opts out explicitly.
+
+                NEVER close this template literal's class list with `${...}` glued
+                straight onto the last class. Doing exactly that is what broke the
+                bar earlier today: the string ended `...max-[1024px]:-translate-x-1/2${view`,
+                Tailwind's source scanner read the candidate as running into the
+                `$`, and that ONE utility was never emitted — verified absent from
+                the built stylesheet while every other class in the same list was
+                present. Without the counter-translate the bar kept `left:50%` and
+                ran right from the viewport centre: CARD's right edge measured 477
+                at a 390px viewport (+87 off-screen) and 561 at 559px (+2), which
+                is precisely the four widths tests/mobile-toolbar.spec.ts failed
+                at. The interpolations below are preceded by a space, so the last
+                literal class always terminates. */}
             <div
-              className="absolute bottom-3.5 right-3.5 z-[6] flex items-stretch overflow-visible rounded-sm border max-[1024px]:fixed max-[1024px]:bottom-3 max-[1024px]:left-1/2 max-[1024px]:right-auto max-[1024px]:z-20 max-[1024px]:max-w-[calc(100vw-1.5rem)] max-[1024px]:-translate-x-1/2"
+              className={`absolute bottom-3.5 right-3.5 z-[6] flex items-stretch overflow-visible rounded-sm border max-lg:fixed max-lg:left-1/2 max-lg:right-auto max-lg:z-20 max-lg:max-w-[calc(100vw-1rem)] max-lg:-translate-x-1/2 ${
+                // Clears the bottom sheet's 46px collapsed handle. With EITHER
+                // dock open it stands down: the sheet covers it outright, and the
+                // controls panel pins its legend to the same bottom edge. A
+                // trigger a hit-test cannot reach is worse than an absent one,
+                // and both docks are one tap from closed.
+                narrow && (railOpen || ctrlOpen) ? "max-lg:hidden" : "max-lg:bottom-[54px]"
+              } ${view === "table" ? "hidden" : ""}`}
               style={{ background: "rgba(16,17,13,.96)", borderColor: compare ? "#6b3020" : "#3b3626", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
             >
               <button
@@ -1461,19 +1637,26 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               </button>
             </div>
 
-            {/* COMPARE HINT */}
-            {compare && pins.length < 2 && (
+            {/* COMPARE HINT — map-only: it asks for clicks on the map. */}
+            {view === "map" && compare && pins.length < 2 && (
               <div
-                className="atl-pop absolute left-1/2 top-3.5 z-[6] -translate-x-1/2 rounded-sm border px-3.5 py-2 text-[12px] font-semibold"
+                className="atl-pop absolute left-1/2 top-3.5 z-[6] -translate-x-1/2 rounded-sm border px-3.5 py-2 text-[12px] font-semibold max-lg:top-[60px] max-lg:max-w-[calc(100%-1rem)] max-lg:text-[11.5px]"
                 style={{ background: "rgba(26,23,14,.96)", borderColor: "#6b3020", color: "#eecdb8" }}
               >
                 {!data ? "Pick an indicator, then click two regions" : pins.length === 0 ? "Click the first region to compare" : "Now click a second region"}
               </div>
             )}
 
-            {/* FLOATING REGION PROFILE (iter-53 item 407 — lives on the plate, not the rail) */}
-            {selected && !compare && (
-              <div className="atl-pop absolute right-3.5 top-3.5 z-[6] w-[300px] border border-border" style={{ background: "var(--panel)", boxShadow: "0 10px 30px rgba(0,0,0,.45)" }}>
+            {/* FLOATING REGION PROFILE (iter-53 item 407 — lives on the plate, not
+                the rail). Map-only: the plate is the table's ground in table view
+                and a floating card would sit on top of the rows.
+                Sub-desktop it spans the plate and drops BELOW the controls bar
+                rather than over it — the bar is how you get back to the controls,
+                and this card appears from a map tap, which is the middle of the
+                drill journey, not the end of it. Capped and scrollable so a tall
+                profile cannot run past the plate. */}
+            {view === "map" && selected && !compare && (
+              <div className="atl-pop absolute right-3.5 top-3.5 z-[6] w-[300px] border border-border max-lg:left-2 max-lg:right-2 max-lg:top-[60px] max-lg:max-h-[calc(100%-68px)] max-lg:w-auto max-lg:overflow-y-auto" style={{ background: "var(--panel)", boxShadow: "0 10px 30px rgba(0,0,0,.45)" }}>
                 <RegionProfile
                   sel={{
                     code: selected.code, name: selected.name,
@@ -1493,15 +1676,17 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               </div>
             )}
 
-            {/* TOOLTIP */}
-            {hovered && tip && (
+            {/* TOOLTIP — map-only: it follows the cursor over the choropleth, and
+                it is `fixed`, so with the plate up for the table a stale hover
+                would float it over the rows. */}
+            {view === "map" && hovered && tip && (
               <div
                 className="pointer-events-none fixed z-[60] whitespace-nowrap border px-2.5 py-1.5"
                 style={{ left: tip.x + 14, top: tip.y + 14, background: "rgba(13,15,20,.96)", borderColor: "#4a4433" }}
               >
                 <span className="text-[12px] font-bold text-bright">{hovered.name}</span>
                 {data && <span className="ml-2 font-mono text-[10.5px] text-muted">{fmtHover(hoverValue)}</span>}
-                <div className="mt-px text-[9.5px] text-dim">
+                <div className="mt-px text-[9.5px] text-faint">
                   {/* Rank and estimate note are independent since adr-023: a
                       projected state is ranked AND badged, so neither line may
                       swallow the other. Unranked estimates keep note-only. */}
@@ -1513,42 +1698,92 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 </div>
               </div>
             )}
-          </div>
 
-          {/* TABLE PLATE — the same view as a semantic, sortable table (item 826).
-              Fed the same computed `entries` + `rankOf` the ranking rail renders, so
-              the two can never disagree. Its own VIEW toggle + caption stand in for
-              the left stack, which is display:none with the map plate. */}
-          {view === "table" && (
-            <div
-              className="relative flex h-full flex-col overflow-hidden border border-border"
-              style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" }}
-            >
-              <div className="flex flex-none items-center justify-between gap-3 border-b border-border-soft px-4 py-3">
-                <div className="min-w-0">
-                  <div className="text-[10px] font-bold tracking-[.12em] text-faint">DATA TABLE</div>
-                  <div className="truncate text-[15px] font-extrabold leading-tight text-bright">
-                    {data ? data.name : "No indicator selected"}
+            {/* TABLE — the same view as a semantic, sortable table (item 826), fed
+                the same computed `entries` + `rankOf` the ranking rail renders so
+                the two can never disagree.
+                It sits INSIDE the map's plate (item 909) and starts past the
+                controls column — 14px gutter + 300px column + 14px gutter = 328 —
+                so it fills exactly the region the map keeps clear, framed by the
+                same left stack and right rail rather than sprawling the full plate
+                width. No border or ground of its own: the plate it is standing in
+                is already the framed plate, and a second border inside it would
+                read as a second surface.
+                Sub-desktop there is no controls column to clear — the stack is
+                collapsed behind its bar — so the table takes the full plate width
+                and starts below that bar (44px + the 8px gutter + 8px of air).
+                It must start below rather than under it: the bar holds the VIEW
+                row, and it is the only way back to the map from here.
+                `isolate` contains the table's OWN z-indexes. Its sticky column
+                headers carry z-10, and neither this box nor the plate nor
+                anything above them creates a stacking context — so that 10 was
+                competing directly with the controls column's z-5, and winning.
+                Harmless while the table sat to the RIGHT of the column on
+                desktop; sub-desktop the table is full-width beneath it, and the
+                header row painted straight through the controls panel. */}
+            {view === "table" && (
+              <div className="absolute bottom-0 left-[328px] right-0 top-0 isolate flex flex-col overflow-hidden max-lg:left-0 max-lg:top-[60px]">
+                <div className="flex flex-none items-center border-b border-border-soft px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold tracking-[.12em] text-faint">DATA TABLE</div>
+                    <div className="truncate text-[15px] font-extrabold leading-tight text-bright">
+                      {data ? data.name : "No indicator selected"}
+                    </div>
                   </div>
                 </div>
-                <ViewToggle view={view} onView={setView} />
+                <DataTable
+                  metricLabel={data?.name ?? ""}
+                  unit={data?.unit ?? ""}
+                  year={data?.year}
+                  scopeNoun={scopeNoun}
+                  boundaryNote={vintage === "2011" ? "2011 boundaries, as reported" : null}
+                  entries={entries}
+                  rankOf={rankOf}
+                  fmtVal={fmtVal}
+                />
               </div>
-              <DataTable
-                metricLabel={data?.name ?? ""}
-                unit={data?.unit ?? ""}
-                year={data?.year}
-                scopeNoun={scopeNoun}
-                boundaryNote={vintage === "2011" ? "2011 boundaries, as reported" : null}
-                entries={entries}
-                rankOf={rankOf}
-                fmtVal={fmtVal}
-              />
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* RIGHT RAIL */}
-        <aside className="relative z-[2] flex w-[322px] flex-none flex-col border-l" style={{ borderColor: "#211e14" }} aria-label="Rankings and profile">
+        {/* RIGHT RAIL — a docked column on desktop, a BOTTOM SHEET below lg
+            (to-do 424). 322px of flex-none beside a phone screen is what left the
+            map a 34px sliver at 390px and a 4px one at 360px; the rail is the
+            wider of the two offenders, and a fluid width would only have made it
+            an unreadable rail beside an unreadable map. Off the flow it goes, and
+            the map gets the whole plate.
+            A sheet rather than a drawer behind a button because the handle is its
+            own signpost: it names the scope it holds, so the rankings stay
+            discoverable at rest instead of hiding behind an icon.
+            Collapsed = display:none on the CONTENT, so the rail leaves the tab
+            order and the a11y tree while the handle keeps its place. */}
+        <aside
+          className={`relative z-[2] flex w-[322px] flex-none flex-col border-l max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:w-auto max-lg:overflow-hidden max-lg:border-l-0 max-lg:border-t max-lg:bg-background ${
+            // 47 = the handle's 46px target + the sheet's own 1px top border,
+            // border-box, so the handle is not clipped by a pixel of its own edge.
+            railOpen ? "max-lg:h-[62dvh]" : "max-lg:h-[47px]"
+          }`}
+          style={{ borderColor: "#211e14" }}
+          aria-label="Rankings and profile"
+        >
+          {narrow && (
+            <button
+              type="button"
+              onClick={() => setRailOpen((o) => !o)}
+              aria-expanded={railOpen}
+              aria-label={railOpen ? "Hide rankings" : "Show rankings"}
+              className="flex h-[46px] w-full flex-none items-center gap-2 border-b border-border-soft px-4 text-left"
+            >
+              <span className="flex-none text-[10px] font-bold tracking-[.12em] text-faint">
+                {compare ? "COMPARE" : "RANKINGS"}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">
+                {compare ? "Two regions, side by side" : railScopeSub}
+              </span>
+              <span aria-hidden className="flex-none text-[11px] text-muted">{railOpen ? "▼" : "▲"}</span>
+            </button>
+          )}
+          <div className={`flex min-h-0 flex-1 flex-col ${railOpen ? "" : "max-lg:hidden"}`}>
           {compare ? (
             <ComparePanel
               hasMetric={!!data}
@@ -1592,15 +1827,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 cohorts={cohortDefs} cohort={cohort}
                 onCohort={(k) => { ensureCohorts(); setCohort(k); }}
                 cohortEnabled={level === "state" && !!data}
-                scopeSub={
-                  data
-                    ? focusActive && focus
-                      ? `${entries.length} districts in ${focus.name}${estCount ? ` · ${estCount} estimated` : ""}`
-                      : districtsAll
-                        ? `${entries.length} districts nationwide${estCount ? ` · ${estCount} estimated` : ""}`
-                        : `${entries.length} states${cohortActive ? ` · ${activeCohortDef!.name}` : ""}`
-                    : "Pick an indicator to rank"
-                }
+                scopeSub={railScopeSub}
                 fmtVal={fmtVal}
                 onRowClick={(e) => {
                   const source = e.kind === "state" ? "states" : "districts";
@@ -1621,6 +1848,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 }}
               />
           )}
+          </div>
         </aside>
       </div>
 

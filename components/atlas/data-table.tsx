@@ -34,9 +34,18 @@ export const SEGMENTED_WIDTH = "min-w-[188px]";
 
 /** The map ⇄ table view control. Styled to match the LEVEL / VALUE segmented
  *  buttons in the left stack and legend, so the toggle reads as one of the atlas
- *  controls. Exported so the map view (its VIEW row in the left stack) and the
- *  table view (the table's own header) drive one shared control rather than
- *  drifting two copies apart. */
+ *  controls.
+ *
+ *  Rendered in exactly ONE place: the VIEW row of the left stack, which now
+ *  stands in BOTH views (item 910). It used to be rendered a second time inside
+ *  the table's own header, because the left stack went display:none with the map
+ *  plate — so the control moved the moment it was used, measured at (127,356) in
+ *  map view and (980,97) in table view. A control you have to re-find after
+ *  operating it is the defect; one stable position is the fix, not two copies
+ *  kept in sync.
+ *
+ *  Exported rather than inlined in left-stack.tsx because SEGMENTED_WIDTH and the
+ *  table it toggles to both live in this file. */
 export function ViewToggle({
   view, onView, fill = false,
 }: {
@@ -45,13 +54,20 @@ export function ViewToggle({
   /** Stretch to the shared control width the left stack's control rows use, so
    *  VIEW / LEVEL / BOUNDARIES line up instead of each group sizing to its own
    *  labels — MAP|TABLE is the shortest pair, so it was the visibly odd one out
-   *  (report 154 #8). Off for the standalone use in the table header, which has
-   *  no siblings to line up with and should size to content. */
+   *  (report 154 #8). The left stack — the one place this renders — passes it;
+   *  the default keeps the control content-sized for a use with no siblings to
+   *  line up with. */
   fill?: boolean;
 }) {
   return (
     <div
-      className={`flex border border-border${fill ? " " + SEGMENTED_WIDTH : ""}`}
+      // The space before `${` is load-bearing, not formatting. Tailwind extracts
+      // candidates from the raw source text: a class glued straight onto an
+      // interpolation is read as one token running into the `$` and its utility
+      // is never emitted. That cost the action toolbar its counter-translate
+      // earlier today (see india-map.tsx) — `border-border` survived here only
+      // because other files spell it out in a plain string.
+      className={`flex border border-border ${fill ? SEGMENTED_WIDTH : ""}`}
       role="group" aria-label="Choose map or table view"
     >
       {(["map", "table"] as const).map((v) => {
@@ -59,7 +75,11 @@ export function ViewToggle({
         return (
           <button
             key={v} onClick={() => onView(v)} aria-pressed={on}
-            className={`px-2.5 py-1 text-[10.5px] font-bold${fill ? " flex-1" : ""}`}
+            // max-lg min-h: py-1 lands this pair on exactly 24px, WCAG 2.2
+            // 2.5.8's floor with nothing to spare. On the touch surface it takes
+            // the 26px the rest of the atlas uses for a finger. Matches the LEVEL
+            // and BOUNDARIES pairs so the three rows stay a set at every width.
+            className={`px-2.5 py-1 text-[10.5px] font-bold max-lg:min-h-[26px] ${fill ? "flex-1" : ""}`}
             style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
           >
             {v === "map" ? "MAP" : "TABLE"}
@@ -90,9 +110,14 @@ function SortHeader({
       <button
         type="button" onClick={() => onSort(col)}
         aria-label={`Sort by ${label.toLowerCase()}${active ? (dir === "asc" ? ", currently ascending" : ", currently descending") : ""}`}
-        className={`inline-flex items-center gap-1 text-faint hover:text-foreground ${align === "right" ? "flex-row-reverse" : ""}`}
+        className={`inline-flex items-center gap-1 text-faint hover:text-foreground max-lg:min-h-[26px] ${align === "right" ? "flex-row-reverse" : ""}`}
       >
         <span>{label}</span>
+        {/* KEPT on --accent (items 431/473). This caret is a sort-state MARKER, not
+            text: it is aria-hidden and the state it shows is carried for real by
+            aria-sort on the <th> and by the button's own aria-label, so nothing is
+            read from its colour. As a graphical indicator it takes the 3:1 non-text
+            floor, which --accent clears at 4.35:1 on --panel-solid. */}
         <span aria-hidden className="text-[8px] text-accent">{active ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
       </button>
     </th>
@@ -153,7 +178,7 @@ export function DataTable({
 
   if (!entries.length) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-dim">
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-muted">
         Pick an indicator and every place lines up here, first to last.
       </div>
     );
@@ -161,7 +186,14 @@ export function DataTable({
 
   return (
     <div className="atl-scroll min-h-0 flex-1 overflow-auto">
-      <table className="w-full border-collapse text-left">
+      {/* Five columns — rank, region, state, value, estimate — do not fit a 374px
+          plate at a readable size. Below lg the table keeps a real minimum and
+          SCROLLS inside this box rather than compressing; the scroll is contained
+          (the parent is overflow-auto), so the page itself never gains a
+          horizontal scrollbar. Dropping a column instead was not an option: the
+          estimate cell is a disclosure (item 643) and the state cell is what
+          disambiguates same-named districts in the all-India scope. */}
+      <table className="w-full border-collapse text-left max-lg:min-w-[480px]">
         <caption className="px-3 pb-2 pt-3 text-left text-[11px] leading-snug text-faint">
           {caption}
         </caption>
@@ -191,7 +223,7 @@ export function DataTable({
                 className={`border-b border-border-faint ${onRowClick ? "cursor-pointer hover:bg-elevated" : ""}`}
                 style={{ background: on ? "#17130e" : undefined }}
               >
-                <td className="px-3 py-1.5 font-mono text-[11px] text-dim">
+                <td className="px-3 py-1.5 font-mono text-[11px] text-faint">
                   {rank == null ? "—" : rank}
                 </td>
                 <th scope="row" className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-bright">
@@ -208,20 +240,25 @@ export function DataTable({
                     <span className="inline-flex items-center gap-1.5">
                       <span
                         data-testid="est-badge" data-shaky={e.shaky ? 1 : 0}
-                        className={`font-mono text-[10px] ${e.shaky ? "font-bold" : "text-accent"}`}
+                        className={`font-mono text-[10px] ${e.shaky ? "font-bold" : "text-accent-text"}`}
                         style={e.shaky ? { color: SHAKY_COLOR } : undefined}
                         title={estimateNote(e.estimate_kind, e.estimated_from, e.shaky)}
                       >
                         {estimateBadge(e.estimate_kind, e.shaky)}
                       </span>
                       <span
-                        className={e.shaky ? "" : "text-dim"}
+                        className={e.shaky ? "" : "text-faint"}
                         style={e.shaky ? { color: SHAKY_COLOR } : undefined}
                       >
                         {estimateShort(e.estimate_kind, e.estimated_from, e.shaky)}
                       </span>
                     </span>
                   ) : (
+                    // KEPT on --dim (items 431/473). This em dash is the one use of
+                    // --dim in the app that is not text a reader reads: it is
+                    // aria-hidden, it stands in for an EMPTY cell, and the
+                    // information is the absence, not the glyph. Raising it would
+                    // print "no estimate" louder than the estimates beside it.
                     <span className="text-dim" aria-hidden>—</span>
                   )}
                 </td>

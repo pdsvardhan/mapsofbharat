@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { getMetricMeta } from "@/lib/metric-page-data";
+import { SITE_URL } from "@/lib/site";
 import {
   citationCommentBlock,
   citationHttpHeaders,
@@ -25,7 +26,8 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SITE_URL = "https://mapsofbharat.vault7a.xyz";
+// Imported rather than re-declared: this literal was one of two remaining copies
+// of the live origin, and the domain move (to-do 407) has to be one edit, not a hunt.
 
 export async function GET(
   _req: Request,

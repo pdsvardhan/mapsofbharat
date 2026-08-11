@@ -17,6 +17,7 @@ import {
   type MetricListItem,
 } from "@/lib/metric-page-data";
 import { getMetricLineage } from "@/lib/metric-raw-source";
+import { SITE_URL } from "@/lib/site";
 
 // Canonical, server-rendered, indexable page for one metric (iter-131 item 829).
 // The ranked table, coverage stats and every citation line are in the SSR HTML so
@@ -24,8 +25,6 @@ import { getMetricLineage } from "@/lib/metric-raw-source";
 // /embed iframe) and the sort/copy controls hydrate. Data comes from the DB via
 // lib/metric-page-data — this page never HTTP-fetches its own API to render.
 export const dynamic = "force-dynamic";
-
-const SITE_URL = "https://mapsofbharat.vault7a.xyz";
 
 /** Prefer district-level (the ranked-table default); fall back to state for the
  *  state-only series (RBI finance, etc.). Mirrors india-map's level pick. */
@@ -61,17 +60,34 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const m = getMetricMeta(slug);
-  if (!m) return { title: "Metric not found", robots: { index: false } };
+  // An unknown slug 404s in the page body; make sure it also can't inherit the
+  // root layout's `/` canonical while it is being rendered.
+  if (!m)
+    return {
+      title: "Metric not found",
+      robots: { index: false, follow: false },
+      alternates: { canonical: null },
+    };
   const url = `${SITE_URL}/metric/${m.id}`;
   const description = describe(m);
   const title = `${m.name} across India`;
-  // og:image / twitter:image come from opengraph-image.tsx (file convention).
+  // og:image / twitter:image come from opengraph-image.tsx (file convention) —
+  // deliberately NOT listed here, because declaring openGraph.images would
+  // override the generated per-metric card. That route also supplies
+  // og:image:width/height/type/alt, which is what makes WhatsApp render the
+  // large preview instead of a thumbnail (or nothing).
+  //
+  // Next merges metadata shallowly per top-level key, so `openGraph` here
+  // REPLACES the root layout's — siteName and locale must be restated or the
+  // per-metric card silently loses them.
   return {
     title,
     description,
     alternates: { canonical: url },
     openGraph: {
       type: "article",
+      siteName: "Maps of Bharat",
+      locale: "en_IN",
       title: `${title} · Maps of Bharat`,
       description,
       url,
@@ -80,6 +96,8 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: `${title} · Maps of Bharat`,
       description,
+      site: "@maps_of_bharat",
+      creator: "@maps_of_bharat",
     },
   };
 }
@@ -145,16 +163,16 @@ export default async function MetricPage({
       />
 
       <div className="flex items-center justify-between gap-4">
-        <Link href="/" className="text-[13px] font-semibold text-accent hover:underline">
+        <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">
           ← Back to the map
         </Link>
-        <Link href="/metric" className="text-[13px] font-semibold text-faint hover:text-accent">
+        <Link href="/metric" className="text-[13px] font-semibold text-faint hover:text-accent-text">
           All metrics →
         </Link>
       </div>
 
       <header className="mt-5">
-        <div className="text-[10px] font-bold uppercase tracking-[.12em] text-accent">
+        <div className="text-[10px] font-bold uppercase tracking-[.12em] text-accent-text">
           {detail.category}
         </div>
         <div className="mt-2 flex items-center gap-3">
@@ -187,7 +205,7 @@ export default async function MetricPage({
           <div className="mt-1 font-mono text-[22px] font-bold text-bright">
             {detail.stats_count ? fmtUnit(detail.mean) : "—"}
           </div>
-          <div className="mt-1 text-[11px] text-dim">
+          <div className="mt-1 text-[11px] text-muted">
             over {detail.stats_count.toLocaleString("en-IN")} {scopeNoun}
           </div>
         </div>
@@ -196,14 +214,14 @@ export default async function MetricPage({
           <div className="mt-1 font-mono text-[16px] font-bold text-bright">
             {detail.stats_count ? `${fmtUnit(detail.min)} – ${fmtUnit(detail.max)}` : "—"}
           </div>
-          <div className="mt-1 text-[11px] text-dim">lowest to highest{unitLabel ? ` (${detail.unit})` : ""}</div>
+          <div className="mt-1 text-[11px] text-muted">lowest to highest{unitLabel ? ` (${detail.unit})` : ""}</div>
         </div>
         <div className="border border-border px-4 py-3" style={{ background: "var(--panel)" }}>
           <div className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">Coverage</div>
           <div className="mt-1 font-mono text-[16px] font-bold text-bright">
             {measured.toLocaleString("en-IN")} of {detail.count.toLocaleString("en-IN")} {scopeNoun}
           </div>
-          <div className="mt-1 text-[11px] text-dim">
+          <div className="mt-1 text-[11px] text-muted">
             measured directly
             {detail.estimated_count > 0
               ? ` · ${detail.estimated_count.toLocaleString("en-IN")} estimated`
@@ -219,7 +237,7 @@ export default async function MetricPage({
       <div className="mt-3 font-mono text-[11px] text-faint">
         Source:{" "}
         <a
-          className="text-accent hover:underline"
+          className="text-accent-text hover:underline"
           href={detail.source_url}
           target="_blank"
           rel="noopener noreferrer"
@@ -296,9 +314,9 @@ export default async function MetricPage({
         <MetricShare pageUrl={pageUrl} embedSnippet={embedSnippet} atlasUrl={atlasUrl} />
       </section>
 
-      <footer className="mt-10 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-dim">
+      <footer className="mt-10 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-muted">
         Values are harmonized onto current-day boundaries and keep their citation. See the{" "}
-        <Link className="text-accent hover:underline" href="/methodology">
+        <Link className="text-accent-text hover:underline" href="/methodology">
           methodology &amp; sources
         </Link>{" "}
         for how each number is computed and where it is imperfect.

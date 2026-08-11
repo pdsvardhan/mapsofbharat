@@ -132,8 +132,19 @@ export function RegionProfile({
   };
 
   return (
+    // Design-round stamps (2026-08-10): data-oid/data-role feed the Ottomate design
+    // pipeline's decompose() and the computed pass's cross-component coherence check,
+    // which asserts a given data-role resolves to the same styling here, in the chooser
+    // and on the /metric index. Presentational no-ops — no styling, no behaviour.
     <div
-      className="flex-none border-b border-border-soft px-[18px] py-[15px]"
+      data-oid="region-indicator-panel" data-role="panel"
+      // panel.padding-density = 12 (design round `metric-row-cluster`, Option A,
+      // locked 2026-08-10 — ledger row 83). Down from 18/15, and the 12px it
+      // returns is not cosmetic: this panel is a fixed 300px card on the map
+      // plate, so every pixel of inset comes straight out of the width the
+      // indicator names below have to identify themselves in. See the row
+      // comment further down for what that width buys.
+      className="flex-none border-b border-border-soft p-3"
       style={{ borderLeft: "2px solid #d1502f", background: "linear-gradient(90deg,rgba(209,80,47,.07),transparent)" }}
     >
       <div className="flex items-baseline justify-between">
@@ -156,11 +167,20 @@ export function RegionProfile({
       </div>
       <div className="mt-1.5 flex items-baseline justify-between gap-2.5">
         <div className="min-w-0">
-          <div className="truncate text-[18px] font-extrabold leading-tight tracking-tight text-bright">{sel.name}</div>
+          {/* Wraps, never clips. This is the REGION's identifier, and clipping it is
+              the failure this project has already shipped once: on the export card a
+              clipped "Dadra and Nagar Haveli and Daman and Diu" became the name of a
+              different real region. `truncate` here was turning Uttar Bastar Kanker
+              into "Uttar Bastar Kan…" directly above a list of indicator names this
+              same round is protecting from exactly that. The approved panel sets
+              .pnl-nm with a 1.15 line-height and no overflow rule — it wraps by
+              design. A two-line region name makes the panel ~20px taller; a wrong
+              region name makes the whole panel a lie. */}
+          <div className="text-[18px] font-extrabold leading-tight tracking-tight text-bright">{sel.name}</div>
           <div className="text-[10.5px] text-faint">{sel.sub}</div>
         </div>
         {hasMetric && sel.value != null && (
-          <span className="whitespace-nowrap font-mono text-[24px] font-semibold leading-none text-bright">
+          <span data-role="metric" className="whitespace-nowrap font-mono text-[24px] font-semibold leading-none text-bright">
             <CountUp value={sel.value} format={fmtFull} />
           </span>
         )}
@@ -169,13 +189,13 @@ export function RegionProfile({
         <>
           <div className="mt-3 flex h-6 items-end gap-0.5" aria-hidden>
             {bins.map((b, i) => (
-              <span key={i} className="rankbar flex-1" style={{ height: `${b.h}%`, background: b.on ? "#d1502f" : "#3b3626" }} />
+              <span key={i} data-role="bar" className="rankbar flex-1" style={{ height: `${b.h}%`, background: b.on ? "#d1502f" : "#3b3626" }} />
             ))}
           </div>
           <div className="mt-2 text-[12px] text-muted">{sentence}</div>
         </>
       )}
-      {hasMetric && sel.value == null && <div className="mt-2 text-[12px] text-dim">No data for this region on the current indicator.</div>}
+      {hasMetric && sel.value == null && <div className="mt-2 text-[12px] text-muted">No data for this region on the current indicator.</div>}
       {drillLabel && (
         <button
           onClick={onDrill}
@@ -198,56 +218,128 @@ export function RegionProfile({
         <span aria-hidden className="text-[9px] text-faint">{allOpen ? "▾" : "▸"}</span>
       </button>
       {allOpen && (
-        <div className="atl-scroll mt-1.5 max-h-56 overflow-y-auto pr-1">
-          {allRows === null && <div className="py-2 text-[11px] text-dim">Loading…</div>}
-          {allRows?.length === 0 && <div className="py-2 text-[11px] text-dim">No indicators for this region.</div>}
+        <div
+          data-role="category-list"
+          // No right padding: .atl-scroll's 6px scrollbar already takes its own
+          // layout width, so the old pr-1 was 4px of pure inset — and 4px is about
+          // one character of metric name at 268px, which is exactly what this round
+          // is short of.
+          className="atl-scroll mt-1 max-h-56 overflow-y-auto"
+        >
+          {allRows === null && <div className="py-2 text-[11px] text-muted">Loading…</div>}
+          {allRows?.length === 0 && <div className="py-2 text-[11px] text-muted">No indicators for this region.</div>}
           {allRows && allRows.length > 0 &&
             Array.from(new Set(allRows.map((m) => m.category))).map((cat) => (
               <div key={cat} className="mb-2">
-                <div className="mb-1 text-[9px] font-bold uppercase tracking-[.14em] text-dim">{cat}</div>
-                {allRows.filter((m) => m.category === cat).map((m) => (
-                  <div key={m.id} className="flex items-baseline justify-between gap-2 border-b border-border-faint py-1">
-                    <span className="min-w-0 flex-1">
+                <div className="mb-1 text-[9px] font-bold uppercase tracking-[.14em] text-faint">{cat}</div>
+                {allRows.filter((m) => m.category === cat).map((m) => {
+                  const shown = m.value.toLocaleString("en-IN", { maximumFractionDigits: m.decimals ?? 0 });
+                  return (
+                    <div key={m.id} className="border-b border-border-faint">
+                      {/* Single-line row, 32px (design round `metric-row-cluster`, Option A,
+                          locked 2026-08-10 — ledger rows 80-82). Same anatomy as the chooser
+                          and the /metric index: name, dotted leader, figures — but this rail
+                          row deliberately carries LESS than they do.
+
+                          The round's own report flagged that at rail width the single-line row
+                          clips long names ("Institutiona…", "Total popul…"), and doctrine 200
+                          forbids truncating the identifier a reader needs to tell rows apart —
+                          this project has already shipped that failure once, when clipping on
+                          the export card turned "Dadra and Nagar Haveli and Daman and Diu" into
+                          the name of a different real region.
+
+                          What this row carries was settled by measurement, not preference. For
+                          each of the 124 metrics, taking ITS OWN largest value (so the narrowest
+                          name budget that metric can ever get, in any region), how many names
+                          clip, and can a clipped name be read as a different metric?
+
+                            name + leader + figure          8/124 clip, floor 177px, 0 collisions
+                            + vintage                      34/124 clip, floor 140px, 0 collisions
+                            + source sigil                 56/124 clip, floor  93px, 0 collisions
+                            + sigil AND vintage            94/124 clip, floor  51px, 3 COLLISIONS
+
+                          The last line is the approved panel's full rail row, and it fails:
+                          "Households owning …" resolves to four different metrics, and
+                          "Per-capita NSDP…" is indistinguishable from the metric actually called
+                          "Per-capita NSDP". So the vintage is here and the sigil is not.
+
+                          The sigil is not merely the more expensive of the two — it is the one
+                          that cannot pay its own way here. A sigil is a lossy code that only
+                          means anything beside the standing legend that expands it, and a 272px
+                          rail has no room for a 23-publisher key; a bare "ORGI" in this column
+                          would be a puzzle, where "2011" explains itself. The coverage mark could
+                          not have stayed regardless: /api/region does not return `levels`.
+
+                          The value column is `auto`, not the panel's fixed 58px, so every pixel a
+                          short figure does not use goes back to the name. Provenance beyond the
+                          vintage is not lost: the row is still a link to the publisher, and the
+                          full source sits in its accessible name — which is also where the whole
+                          metric name lives when the visible one clips. */}
                       <a
-                        href={m.source_url} target="_blank" rel="noopener noreferrer" title={`${m.source} · ${m.year}`}
-                        className="block truncate text-[11px] text-muted hover:text-foreground"
+                        data-role="category-row"
+                        href={m.source_url} target="_blank" rel="noopener noreferrer"
+                        title={`${m.name} — ${m.source} · ${m.year}`}
+                        aria-label={`${m.name}: ${shown}${m.unit ? ` ${m.unit}` : ""}${
+                          m.estimated ? `, ${estimateNote(m.estimate_kind, m.estimated_from, m.shaky)}` : `, rank ${m.rank} of ${m.count}`
+                        }. Source: ${m.source}, ${m.year}.`}
+                        // No horizontal padding: the panel's own 12px inset already
+                        // holds these rows off the edge, and the 8px it saves is
+                        // ~2 characters of metric name at this width.
+                        className="grid h-8 items-center gap-x-2 transition-colors duration-[160ms] hover:bg-elevated"
+                        // Leader floor is 4px here, not the 12px the wide surfaces
+                        // use: at this width the leader is decoration and the name
+                        // is the identifier, so the tie breaks toward the name.
+                        style={{ gridTemplateColumns: "minmax(0,auto) minmax(4px,1fr) 24px auto" }}
                       >
-                        {m.name}
+                        <span className="truncate text-[11px] text-muted">{m.name}</span>
+                        <span aria-hidden className="h-0 border-b border-dotted border-border" />
+                        {/* 24px is exact, not rounded up: every vintage is four digits and
+                            measures 24.0px at 10px IBM Plex Mono. */}
+                        <span className="text-right font-mono text-[10px] text-muted">{m.year}</span>
+                        <span className="whitespace-nowrap font-mono text-[11px] text-bright">
+                          {shown}
+                          {/* Rank only, no "/of N" — that is the approved panel's own figure
+                              block, and dropping the denominator returns ~24px to the metric
+                              name on EVERY row, which is the single biggest thing standing
+                              between this rail and doctrine 200. The denominator is not lost:
+                              it is in the row's accessible name, and the panel states it in
+                              full for the mapped indicator two lines above ("Rank 182 of
+                              699"). */}
+                          {m.estimated
+                            ? <span
+                                data-testid="est-badge"
+                                data-shaky={m.shaky ? 1 : 0}
+                                className={`ml-1 text-[9px] ${m.shaky ? "font-bold" : "text-accent-text"}`}
+                                style={m.shaky ? { color: SHAKY_COLOR } : undefined}
+                              >{estimateBadge(m.estimate_kind, m.shaky)}</span>
+                            : <span className="ml-1 text-[9px] text-faint">#{m.rank}</span>}
+                        </span>
                       </a>
                       {/* Why this number is an estimate, inline rather than hover-only
                           (item 642). A title attr never fires on touch, and
                           target_devices=both — so on a phone the footnote named every
                           parent but never which metric came from which. Reads "estimated
                           from Nirmal" for inherited, "Budget/Revised Estimate" for
-                          projected, which has no donor to name. */}
+                          projected, which has no donor to name. It hangs BELOW the row
+                          rather than inside it: at 32px there is no second line, and
+                          competing for the one line would have cost the metric name the
+                          width this layout just spent three columns buying back. */}
                       {m.estimated ? (
                         <span
-                          className={`block truncate text-[9px] ${m.shaky ? "" : "text-dim"}`}
+                          className={`block truncate px-1 pb-1 text-[9px] ${m.shaky ? "" : "text-faint"}`}
                           style={m.shaky ? { color: SHAKY_COLOR } : undefined}
                         >
                           {estimateShort(m.estimate_kind, m.estimated_from, m.shaky)}
                         </span>
                       ) : null}
-                    </span>
-                    <span className="whitespace-nowrap font-mono text-[11px] text-bright">
-                      {m.value.toLocaleString("en-IN", { maximumFractionDigits: m.decimals ?? 0 })}
-                      {m.estimated
-                        ? <span
-                            data-testid="est-badge"
-                            data-shaky={m.shaky ? 1 : 0}
-                            className={`ml-1 text-[9px] ${m.shaky ? "font-bold" : "text-accent"}`}
-                            style={m.shaky ? { color: SHAKY_COLOR } : undefined}
-                            title={estimateNote(m.estimate_kind, m.estimated_from, m.shaky)}
-                          >{estimateBadge(m.estimate_kind, m.shaky)}</span>
-                        : <span className="ml-1 text-[9px] text-dim">#{m.rank}/{m.count}</span>}
-                    </span>
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             ))}
           {estParents.length > 0 && (
-            <div className="mt-1 border-t border-border-faint pt-2 text-[10px] leading-snug text-dim">
-              <span className="text-accent">{ESTIMATE_BADGE}</span> = inherited from{" "}
+            <div className="mt-1 border-t border-border-faint pt-2 text-[10px] leading-snug text-muted">
+              <span className="text-accent-text">{ESTIMATE_BADGE}</span> = inherited from{" "}
               <span className="text-muted">
                 {estParents.length === 1
                   ? estParents[0]
@@ -345,7 +437,7 @@ export function RankingRail({
                     style={{ background: cohort === c.key ? "#1f1b14" : undefined }}
                   >
                     <span className="text-[12.5px] font-semibold" style={{ color: cohort === c.key ? "#eae4d6" : "#ccc4b2" }}>{c.name}</span>
-                    <span className="font-mono text-[9px] font-bold text-dim">{c.codes ? c.codes.size : entries.length}</span>
+                    <span className="font-mono text-[9px] font-bold text-faint">{c.codes ? c.codes.size : entries.length}</span>
                   </button>
                 ))}
               </div>
@@ -377,7 +469,14 @@ export function RankingRail({
             value={q} onChange={(e) => setQ(e.target.value)}
             aria-label="Search the ranking"
             placeholder={districtsAll ? "Find a district…" : "Find a place…"}
-            className="mt-2.5 w-full border border-border-soft bg-transparent px-2.5 py-1.5 text-[12px] text-bright placeholder:text-dim focus:border-faint"
+            // A placeholder is read like any other text, so it carries the same
+            // 4.5:1 floor: text-dim was 3.17:1, placeholder:text-faint is 5.02:1
+            // (items 431/473). The focus:border-faint below is a 1px colour change
+            // and was the ONLY thing marking this field as focused while
+            // `input { outline: none }` stood in globals.css — it is now a second
+            // cue behind the authored :focus-visible ring, not the whole indicator
+            // (item 470).
+            className="mt-2.5 w-full border border-border-soft bg-transparent px-2.5 py-1.5 text-[12px] text-bright placeholder:text-faint focus:border-faint"
           />
         )}
       </div>
@@ -397,7 +496,7 @@ export function RankingRail({
                   className="h-[26px] w-[3px] flex-none transition-colors"
                   style={{ background: r.entry.code === selectedCode ? "#d1502f" : r.entry.code === hoveredCode ? "#8a8477" : "transparent" }}
                 />
-                <span data-testid="rail-rank" className="w-[22px] flex-none font-mono text-[10px] text-dim">
+                <span data-testid="rail-rank" className="w-[22px] flex-none font-mono text-[10px] text-faint">
                   {/* Branch on the rank itself, not on `estimated` (item 645). The old
                       `?? 0` could only ever fire for a rankless row, which the
                       estimated check had already caught — so it was dead, and had it
@@ -408,7 +507,7 @@ export function RankingRail({
                   <span className="block truncate text-[13px] font-semibold" style={{ color: r.entry.code === selectedCode ? "#f0e9db" : "#ccc4b2" }}>
                     {r.entry.name}
                   </span>
-                  {r.entry.sub && <span className="block truncate text-[9.5px] text-dim">{r.entry.sub}</span>}
+                  {r.entry.sub && <span className="block truncate text-[9.5px] text-faint">{r.entry.sub}</span>}
                   <span className="mt-1 block h-[3px] bg-[#1c1a12]">
                     <span
                       className="rankbar block h-full"
@@ -425,7 +524,7 @@ export function RankingRail({
                     <span
                       data-testid="est-badge"
                       data-shaky={r.entry.shaky ? 1 : 0}
-                      className={`ml-1 text-[9px] ${r.entry.shaky ? "font-bold" : "text-accent"}`}
+                      className={`ml-1 text-[9px] ${r.entry.shaky ? "font-bold" : "text-accent-text"}`}
                       style={r.entry.shaky ? { color: SHAKY_COLOR } : undefined}
                       // Names the actual donor now that /api/metrics carries it
                       // (item 640). This said "the parent district" while the region
@@ -442,7 +541,7 @@ export function RankingRail({
           )}
         </div>
       ) : (
-        <div className="flex-1 px-[18px] py-4 text-[12.5px] leading-relaxed text-dim">
+        <div className="flex-1 px-[18px] py-4 text-[12.5px] leading-relaxed text-muted">
           Pick an indicator and every place lines up here, first to last.
         </div>
       )}
@@ -480,7 +579,7 @@ export function ComparePanel({
           >
             <div className="flex items-center justify-between">
               <span className="text-[9.5px] font-bold tracking-[.14em] text-faint">{s.label}</span>
-              {s.entry && <button onClick={s.onClear} aria-label={`Clear ${s.label}`} className="text-[11px] text-dim hover:text-foreground">✕</button>}
+              {s.entry && <button onClick={s.onClear} aria-label={`Clear ${s.label}`} className="text-[11px] text-muted hover:text-foreground">✕</button>}
             </div>
             {s.entry ? (
               <>
@@ -496,14 +595,14 @@ export function ComparePanel({
                 </div>
               </>
             ) : (
-              <div className="mt-2 text-[12.5px] leading-snug text-dim">{s.hint}</div>
+              <div className="mt-2 text-[12.5px] leading-snug text-muted">{s.hint}</div>
             )}
           </div>
         ))}
         {gap && (
           <div className="mt-1.5 border-t border-border-soft pt-3.5">
             <div className="text-[10px] font-bold tracking-[.14em] text-faint">THE GAP</div>
-            <div className="mt-1.5 font-mono text-[30px] font-semibold leading-none tracking-tight text-accent">{gap}</div>
+            <div className="mt-1.5 font-mono text-[30px] font-semibold leading-none tracking-tight text-accent-text">{gap}</div>
             <div className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: "#c4b9a9" }}>{sentence}</div>
           </div>
         )}

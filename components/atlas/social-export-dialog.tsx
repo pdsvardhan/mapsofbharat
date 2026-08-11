@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  renderSocialCard, presetSize, cardClassification,
+  renderSocialCard, presetSize, cardClassification, cardShowsTables,
   SocialCardSpec, SocialFeature, SocialPreset, SocialTheme,
 } from "@/lib/social-export";
 import { BreakMethod, METHOD_LABEL, PALETTES, PaletteId } from "@/lib/breaks";
@@ -69,8 +69,16 @@ export function SocialExportDialog({
   const previewRef = useRef<HTMLCanvasElement>(null);
   const renderT = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // rank tables + markers only exist on dense cards (mirror of the renderer rule)
+  // On-map rank MARKERS only exist on dense cards — a sparse (state) card labels
+  // every region on the map instead, so there is nothing for a marker to add.
   const dense = level === "district" || entries.length > 40;
+  // Rank TABLES are a different question, and asking it here is what broke:
+  // this used to gate on `dense` too, which was true while the shipped layout
+  // drew no tables on state cards, and quietly wrong from the moment v7 shipped
+  // `atState: true`. The TABLE ROWS control then sat greyed and inert on state
+  // cards that do have rank tables — including the card item 920 was filed
+  // from. Ask the renderer instead, so the two cannot drift again.
+  const showsTables = cardShowsTables(level, entries.length);
   const headWords = useMemo(() => headline.trim().split(/\s+/).filter(Boolean), [headline]);
   const accents = useMemo(
     () => accentSel ?? (headWords.length ? [headWords.length - 1] : []),
@@ -149,19 +157,34 @@ export function SocialExportDialog({
 
   return (
     <div
-      className="atl-fade fixed inset-0 z-[60] grid place-items-center"
+      className="atl-fade fixed inset-0 z-[60] grid place-items-center p-2"
       style={{ background: "rgba(8,9,7,.72)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       role="dialog" aria-modal="true" aria-label="Export social media card"
     >
-      <div className="atl-pop flex max-h-[92dvh] gap-0 overflow-hidden border border-border bg-panel-solid" style={{ boxShadow: "0 18px 52px rgba(0,0,0,.6)" }}>
-        {/* preview */}
-        <div className="grid place-items-center border-r border-border-soft p-5" style={{ background: "#0a0b08" }}>
-          <canvas ref={previewRef} aria-label="Card preview" />
+      {/* Stacks below lg (to-do 424). The panel was a fixed two-column row with an
+          unconstrained canvas beside a 300px control column, so on a 390px viewport it
+          measured 723px wide and centred — spanning x=-166..557 — which put DOWNLOAD PNG
+          at x=276..536, 146px past the right edge, and elementFromPoint did not return it.
+          Not merely clipped: untappable, on the one flow the phone half of the #416 test
+          is meant to exercise. max-w-[96vw] plus the backdrop's p-2 keeps it off the
+          edges; the canvas is constrained by max-w-full below. */}
+      <div className="atl-pop flex max-h-[92dvh] max-w-[96vw] flex-col gap-0 overflow-y-auto border border-border bg-panel-solid lg:flex-row lg:overflow-hidden" style={{ boxShadow: "0 18px 52px rgba(0,0,0,.6)" }}>
+        {/* preview — capped below lg so the stacked controls, and DOWNLOAD in particular,
+            stay reachable. Stacking alone was not enough: with the panel at max-h-[92dvh]
+            and overflow-hidden, a full-height preview pushed DOWNLOAD to y=1157 in a 780px
+            viewport, where it was clipped rather than scrollable — horizontally fixed but
+            still untappable, which is the same defect wearing a different axis. */}
+        <div className="grid max-w-full flex-none place-items-center border-b border-border-soft p-5 max-lg:max-h-[42dvh] lg:border-b-0 lg:border-r" style={{ background: "#0a0b08" }}>
+          <canvas ref={previewRef} aria-label="Card preview" className="h-auto max-h-full max-w-full" />
         </div>
 
-        {/* controls */}
-        <div className="flex w-[300px] flex-col gap-4 overflow-y-auto p-5">
+        {/* controls — min-h-0 is load-bearing, not tidying. A flex child will not shrink
+            below its content size without it, so `overflow-y-auto` here scrolled nothing:
+            the column grew, the panel grew past its own max-h-[92dvh], and DOWNLOAD sat at
+            y=969 in a 780px viewport with scrollHeight === clientHeight. Measured, not
+            assumed — the probe reported panelScrollable:false. */}
+        <div className="flex w-full min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 lg:w-[300px] lg:flex-none">
           <div>
             <div className="text-[14px] font-bold text-bright">Social card</div>
             <div className="mt-1 text-[11px] leading-snug text-faint">
@@ -172,7 +195,7 @@ export function SocialExportDialog({
           </div>
 
           <div>
-            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">FORMAT</div>
+            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-faint">FORMAT</div>
             <div className="flex overflow-hidden rounded-sm border border-border">
               <button onClick={() => setPreset("portrait")} aria-pressed={preset === "portrait"}
                 className="flex-1 px-3 py-2 text-[11.5px] font-semibold" style={seg(preset === "portrait")}>
@@ -186,7 +209,7 @@ export function SocialExportDialog({
           </div>
 
           <div>
-            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">THEME</div>
+            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-faint">THEME</div>
             <div className="flex overflow-hidden rounded-sm border border-border">
               <button onClick={() => setTheme("ink")} aria-pressed={theme === "ink"}
                 className="flex-1 px-3 py-2 text-[11.5px] font-semibold" style={seg(theme === "ink")}>
@@ -206,11 +229,11 @@ export function SocialExportDialog({
               read-only key there. */}
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="font-mono text-[9.5px] tracking-[.1em] text-dim">COLOUR SCHEME</span>
+              <span className="font-mono text-[9.5px] tracking-[.1em] text-faint">COLOUR SCHEME</span>
               {!coverage && dirtyColour && (
                 <button
                   onClick={() => { setPal(palette); setRev(reverse); }}
-                  className="text-[10px] font-semibold text-faint hover:text-accent"
+                  className="text-[10px] font-semibold text-faint hover:text-accent-text"
                 >
                   Match map
                 </button>
@@ -222,11 +245,11 @@ export function SocialExportDialog({
                   {PROVENANCE_CLASSES.map((c) => (
                     <div key={c} className="flex flex-1 flex-col items-center gap-1" title={PROVENANCE_LABEL[c]}>
                       <span className="h-[18px] w-full rounded-sm border border-border" style={{ background: PROVENANCE_COLOR[c] }} />
-                      <span className="text-[8px] leading-none text-dim">{PROVENANCE_LABEL[c]}</span>
+                      <span className="text-[8px] leading-none text-faint">{PROVENANCE_LABEL[c]}</span>
                     </div>
                   ))}
                 </div>
-                <div className="mt-1.5 text-[10px] leading-snug text-dim">Coverage cards use fixed, colour-blind-safe provenance colours.</div>
+                <div className="mt-1.5 text-[10px] leading-snug text-muted">Coverage cards use fixed, colour-blind-safe provenance colours.</div>
               </div>
             ) : (
               <>
@@ -248,22 +271,25 @@ export function SocialExportDialog({
                 <button
                   onClick={() => setRev((r) => !r)} aria-pressed={rev} data-card-reverse
                   className="mt-2 w-full border border-border px-2.5 py-1.5 text-[10.5px] font-bold hover:text-foreground"
-                  style={{ color: rev ? "#d1502f" : "#a49d8c" }}
+                  // Same control, same token as the legend's REVERSE and the ⚙ SCALE
+                  // popover's DIRECTION row: --accent as an ON label measured 4.35:1
+                  // (items 431/473).
+                  style={{ color: rev ? "var(--accent-text)" : "#a49d8c" }}
                 >
                   ↔ REVERSE {rev ? "ON" : "OFF"}
                 </button>
-                <div className="mt-1 text-[10px] text-dim">{PALETTES[pal].name}</div>
+                <div className="mt-1 text-[10px] text-faint">{PALETTES[pal].name}</div>
               </>
             )}
           </div>
 
           <div>
-            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">TABLE ROWS</div>
-            <div className={`flex overflow-hidden rounded-sm border border-border ${dense ? "" : "pointer-events-none opacity-40"}`}
-              title={dense ? undefined : "Rank tables appear on district cards; state cards label the map directly"}>
+            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-faint">TABLE ROWS</div>
+            <div className={`flex overflow-hidden rounded-sm border border-border ${showsTables ? "" : "opacity-40"}`}
+              title={showsTables ? undefined : "This layout labels the map directly instead of drawing rank tables"}>
               {([3, 5, 7, 10] as const).map((n) => (
-                <button key={n} onClick={() => setRows(n)} aria-pressed={rows === n}
-                  className="flex-1 px-2 py-2 text-[11.5px] font-semibold" style={seg(rows === n)}>
+                <button key={n} onClick={() => setRows(n)} aria-pressed={rows === n} disabled={!showsTables}
+                  className="flex-1 px-2 py-2 text-[11.5px] font-semibold disabled:cursor-not-allowed" style={seg(rows === n)}>
                   {n}
                 </button>
               ))}
@@ -271,12 +297,12 @@ export function SocialExportDialog({
           </div>
 
           <div>
-            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">MAP MARKERS</div>
-            <div className={`flex overflow-hidden rounded-sm border border-border ${dense ? "" : "pointer-events-none opacity-40"}`}
+            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-faint">MAP MARKERS</div>
+            <div className={`flex overflow-hidden rounded-sm border border-border ${dense ? "" : "opacity-40"}`}
               title={dense ? undefined : "State cards label every state on the map already"}>
               {([["none", "None"], ["extremes", "#1s"], ["top3", "Top 3"], ["table", "Match"]] as const).map(([v, lab]) => (
-                <button key={v} onClick={() => setMarkers(v)} aria-pressed={markers === v}
-                  className="flex-1 px-1.5 py-2 text-[11px] font-semibold" style={seg(markers === v)}>
+                <button key={v} onClick={() => setMarkers(v)} aria-pressed={markers === v} disabled={!dense}
+                  className="flex-1 px-1.5 py-2 text-[11px] font-semibold disabled:cursor-not-allowed" style={seg(markers === v)}>
                   {lab}
                 </button>
               ))}
@@ -284,7 +310,7 @@ export function SocialExportDialog({
           </div>
 
           <div>
-            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-dim">HEADLINE</div>
+            <div className="mb-1.5 font-mono text-[9.5px] tracking-[.1em] text-faint">HEADLINE</div>
             <input
               value={headline}
               onChange={(e) => { setHeadline(e.target.value); setAccentSel(null); }}
@@ -303,7 +329,7 @@ export function SocialExportDialog({
                 ))}
               </div>
             )}
-            <div className="mt-1 text-[10px] text-dim">Tap words to move the accent. None selected = no highlight.</div>
+            <div className="mt-1 text-[10px] text-muted">Tap words to move the accent. None selected = no highlight.</div>
           </div>
 
           <div className="mt-auto flex flex-col gap-2">

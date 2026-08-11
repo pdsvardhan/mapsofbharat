@@ -81,7 +81,7 @@ export function CiteBlock(props: CiteProps) {
           >
             {copied ? "Copied ✓" : "Copy citation"}
           </button>
-          <span aria-live="polite" role="status" className="font-mono text-[10px] text-dim">
+          <span aria-live="polite" role="status" className="font-mono text-[10px] text-muted">
             {copied ? "Copied to clipboard" : ""}
           </span>
         </div>

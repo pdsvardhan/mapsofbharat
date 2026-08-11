@@ -57,14 +57,14 @@ export function ShareMenu({
             className="flex w-full items-center justify-between border-b border-border-faint px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-foreground hover:bg-elevated"
           >
             Copy link
-            <span className="font-mono text-[9px] text-dim">{copied === "link" ? "COPIED ✓" : "URL"}</span>
+            <span className="font-mono text-[9px] text-faint">{copied === "link" ? "COPIED ✓" : "URL"}</span>
           </button>
           <button
             role="menuitem" onClick={onCopyEmbed}
             className="flex w-full items-center justify-between border-b border-border-faint px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-foreground hover:bg-elevated"
           >
             Copy embed code
-            <span className="font-mono text-[9px] text-dim">{copied === "embed" ? "COPIED ✓" : "IFRAME"}</span>
+            <span className="font-mono text-[9px] text-faint">{copied === "embed" ? "COPIED ✓" : "IFRAME"}</span>
           </button>
           <a
             role="menuitem"
@@ -76,9 +76,9 @@ export function ShareMenu({
             className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-foreground hover:bg-elevated"
           >
             Share on WhatsApp
-            <span className="font-mono text-[9px] text-dim">WHATSAPP</span>
+            <span className="font-mono text-[9px] text-faint">WHATSAPP</span>
           </a>
-          <div className="border-t border-border-soft px-3.5 py-2 text-[10px] leading-snug text-dim">
+          <div className="border-t border-border-soft px-3.5 py-2 text-[10px] leading-snug text-muted">
             The link and embed carry this exact view — indicator, level, colours and drill.
           </div>
         </div>

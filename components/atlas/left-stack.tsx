@@ -31,12 +31,16 @@ export function Crumbs({
       className="flex w-fit max-w-full flex-wrap items-center gap-2 border border-border px-[11px] py-[7px] text-[11px] font-semibold tracking-[.06em]"
       style={{ background: "var(--panel)" }}
     >
+      {/* The drill trail is how a reader climbs back OUT of a district, so its
+          buttons are real targets on a phone: bare text runs ~15px tall, under
+          WCAG 2.2's 24px floor. inline-flex because min-height does not size a
+          plain inline box. Desktop, with a pointer, keeps the tight trail. */}
       {hasBack && (
-        <button onClick={onBack} aria-label="Back" className="text-dim hover:text-foreground">‹</button>
+        <button onClick={onBack} aria-label="Back" className="text-muted hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:min-w-[26px] max-lg:items-center max-lg:justify-center">‹</button>
       )}
       {items.map((c, i) => (
         <span key={c.label + i} className="flex items-center gap-2">
-          <button onClick={c.onClick} style={{ color: c.on ? "#eae4d6" : "#a49d8c" }} className="hover:text-foreground">
+          <button onClick={c.onClick} style={{ color: c.on ? "#eae4d6" : "#a49d8c" }} className="hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:items-center">
             {c.label}
           </button>
           {i < items.length - 1 && <span style={{ color: "#4a4433" }}>/</span>}
@@ -61,7 +65,7 @@ export function IndicatorCard({
         </>
       ) : (
         <>
-          <div className="text-[10px] font-bold tracking-[.12em] text-accent">START HERE</div>
+          <div className="text-[10px] font-bold tracking-[.12em] text-accent-text">START HERE</div>
           <div className="mt-1.5 text-[21px] font-extrabold leading-tight text-bright">Choose an indicator</div>
           <div className="mt-1 text-[12.5px] leading-normal text-muted">The map stays quiet until you pick a statistic to colour it by.</div>
         </>
@@ -128,7 +132,11 @@ export function LevelColourCard({
               <button
                 key={l} onClick={() => !disabled && onLevel(l)} aria-pressed={on}
                 disabled={disabled} title={lockMsg(l)}
-                className="flex-1 px-2.5 py-1 text-[10.5px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                // min-h below lg only: py-1 gives these a 24px box, which clears
+                // WCAG 2.2 2.5.8 by exactly nothing. On the touch surface they
+                // take the 26px this codebase already settled on for a finger
+                // (right-rail.tsx:150). Desktop keeps its measured 24px alignment.
+                className="flex-1 px-2.5 py-1 text-[10.5px] font-bold disabled:cursor-not-allowed disabled:opacity-40 max-lg:min-h-[26px]"
                 style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
               >
                 {l === "state" ? "STATES" : "DISTRICTS"}
@@ -175,7 +183,7 @@ export function LevelColourCard({
                     title={v === "2011"
                       ? "Render this census metric on the districts the 2011 census actually reported"
                       : "Render on current-day districts (2011 counts reaggregated via the crosswalk)"}
-                    className="px-2 py-1 text-[10.5px] font-bold"
+                    className="px-2 py-1 text-[10.5px] font-bold max-lg:min-h-[26px]"
                     style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
                   >
                     {label}
@@ -185,7 +193,7 @@ export function LevelColourCard({
             </div>
           </div>
           {vintage === "2011" && (
-            <div className="mt-1.5 text-[9.5px] leading-snug text-dim">
+            <div className="mt-1.5 text-[9.5px] leading-snug text-muted">
               As the 2011 census reported it — no crosswalk, no estimates. Delhi is
               drawn whole (nine 2011 districts) and Mumbai City sits with Suburban,
               matching this map&apos;s current-day polygons. View-only: drill,
@@ -194,23 +202,33 @@ export function LevelColourCard({
           )}
         </>
       )}
-      <div className="mt-3 flex items-center justify-between">
-        <span className="text-[10px] font-bold tracking-[.12em] text-faint">MAP COLOUR</span>
-        <span className="text-[10.5px] font-semibold text-muted">{PALETTES[palette].name}</span>
-      </div>
-      <div className="mt-2 flex gap-1.5">
-        {(Object.keys(PALETTES) as PaletteId[]).map((p) => (
-          <button
-            key={p} onClick={() => onPalette(p)} title={`${PALETTES[p].name} — ${PALETTES[p].note}`}
-            aria-label={`Palette ${PALETTES[p].name}`} aria-pressed={palette === p}
-            className="h-[18px] flex-1 rounded-sm border transition-transform hover:-translate-y-0.5"
-            style={{
-              background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(PALETTES[p].fn).join(",")})`,
-              borderColor: palette === p ? "#d1502f" : "#3b3626",
-            }}
-          />
-        ))}
-      </div>
+      {/* Map-only. In table view there is no choropleth, so these swatches change
+          nothing a user can see — the same reason the legend is not rendered there
+          (item 908's line, and items 909/910's plate rework). A control that is
+          visible, enabled and inert is worse than an absent one: it invites a click
+          and answers with silence. Gated on `view` rather than removed, because the
+          row is correct and useful the moment the map is back. */}
+      {view !== "table" && (
+        <>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[10px] font-bold tracking-[.12em] text-faint">MAP COLOUR</span>
+            <span className="text-[10.5px] font-semibold text-muted">{PALETTES[palette].name}</span>
+          </div>
+          <div className="mt-2 flex gap-1.5">
+            {(Object.keys(PALETTES) as PaletteId[]).map((p) => (
+              <button
+                key={p} onClick={() => onPalette(p)} title={`${PALETTES[p].name} — ${PALETTES[p].note}`}
+                aria-label={`Palette ${PALETTES[p].name}`} aria-pressed={palette === p}
+                className="h-[18px] flex-1 rounded-sm border transition-transform hover:-translate-y-0.5 max-lg:h-[26px]"
+                style={{
+                  background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(PALETTES[p].fn).join(",")})`,
+                  borderColor: palette === p ? "#d1502f" : "#3b3626",
+                }}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -276,7 +294,7 @@ export function LegendCard({
             {([["value", "VALUE"], ["vs_avg", "VS AVG"], ["coverage", "COVERAGE"]] as [LegendMode, string][]).map(([m, label]) => (
               <button
                 key={m} onClick={() => onMode(m)} aria-pressed={mode === m} data-legend-mode={m}
-                className="px-1.5 py-0.5 text-[9px] font-bold"
+                className="px-1.5 py-0.5 text-[9px] font-bold max-lg:min-h-[26px] max-lg:px-2"
                 style={{ background: mode === m ? "#d1502f" : "transparent", color: mode === m ? "#16110b" : "#a49d8c" }}
               >
                 {label}
@@ -288,7 +306,7 @@ export function LegendCard({
           {mode !== "coverage" && (
             <button
               onClick={onToggleScale} aria-expanded={scaleOpen} data-scale-toggle
-              className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent hover:bg-elevated"
+              className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated max-lg:min-h-[26px] max-lg:px-2"
             >
               ⚙ SCALE
             </button>
@@ -306,7 +324,7 @@ export function LegendCard({
               <button
                 key={cls} onClick={() => onToggleCoverageClass(cls)}
                 aria-pressed={!hidden} data-coverage-class={cls}
-                className="flex w-full items-center gap-2 text-left"
+                className="flex w-full items-center gap-2 text-left max-lg:min-h-[26px]"
                 style={{ opacity: hidden ? 0.42 : 1 }}
               >
                 <span
@@ -314,13 +332,13 @@ export function LegendCard({
                   style={{ background: hidden ? PROVENANCE_MUTED : PROVENANCE_COLOR[cls] }}
                 />
                 <span className="flex-1 text-[10px] font-semibold text-faint">{PROVENANCE_LABEL[cls]}</span>
-                <span data-coverage-count className="flex-none font-mono text-[9.5px] text-dim">
+                <span data-coverage-count className="flex-none font-mono text-[9.5px] text-faint">
                   {coverageCounts[cls].toLocaleString("en-IN")}
                 </span>
               </button>
             );
           })}
-          <div className="pt-0.5 text-[9px] leading-snug text-dim">
+          <div className="pt-0.5 text-[9px] leading-snug text-muted">
             Coloured by data provenance. Tap a class to show or hide it.
           </div>
         </div>
@@ -342,7 +360,7 @@ export function LegendCard({
                 <span className="h-2 w-4 flex-none" style={{ background: fn(arr.length <= 1 ? 0 : i / (arr.length - 1)) }} />
                 <span data-legend-label className="flex-1">{label}</span>
                 {counts[i] != null && (
-                  <span data-legend-count className="flex-none text-dim">{counts[i]}</span>
+                  <span data-legend-count className="flex-none text-faint">{counts[i]}</span>
                 )}
               </div>
             ))}
@@ -359,12 +377,12 @@ export function LegendCard({
       {mode !== "coverage" && (
         <div
           data-legend-method-line
-          className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-dim"
+          className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-faint"
         >
           <a
             href={`/methodology#${methodMeta.anchor}`} target="_blank" rel="noopener noreferrer"
             data-legend-method
-            className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent"
+            className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
           >
             {methodMeta.label}
           </a>
@@ -393,19 +411,19 @@ export function LegendCard({
       {/* Per-metric coverage stat — the trust surface, shown in every mode (item
           830). One click from the /coverage league table. */}
       {coverageStat && (
-        <div className="mt-2 text-[9.5px] leading-snug text-dim">
-          <a href="/coverage" target="_blank" rel="noopener noreferrer" data-coverage-stat className="hover:text-accent">
+        <div className="mt-2 text-[9.5px] leading-snug text-muted">
+          <a href="/coverage" target="_blank" rel="noopener noreferrer" data-coverage-stat className="hover:text-accent-text">
             {coverageStat}
           </a>
         </div>
       )}
       {cohortNote && (
-        <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent">{cohortNote}</div>
+        <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent-text">{cohortNote}</div>
       )}
       <div className="mt-2 text-[10.5px] text-faint">{countLabel} · {unit}</div>
-      <div className="text-[10px] leading-tight text-dim">
+      <div className="text-[10px] leading-tight text-faint">
         Source: {source}{license ? ` · ${license}` : ""} ·{" "}
-        <a href="/methodology" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">methodology</a>
+        <a href="/methodology" target="_blank" rel="noopener noreferrer" className="text-accent-text hover:underline">methodology</a>
       </div>
     </div>
   );
@@ -436,13 +454,17 @@ export function ScalePopover({
   return (
     <div
       ref={boxRef}
-      className="atl-pop absolute bottom-[10px] left-[318px] z-30 w-[280px] border border-border bg-panel-solid p-4"
+      // left-[318px] clears the 300px controls column — which only exists at lg
+      // and up. Below it the column is collapsed behind its bar and the plate is
+      // ~374px wide, so a 280px box offset 318px from the left starts past the
+      // right edge; it spans the plate instead (to-do 424).
+      className="atl-pop absolute bottom-[10px] left-[318px] z-30 w-[280px] border border-border bg-panel-solid p-4 max-lg:bottom-2 max-lg:left-2 max-lg:right-2 max-lg:w-auto"
       style={{ boxShadow: "0 8px 26px rgba(0,0,0,.45)" }}
       role="dialog" aria-label="Scale options"
     >
       <div className="flex items-baseline justify-between border-b border-border-soft pb-2">
         <span className="text-[15px] font-extrabold text-bright">Scale</span>
-        <button onClick={onClose} aria-label="Close scale options" className="text-[12px] text-dim hover:text-foreground">✕</button>
+        <button onClick={onClose} aria-label="Close scale options" className="text-[12px] text-muted hover:text-foreground">✕</button>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-y-2">
         <span className="text-[10px] font-bold tracking-[.12em] text-faint">METHOD</span>
@@ -463,7 +485,10 @@ export function ScalePopover({
         <button
           onClick={onReverse}
           className="border border-border px-2.5 py-1 text-[10px] font-bold hover:text-foreground"
-          style={{ color: reverse ? "#d1502f" : "#a49d8c" }}
+          // The legend's own REVERSE control already used #e0603d for its ON label
+          // (iter-35); this popover row is the same setting and still carried the raw
+          // accent at 4.35:1. Same role, same token now (items 431/473).
+          style={{ color: reverse ? "var(--accent-text)" : "#a49d8c" }}
         >
           ↔ REVERSE {reverse ? "ON" : "OFF"}
         </button>
@@ -482,7 +507,7 @@ export function ScalePopover({
         </div>
       )}
       {autoReason && (
-        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug text-dim" data-auto-reason>
+        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug text-muted" data-auto-reason>
           <span className="font-bold tracking-[.1em] text-faint">CHOSEN FOR THIS METRIC — </span>
           {autoReason}
         </div>

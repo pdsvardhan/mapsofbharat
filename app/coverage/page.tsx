@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SiteFooter } from "@/components/site-footer";
+import { SITE_OG_IMAGE, SITE_TWITTER_IMAGE, SITE_URL } from "@/lib/site";
 import { getCoverageSummary } from "@/lib/metric-page-data";
 import {
   PROVENANCE_CLASSES,
@@ -21,8 +22,6 @@ import {
 // (getCoverageSummary reuses getMetricDetail's counts) — no self-HTTP.
 export const dynamic = "force-dynamic";
 
-const SITE_URL = "https://mapsofbharat.vault7a.xyz";
-
 export const metadata: Metadata = {
   title: "Coverage — measured vs estimated",
   description:
@@ -34,6 +33,19 @@ export const metadata: Metadata = {
     description:
       "Every indicator ranked by how much is directly measured versus estimated, with per-metric measured and inherited counts.",
     url: `${SITE_URL}/coverage`,
+    siteName: "Maps of Bharat",
+    locale: "en_IN",
+    // Next merges metadata SHALLOWLY per top-level key, so declaring `openGraph`
+    // here replaced the root layout's wholesale — including its opengraph-image
+    // file convention. Without this the page shared as a bare link with no card.
+    images: [SITE_OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Coverage — measured vs estimated · Maps of Bharat",
+    description:
+      "Every indicator ranked by how much is directly measured versus estimated.",
+    images: [SITE_TWITTER_IMAGE],
   },
 };
 
@@ -47,10 +59,10 @@ export default function CoveragePage() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <div className="flex items-center justify-between gap-4">
-        <Link href="/" className="text-[13px] font-semibold text-accent hover:underline">
+        <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">
           ← Back to the map
         </Link>
-        <Link href="/metric" className="text-[13px] font-semibold text-faint hover:text-accent">
+        <Link href="/metric" className="text-[13px] font-semibold text-faint hover:text-accent-text">
           All metrics →
         </Link>
       </div>
@@ -87,14 +99,14 @@ export default function CoveragePage() {
             />
             <div>
               <dt className="text-[12.5px] font-semibold text-bright">{PROVENANCE_LABEL[c]}</dt>
-              <dd className="text-[11.5px] leading-snug text-dim">{PROVENANCE_NOTE[c]}</dd>
+              <dd className="text-[11.5px] leading-snug text-muted">{PROVENANCE_NOTE[c]}</dd>
             </div>
           </div>
         ))}
       </dl>
 
       {metrics.length === 0 ? (
-        <p className="mt-10 text-[13px] text-dim">Coverage data is not available right now.</p>
+        <p className="mt-10 text-[13px] text-muted">Coverage data is not available right now.</p>
       ) : (
         <ol className="mt-8 space-y-2" data-coverage-list>
           {metrics.map((m, i) => {
@@ -120,7 +132,7 @@ export default function CoveragePage() {
                 >
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-[13.5px] font-semibold text-bright">
-                      <span className="mr-1.5 font-mono text-[10px] text-dim">{i + 1}.</span>
+                      <span className="mr-1.5 font-mono text-[10px] text-faint">{i + 1}.</span>
                       {m.name}
                       {m.unit ? <span className="ml-1.5 text-[11px] font-normal text-faint">({m.unit})</span> : null}
                     </span>
@@ -142,7 +154,7 @@ export default function CoveragePage() {
                     )}
                   </div>
 
-                  <div className="mt-1.5 text-[11px] text-dim" data-coverage-counts>
+                  <div className="mt-1.5 text-[11px] text-muted" data-coverage-counts>
                     {coverageStat(counts, m.total, noun)}
                   </div>
                 </Link>
@@ -152,10 +164,10 @@ export default function CoveragePage() {
         </ol>
       )}
 
-      <footer className="mt-12 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-dim">
+      <footer className="mt-12 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-muted">
         &ldquo;Measured&rdquo; is the region&apos;s own reported figure; the estimate kinds are
         defined in the{" "}
-        <Link className="text-accent hover:underline" href="/methodology">
+        <Link className="text-accent-text hover:underline" href="/methodology">
           methodology &amp; sources
         </Link>
         . Estimates are always disclosed at the point the number is read — in the rail, the map

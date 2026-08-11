@@ -83,7 +83,7 @@ export function SearchModal({
       style={{ background: items.indexOf(it) === active ? "#1a1712" : undefined }}
     >
       <span className="text-[14px] font-semibold text-bright">
-        {it.label} {it.tag && <span className="text-[10px] font-medium text-dim">{it.tag}</span>}
+        {it.label} {it.tag && <span className="text-[10px] font-medium text-faint">{it.tag}</span>}
       </span>
       <span className="font-mono text-[10px] text-muted">{it.meta}</span>
     </button>
@@ -106,9 +106,12 @@ export function SearchModal({
               else if (e.key === "Enter" && items[active]) { items[active].run(); onClose(); }
             }}
             placeholder="Type a state, district or indicator…"
-            className="flex-1 bg-transparent text-[15px] text-bright placeholder:text-dim"
+            className="flex-1 bg-transparent text-[15px] text-bright placeholder:text-faint"
           />
-          <button onClick={onClose} className="text-[10.5px] font-semibold text-dim hover:text-foreground">ESC</button>
+          {/* The only way out of this dialog by touch — a phone has no Esc key,
+              and 10.5px of bare text is a ~14px target. 26px square on the touch
+              surface, the size the rest of the atlas uses (right-rail.tsx:150). */}
+          <button onClick={onClose} aria-label="Close search" className="text-[10.5px] font-semibold text-muted hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:min-w-[26px] max-lg:items-center max-lg:justify-center">ESC</button>
         </div>
         <div className="atl-scroll min-h-0 overflow-y-auto">
           {metricItems.length > 0 && (
@@ -124,7 +127,7 @@ export function SearchModal({
             </>
           )}
         </div>
-        <div className="mt-3 flex-none text-[11.5px] text-dim">
+        <div className="mt-3 flex-none text-[11.5px] text-muted">
           {q.trim() ? (items.length ? "" : "Nothing matches — try a state, district or 'literacy'.") : "Try 'Pune', 'crime' or 'Kerala'."}
         </div>
       </div>

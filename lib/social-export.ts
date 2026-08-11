@@ -84,6 +84,51 @@ const HANDLE = "@maps_of_bharat";
 
 const INSET_STATES: Record<string, string> = { "35": "Andaman & Nicobar", "31": "Lakshadweep" };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// REGION NAME ABBREVIATIONS (item 918)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Rank rows and on-map callouts both have a hard width budget. In v7 a rank row
+// gives the name `240 − padding − marker − value` px, which at the widest type
+// scale (3 rows, item 920) is ~132px; eight real region names blow through it.
+// Character-clipping them is not merely ugly: clipping "Dadra and Nagar Haveli
+// and Daman and Diu" yields "Dadra and Nagar Haveli", which is the name of a
+// DIFFERENT real region (a district inside that same UT). On state cards the
+// same name is drawn on the map unclipped at 255px — 23.6% of the card width —
+// and lands 13px above the legend.
+//
+// Keyed by the canonical region key (`level:code` — the key `codeOf()` and
+// `entries[].code` already speak), never by the display string, so a renamed
+// source label cannot silently bypass the abbreviation.
+//
+// Every entry measures <=132px at 17px / 500 Hanken Grotesk, so it fits at every
+// row count, and none of them collides with another region's real name.
+const REGION_ABBREV: Record<string, string> = {
+  "state:26": "DNH & DD",               // Dadra and Nagar Haveli and Daman and Diu (255px)
+  "state:35": "A & N Islands",          // Andaman and Nicobar Islands (173px)
+  "district:03_39": "SBS Nagar",        // Shahid Bhagat Singh Nagar (157px)
+  "district:18_758": "S. S. Mankachar", // South Salmara Mankachar (154px)
+  "district:22_416": "Dantewada",       // Dakshin Bastar Dantewada (158px)
+  "district:35_639": "N & M Andaman",   // North and Middle Andaman (161px)
+  "district:36_750": "J. Bhupalapally", // Jayashankar Bhupalapally (153px)
+  "district:37_515": "SPS Nellore",     // Sri Potti Sriramulu Nellore (154px)
+};
+
+/** The name the card should PRINT for a region: its abbreviation when one is
+ *  mapped, else its full name. State codes are matched numerically as well as
+ *  literally, mirroring stCode(), so a zero-padded geometry code still resolves. */
+export function displayRegionName(
+  level: "state" | "district", code: string, name: string,
+): string {
+  const direct = REGION_ABBREV[`${level}:${code}`];
+  if (direct) return direct;
+  if (level === "state") {
+    const n = Number(code);
+    if (Number.isFinite(n) && REGION_ABBREV[`state:${n}`]) return REGION_ABBREV[`state:${n}`];
+  }
+  return name;
+}
+
 const LAKSHADWEEP_ISLANDS: [number, number][] = [
   [72.18, 11.60], [72.71, 11.70], [73.00, 11.49], [72.78, 11.22], [72.73, 11.12],
   [72.19, 10.86], [72.64, 10.57], [73.68, 10.82], [73.64, 10.08], [73.04, 8.28],
@@ -160,6 +205,10 @@ export type LayoutPreset = {
     style: TableStyle;
     /** Draw rank tables on state-level (non-dense) cards too. */
     atState: boolean;
+    /** Item 920: grow the row type as the row count falls, so a 3-row table
+     *  fills the same band a 10-row one does. Opt-in — `style` is then read as
+     *  the 10-row baseline. Presets without it keep a fixed style. */
+    scaleToRows?: boolean;
   };
   legend: {
     place: "under" | VoidId;
@@ -177,6 +226,70 @@ const T = (o: Partial<TableStyle>): TableStyle => ({
   w: 232, rows: 5, rowH: 26, headH: 26, valueSize: 14, nameSize: 13,
   titleSize: 11.5, dotR: 8.5, boxed: true, rowLayout: "inline", ...o,
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROW-COUNT TYPE SCALE (item 920)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The rank block used one type size at every row count, so it simply got shorter
+// as rows came off: measured plate heights were 115 / 169 / 223 / 304px at
+// 3 / 5 / 7 / 10 rows, inside a Tibet band that clears ~359px above the
+// Himalaya in all four. At the shipped default of 5 rows that left 187.5px of
+// the band empty while the names rendered 4.8px tall on a 400px thumbnail.
+//
+// Ratios are relative to the preset's own style, which is read as the 10-row
+// baseline — so at 10 rows every factor is exactly 1 and the busiest card is
+// unchanged. The 10-row block's 304px is the ceiling the smaller counts grow
+// toward: it is already proven to fit, with 52.5px of measured clearance.
+const ROW_SCALE: { n: number; rowH: number; value: number; name: number; title: number; dot: number }[] = [
+  { n: 3, rowH: 40 / 27, value: 21 / 15, name: 17 / 13, title: 13 / 11.5, dot: 11 / 8.5 },
+  { n: 5, rowH: 34 / 27, value: 19 / 15, name: 16 / 13, title: 12.5 / 11.5, dot: 10.5 / 8.5 },
+  { n: 7, rowH: 30 / 27, value: 17 / 15, name: 14.5 / 13, title: 12 / 11.5, dot: 9.5 / 8.5 },
+  { n: 10, rowH: 1, value: 1, name: 1, title: 1, dot: 1 },
+];
+
+const r2 = (v: number) => Math.round(v * 100) / 100;
+
+/** Piecewise-linear read of ROW_SCALE, so the counts the ladder does not
+ *  tabulate (4, 6, 8, 9) land between their neighbours instead of snapping. */
+function rowScaleAt(n: number): { rowH: number; value: number; name: number; title: number; dot: number } {
+  const last = ROW_SCALE[ROW_SCALE.length - 1];
+  const k = Math.max(ROW_SCALE[0].n, Math.min(last.n, n));
+  for (let i = 0; i < ROW_SCALE.length - 1; i++) {
+    const a = ROW_SCALE[i], b = ROW_SCALE[i + 1];
+    if (k <= b.n) {
+      const t = (k - a.n) / (b.n - a.n);
+      const mix = (p: number, q: number) => p + (q - p) * t;
+      return {
+        rowH: mix(a.rowH, b.rowH), value: mix(a.value, b.value), name: mix(a.name, b.name),
+        title: mix(a.title, b.title), dot: mix(a.dot, b.dot),
+      };
+    }
+  }
+  return last;
+}
+
+/** The style to draw `n` rank rows with. Returns a per-render COPY in every
+ *  case — the draw path rewrites `w` to the box it was actually given, and that
+ *  used to scribble on the shared preset object. */
+export function tableStyleFor(base: TableStyle, n: number, scale: boolean | undefined): TableStyle {
+  if (!scale) return { ...base };
+  const s = rowScaleAt(n);
+  let rowH = base.rowH * s.rowH;
+  // Defensive: never let the block outgrow the height the preset's own 10-row
+  // table occupies. With n clamped to 3..10 this never engages for v7.
+  const maxRowsH = 10 * base.rowH;
+  const f = n * rowH > maxRowsH ? maxRowsH / (n * rowH) : 1;
+  rowH *= f;
+  return {
+    ...base,
+    rowH: r2(rowH),
+    valueSize: r2(base.valueSize * s.value * f),
+    nameSize: r2(base.nameSize * s.name * f),
+    titleSize: r2(base.titleSize * s.title * f),
+    dotR: r2(base.dotR * s.dot * f),
+  };
+}
 
 export const LAYOUTS: Record<LayoutId, LayoutPreset> = {
   // ── v0 — BASELINE (shipped composition, for comparison only) ───────────────
@@ -381,12 +494,21 @@ export const LAYOUTS: Record<LayoutId, LayoutPreset> = {
     margin: 52, edgeToEdge: false, fitAlign: "center",
     headline: { place: "band", size: 34, lines: 2, align: "left" },
     sub: { show: true, size: 17 },
-    anchor: { place: "bay", value: 110, label: 16, boxed: false },
+    // item 921: 110 -> 80. At 110 the numeral inked 103px tall — 8.15% of the
+    // 1350px card and 3.24x the 34px headline — and the widest real value
+    // ("4.2 Cr") ran 304.5px, 28.2% of the card width. At 80 it inks ~75px
+    // (5.6%), 2.35x the headline, and still renders 29.6px on a 400px
+    // thumbnail: comfortably the dominant element, no longer the whole card.
+    anchor: { place: "bay", value: 80, label: 16, boxed: false },
     tables: {
       hi: "tibet", lo: "tibet", layout: "side",
+      // `style` is the 10-ROW baseline; scaleToRows grows it as rows come off.
       style: T({ w: 240, rows: 5, rowH: 27, valueSize: 15, nameSize: 13 }),
-      atState: true,
+      atState: true, scaleToRows: true,
     },
+    // item 919 is fixed by BLOCK_PAD in the label placer, not here: the legend
+    // stays where it is. Measured — sliding it down the Arabian void trades the
+    // gap above for the gap beside Goa's callout and nets nothing.
     legend: { place: "arabian", form: "stack", swatchW: 30, swatchH: 14, labelSize: 12, titleSize: 12 },
     note: { place: null, size: 11 },
     markers: "none", captionSize: 12,
@@ -585,6 +707,24 @@ export function cardClassification(
   return { method, classes: Math.max(1, computeBreaks(spec.entries.map((e) => e.value), method, k).length + 1) };
 }
 
+/** Whether the card will actually DRAW rank tables at this level and size — the
+ *  one rule the export dialog's TABLE ROWS control must gate on.
+ *
+ *  The dialog used to re-derive this as `level === "district" || entries > 40`,
+ *  which was written (iter-101, 2026-07-18) while the shipped layout drew no
+ *  tables on state cards. v7 shipped `atState: true` on 2026-08-04 and the
+ *  control was never updated, so it sat greyed out and inert on state cards
+ *  that do have rank tables — including the one item 920 was filed from.
+ *  Exported so the two can no longer drift, the same way cardClassification()
+ *  keeps the disclosed method honest. */
+export function cardShowsTables(
+  level: "state" | "district", entryCount: number, layout: LayoutId = "v7",
+): boolean {
+  const L = LAYOUTS[layout];
+  const dense = level === "district" || entryCount > 40;
+  return (dense || L.tables.atState) && L.tables.hi !== null;
+}
+
 // ── main renderer ───────────────────────────────────────────────────────────
 
 export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvasElement> {
@@ -647,11 +787,13 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
   // ── rank rows ─────────────────────────────────────────────────────────────
   const dense = spec.level === "district" || spec.entries.length > 40;
   const showTables = (dense || L.tables.atState) && L.tables.hi !== null;
-  const TS = L.tables.style;
   // Rows come from the dialog's TABLE ROWS control when set, else the preset's
   // own row count. (The layout engine port had dropped spec.tableN, silently
   // making that control inert — verifier catch, iter-28.)
-  const N = Math.max(3, Math.min(10, spec.tableN ?? TS.rows));
+  const N = Math.max(3, Math.min(10, spec.tableN ?? L.tables.style.rows));
+  // Resolved AFTER N: on a scaleToRows preset the type grows as rows come off
+  // (item 920). Always a copy, so the draw path's `w` rewrite stays local.
+  const TS = tableStyleFor(L.tables.style, N, L.tables.scaleToRows);
   const tops = spec.entries.slice(0, N);
   const bots = spec.entries.length > N
     ? spec.entries.slice(-Math.min(N, spec.entries.length - N)).reverse()
@@ -672,8 +814,25 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
   };
 
+  /** The name to PRINT for a region — abbreviated when one is mapped (item 918). */
+  const shortName = (code: string, name: string) => displayRegionName(spec.level, code, name);
+
+  // Every region name this card could show, folded — so a truncation can never
+  // come to rest reading as ANOTHER region on the same card (item 918).
+  const realNames = new Set(spec.entries.map((e) => e.name.trim().toLowerCase()));
+
+  /** Clip to `maxW`, preferring a WORD boundary over a mid-word cut, and never
+   *  stopping on a stem that is itself a real region's name. Falls back to the
+   *  old character clip when not even the first word fits. */
   const clipTo = (s: string, maxW: number): string => {
     if (ctx.measureText(s).width <= maxW) return s;
+    const words = s.split(/\s+/).filter(Boolean);
+    for (let n = words.length - 1; n > 0; n--) {
+      const stem = words.slice(0, n).join(" ");
+      if (ctx.measureText(stem + "…").width > maxW) continue;
+      if (realNames.has(stem.toLowerCase())) continue;
+      return stem + "…";
+    }
     let t = s;
     while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
     return t + "…";
@@ -717,7 +876,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
         ctx.fillStyle = P.text;
         ctx.fillText(valStr, nx, vy);
         ctx.font = `500 ${TS.nameSize}px ${SANS}`;
-        const nameStr = clipTo(e.name, TS.w - (nx - px) - padL - 2);
+        const nameStr = clipTo(shortName(e.code, e.name), TS.w - (nx - px) - padL - 2);
         if (!TS.boxed) { ctx.lineWidth = 4.5; ctx.strokeStyle = P.halo; ctx.strokeText(nameStr, nx, ny); }
         ctx.fillStyle = P.muted;
         ctx.fillText(nameStr, nx, ny);
@@ -733,7 +892,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       ctx.fillText(valStr, px + TS.w - padL, ry);
       ctx.textAlign = "left";
       ctx.font = `500 ${TS.nameSize}px ${SANS}`;
-      const nameStr = clipTo(e.name, TS.w - (nx - px) - vw - 10 - padL);
+      const nameStr = clipTo(shortName(e.code, e.name), TS.w - (nx - px) - vw - 10 - padL);
       if (!TS.boxed) { ctx.lineWidth = 4.5; ctx.strokeStyle = P.halo; ctx.strokeText(nameStr, nx, ry); }
       ctx.fillStyle = P.muted;
       ctx.fillText(nameStr, nx, ry);
@@ -1153,8 +1312,20 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       const tx = l.x + (l.side === "r" ? 4 : -4);
       return { x: l.side === "r" ? tx : tx - l.w, y: l.y - 18, w: l.w, h };
     };
-    const hit = (a: Box, b: Box) =>
-      a.x < b.x + b.w + 8 && b.x < a.x + a.w + 8 && a.y < b.y + b.h + 3 && b.y < a.y + a.h + 3;
+    // `pad` is the vertical breathing room demanded around the other box. 3px is
+    // right for label-vs-label — two callouts reading as a column look
+    // deliberate. It is far too tight against a COMPOSED BLOCK (legend, rank
+    // table, hero), which is item 919: a map number allowed to sit 3px off the
+    // scale reads as part of it. Measured on the shipped card, the legend's
+    // clearance above was 13px before abbreviation and 1.5px after — the
+    // shorter name simply fits in more places, including hard against the
+    // legend. BLOCK_PAD is what actually pulls the scale off the map; sliding
+    // the legend down instead is zero-sum, because the Arabian void is a ~124px
+    // slot holding a ~124px block and it just trades the gap above for the gap
+    // beside the west-coast callout.
+    const hit = (a: Box, b: Box, pad = 3) =>
+      a.x < b.x + b.w + 8 && b.x < a.x + a.w + 8 && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
+    const BLOCK_PAD = 16;
     // clamp against the SAFE box, not the plate: an edge-to-edge plate starts at
     // x=0 and would let a long flung name (DNH&DD…) run off the card
     const inMap = (b: Box) =>
@@ -1169,7 +1340,10 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       cand.push({
         code, cx: c.x, cy: c.y,
         val: fmtIndianShort(values[code], spec.metric.decimals, spec.metric.unit),
-        name: nameByCode.get(code) ?? code,
+        // abbreviated here too (item 918): unabbreviated, the longest UT name
+        // drew 255px across the Arabian Sea and came to rest 13px above the
+        // legend, which is most of what item 919 was actually reporting.
+        name: shortName(code, nameByCode.get(code) ?? code),
         mode: "flung", tier: 0, side: c.x >= mapCx ? "r" : "l",
         x: c.x, y: c.y, w: 0, bw: c.bw, bh: c.bh, areaPx: c.areaPx,
       });
@@ -1181,7 +1355,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
     // under a rank table / anchor / legend that moved into the ocean.
     const clear = (l: Lbl) => {
       const b = boxOf(l);
-      return inMap(b) && !reserved.some((r) => hit(b, r)) && !placed.some((o) => hit(b, boxOf(o)));
+      return inMap(b) && !reserved.some((r) => hit(b, r, BLOCK_PAD)) && !placed.some((o) => hit(b, boxOf(o)));
     };
 
     const RING = [
@@ -1244,7 +1418,7 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
         }
         // clear the block by the label's own height, not by a fixed 22px — a
         // 40px-tall callout pushed to r.y-22 still sat on the block's top rule
-        for (const r of reserved) if (hit(boxOf(l), r)) l.y = r.y - (TIERS[l.tier].h - 18) - 16;
+        for (const r of reserved) if (hit(boxOf(l), r, BLOCK_PAD)) l.y = r.y - (TIERS[l.tier].h - 18) - BLOCK_PAD;
         l.y = Math.max(safe.y + 24, Math.min(safe.y + safe.h - 18, l.y));
       }
 
@@ -1340,13 +1514,13 @@ export async function renderSocialCard(spec: SocialCardSpec): Promise<HTMLCanvas
       // boxless combined key: HIGHEST column then LOWEST column
       const colW = (hiBox.w - 16) / 2;
       const saveW = TS.w;
-      (TS as { w: number }).w = colW;
+      TS.w = colW;
       drawTable(hiBox.x, hiBox.y, "HIGHEST", true, tops);
       if (bots.length) drawTable(hiBox.x + colW + 16, hiBox.y, "LOWEST", false, bots);
-      (TS as { w: number }).w = saveW;
+      TS.w = saveW;
     } else {
-      if (hiBox) { const s = TS.w; (TS as { w: number }).w = hiBox.w; drawTable(hiBox.x, hiBox.y, "HIGHEST", true, tops); (TS as { w: number }).w = s; }
-      if (loBox && bots.length) { const s = TS.w; (TS as { w: number }).w = loBox.w; drawTable(loBox.x, loBox.y, "LOWEST", false, bots); (TS as { w: number }).w = s; }
+      if (hiBox) { const s = TS.w; TS.w = hiBox.w; drawTable(hiBox.x, hiBox.y, "HIGHEST", true, tops); TS.w = s; }
+      if (loBox && bots.length) { const s = TS.w; TS.w = loBox.w; drawTable(loBox.x, loBox.y, "LOWEST", false, bots); TS.w = s; }
     }
   }
 

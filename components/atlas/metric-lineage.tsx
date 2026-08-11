@@ -34,7 +34,7 @@ export function MetricLineage({
 
   const sourceLink = (
     <a
-      className="text-accent hover:underline"
+      className="text-accent-text hover:underline"
       href={sourceUrl}
       target="_blank"
       rel="noopener noreferrer"
@@ -50,7 +50,7 @@ export function MetricLineage({
       body: (
         <>
           {sourceLink}{" "}
-          <span className="text-dim">
+          <span className="text-faint">
             — {hosted ? "hosted below, free to download" : "official source (linked below)"}
           </span>
         </>
@@ -67,7 +67,7 @@ export function MetricLineage({
             ))}
           </ul>
         ) : (
-          <span className="text-dim">None — computed from the source&apos;s own figures.</span>
+          <span className="text-faint">None — computed from the source&apos;s own figures.</span>
         ),
     },
     {
@@ -112,7 +112,7 @@ export function MetricLineage({
             <span className="text-[11px] font-bold uppercase tracking-[.1em] text-bright">
               Raw source data
             </span>
-            <span className="rounded-sm border border-border-soft px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] text-accent">
+            <span className="rounded-sm border border-border-soft px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] text-accent-text">
               Free
             </span>
           </div>
@@ -126,7 +126,7 @@ export function MetricLineage({
               >
                 ↓ Download raw source
               </a>
-              <p className="text-[11.5px] leading-relaxed text-dim">
+              <p className="text-[11.5px] leading-relaxed text-muted">
                 The ingested source file, exactly as fetched — with a citation header (source,
                 licence, retrieval date and this page&apos;s URL). Free for everyone.
               </p>
@@ -138,11 +138,11 @@ export function MetricLineage({
                 href={sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-fit items-center gap-1.5 rounded-sm border border-accent px-3 py-1.5 text-[12px] font-bold text-accent hover:opacity-80"
+                className="inline-flex w-fit items-center gap-1.5 rounded-sm border border-accent px-3 py-1.5 text-[12px] font-bold text-accent-text hover:opacity-80"
               >
                 Raw source (official) ↗
               </a>
-              <p className="text-[11.5px] leading-relaxed text-dim">
+              <p className="text-[11.5px] leading-relaxed text-muted">
                 {linkReason ??
                   "The raw source is not a single hostable file, so the official source is linked."}
               </p>
@@ -170,7 +170,7 @@ export function MetricLineage({
           >
             ↓ Download processed dataset — Pro (coming soon)
           </button>
-          <p className="text-[11.5px] leading-relaxed text-dim">
+          <p className="text-[11.5px] leading-relaxed text-muted">
             The cleaned, boundary-harmonised dataset (the values in the table above) will be a Pro
             download. You can view it now in the ranked table — it is not a free download yet.
           </p>

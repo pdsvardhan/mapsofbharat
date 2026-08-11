@@ -35,7 +35,7 @@ export default function MethodologyPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <Link href="/" className="text-[13px] font-semibold text-accent hover:underline">← Back to the map</Link>
+      <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">← Back to the map</Link>
       <div className="mt-5 flex items-center gap-3">
         <span className="flex h-[30px] w-[30px] items-center justify-center rounded-sm bg-bright text-[13px] font-extrabold" style={{ color: "#14120d" }}>MB</span>
         <h1 className="text-[30px] font-extrabold tracking-tight text-bright">Methodology &amp; sources</h1>
@@ -48,7 +48,7 @@ export default function MethodologyPage() {
       <p className="mt-3 leading-relaxed text-muted">
         Each value is tagged with its provenance — the region&apos;s own measurement, or an
         inherited, re-aggregated or projected estimate. See the{" "}
-        <Link href="/coverage" className="text-accent hover:underline">
+        <Link href="/coverage" className="text-accent-text hover:underline">
           coverage table
         </Link>{" "}
         for how much of every metric is directly measured, and switch the map to its{" "}
@@ -143,7 +143,7 @@ export default function MethodologyPage() {
               <p className="mt-2 text-[13.5px] leading-relaxed text-muted">{m.methodology ?? "Methodology note pending."}</p>
               <div className="mt-2.5 font-mono text-[11px] text-faint">
                 Source:{" "}
-                <a className="text-accent hover:underline" href={m.source_url} target="_blank" rel="noopener noreferrer">{m.source}</a>
+                <a className="text-accent-text hover:underline" href={m.source_url} target="_blank" rel="noopener noreferrer">{m.source}</a>
                 {" · "}{m.license} · {m.year}
                 {m.last_updated ? ` · loaded ${String(m.last_updated).slice(0, 10)}` : ""}
               </div>
