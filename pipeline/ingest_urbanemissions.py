@@ -28,7 +28,8 @@ fill_new_districts.py, which inherits intensive metrics from the lineage
 sibling with the value and cites the donor (adr-018/020/021).
 
 Run: pipeline/.venv/bin/python pipeline/ingest_urbanemissions.py
-     (then fill_new_districts.py, then regen_expectations.py)
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import os
 import sqlite3

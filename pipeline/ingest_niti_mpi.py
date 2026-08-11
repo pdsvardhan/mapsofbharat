@@ -39,6 +39,8 @@ only — the report's state figures live in a differently-shaped summary table a
 are out of scope for this vertical (the choropleth's headline is district HCR).
 
 Run: pipeline/.venv/bin/python pipeline/ingest_niti_mpi.py
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import os
 import re

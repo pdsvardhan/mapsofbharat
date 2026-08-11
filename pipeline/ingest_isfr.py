@@ -18,6 +18,8 @@ Metrics (district, category environment):
   forest_change_km2  change in forest cover vs ISFR 2021 (km2)
 
 Run: pipeline/.venv/bin/python pipeline/ingest_isfr.py
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import os
 import re

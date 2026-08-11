@@ -9,6 +9,8 @@ import sqlite3
 
 import pytest
 
+from region_match import ORPHAN_CITATION_SQL
+
 DB = os.path.join(os.path.dirname(__file__), "..", "data", "mapsofbharat.db")
 
 
@@ -75,6 +77,24 @@ def test_each_metric_covers_expected_districts(con):
         got = rows.get(metric_id, 0)
         assert abs(got - want) <= max(2, want * 0.02), \
             f"metric {metric_id}: {got} districts vs expected {want}"
+
+
+def test_inherited_estimates_still_exist(con):
+    """Every inheritance citation must explain a live estimate (ADR-018).
+
+    Re-running a single adapter deletes the inherited rows in its (metric, level,
+    year) scope and strands their citations, greying out post-2011 districts. The
+    per-metric coverage test above cannot catch it — losing all 14 inherited rows
+    from a 706-district metric is 1.98%, inside its tolerance.
+    """
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "district_estimate_source" not in tables:
+        pytest.skip("fill_new_districts.py has not run against this store")
+    orphans = con.execute(ORPHAN_CITATION_SQL).fetchone()[0]
+    assert orphans == 0, (
+        f"{orphans} inherited estimates were deleted by an adapter re-run — "
+        "re-run pipeline/fill_new_districts.py"
+    )
 
 
 def test_values_are_finite(con):

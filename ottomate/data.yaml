@@ -44,4 +44,4 @@ contract:
   project_slug: mapsofbharat
   database_engine: sqlite
   storage_location: in-project-sqlite
-  migration_tooling: drizzle
+  migration_tooling: raw-sql

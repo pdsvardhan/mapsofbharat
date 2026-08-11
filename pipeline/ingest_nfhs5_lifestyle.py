@@ -12,6 +12,8 @@ Note on citation: rchiips.org factsheet URLs went dead in 2025-26 (404 +
 expired cert); the NFHS home is now nfhsiips.in. Cited accordingly.
 
 Run: pipeline/.venv/bin/python pipeline/ingest_nfhs5_lifestyle.py
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import os, sqlite3
 import pandas as pd

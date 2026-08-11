@@ -9,6 +9,8 @@ description). State rows = sum of matched counts / state 2011 population.
 crime_women_rate uses the Census-2011 reaggregated FEMALE population as its
 denominator (per 100k women, item 401), replayed from the persisted crosswalk.
 Run: pipeline/.venv/bin/python pipeline/ingest_ncrb.py
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import os, re, sqlite3
 import pandas as pd

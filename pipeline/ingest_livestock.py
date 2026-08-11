@@ -22,6 +22,8 @@ Counts SUM on crosswalk collisions. State value = sum over the state's source
 rows (independent of district match). Per-1000 uses the stored pop_total.
 
 Run: pipeline/.venv/bin/python pipeline/ingest_livestock.py
+     (then fill_new_districts.py — this adapter's write_values DELETE drops the
+      inherited rows for its metrics, and cannot rewrite them; ADR-018)
 """
 import glob
 import json
