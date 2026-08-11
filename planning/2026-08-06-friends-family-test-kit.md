@@ -3,9 +3,16 @@
 The V1 milestone: watch 5 real people use Maps of Bharat, unsupervised, ~15 min each, and note every stall. Fix the cheap ones before V2. This is an **owner-run** task — the kit below makes it turnkey.
 
 ## Recruit (5 people)
-- **Desktop or laptop for this round.** The mobile layout isn't ready — on phones the map collapses to a sliver and search is unreachable (deferred to V2, to-do #424) — so this first test is **desktop-only**. Add mobile testers once #424 lands.
+- **Mix desktop and phone.** #424 landed on 2026-08-10, so the mobile layout is now real: the map gets 372×652 at 390px instead of a 34px sliver, search and the masthead links are on-screen, and the export dialog's DOWNLOAD is reachable and tappable. Aim for **≥1 mid-range Android**, which is what to-do #416 asks for and what the earlier desktop-only round could not cover.
 - **≥1 non-technical** (someone who won't forgive a confusing UI).
 - Mix of interests; nobody who has seen the project before.
+
+### What's new on phones — worth watching specifically
+The phone layout makes two deliberate trades. Watch whether they cost anyone the task:
+- The rankings rail is a **bottom sheet**, collapsed to a handle that names its scope ("RANKINGS · 733 districts nationwide"). Do people find it, or do they never realise rankings exist?
+- The map controls (indicator, level, palette, map/table) sit behind a **"Show map controls"** disclosure, with a mini colour ramp left visible so the map still reads. Does anyone fail to find the indicator picker?
+
+Both cost one tap. That was chosen over an always-visible stack, which left ~158px of map at 390px — an unreadable map beside unreadable controls.
 
 ## Setup
 - Give them the link only: `https://mapsofbharat.vault7a.xyz` (internal, pre-launch). No explanation, no demo.
@@ -39,4 +46,6 @@ The V1 milestone: watch 5 real people use Maps of Bharat, unsupervised, ~15 min 
 - Anything that blocked task 4 on a real Android is a launch blocker — bump it.
 - Then the board moves to **V2** (hardening + go-live).
 
-*Prepared 2026-08-06. The automated pre-test QA sweep (#415) verified the three critical paths + the trust surface are clean on desktop, and found the mobile layout collapses at phone widths (map → sliver, search unreachable) — so this first round is desktop-only and the mobile-responsive pass is deferred to V2 (#424). This human pass is what the automation can't do: real confusion, real trust judgments.*
+*Prepared 2026-08-06. The automated pre-test QA sweep (#415) verified the three critical paths + the trust surface are clean on desktop, and found the mobile layout collapsed at phone widths — which is why the first draft of this kit was desktop-only.*
+
+*Updated 2026-08-10: #424 has landed, so phones are in scope. Also fixed since the kit was written and worth knowing before you watch anyone: the site now renders its actual brand font (it had been silently falling back to system sans since launch); every interactive element has a real focus ring, where before there was none and `input { outline: none }` actively removed it; source attribution and other small text moved off a 3.17:1 grey that failed WCAG AA; and the export card no longer truncates a long region name into the name of a different region. The 5-person run is still the thing automation cannot do — real confusion, real trust judgments.*
