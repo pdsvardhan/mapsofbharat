@@ -157,19 +157,34 @@ export function SocialExportDialog({
 
   return (
     <div
-      className="atl-fade fixed inset-0 z-[60] grid place-items-center"
+      className="atl-fade fixed inset-0 z-[60] grid place-items-center p-2"
       style={{ background: "rgba(8,9,7,.72)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       role="dialog" aria-modal="true" aria-label="Export social media card"
     >
-      <div className="atl-pop flex max-h-[92dvh] gap-0 overflow-hidden border border-border bg-panel-solid" style={{ boxShadow: "0 18px 52px rgba(0,0,0,.6)" }}>
-        {/* preview */}
-        <div className="grid place-items-center border-r border-border-soft p-5" style={{ background: "#0a0b08" }}>
-          <canvas ref={previewRef} aria-label="Card preview" />
+      {/* Stacks below lg (to-do 424). The panel was a fixed two-column row with an
+          unconstrained canvas beside a 300px control column, so on a 390px viewport it
+          measured 723px wide and centred — spanning x=-166..557 — which put DOWNLOAD PNG
+          at x=276..536, 146px past the right edge, and elementFromPoint did not return it.
+          Not merely clipped: untappable, on the one flow the phone half of the #416 test
+          is meant to exercise. max-w-[96vw] plus the backdrop's p-2 keeps it off the
+          edges; the canvas is constrained by max-w-full below. */}
+      <div className="atl-pop flex max-h-[92dvh] max-w-[96vw] flex-col gap-0 overflow-y-auto border border-border bg-panel-solid lg:flex-row lg:overflow-hidden" style={{ boxShadow: "0 18px 52px rgba(0,0,0,.6)" }}>
+        {/* preview — capped below lg so the stacked controls, and DOWNLOAD in particular,
+            stay reachable. Stacking alone was not enough: with the panel at max-h-[92dvh]
+            and overflow-hidden, a full-height preview pushed DOWNLOAD to y=1157 in a 780px
+            viewport, where it was clipped rather than scrollable — horizontally fixed but
+            still untappable, which is the same defect wearing a different axis. */}
+        <div className="grid max-w-full flex-none place-items-center border-b border-border-soft p-5 max-lg:max-h-[42dvh] lg:border-b-0 lg:border-r" style={{ background: "#0a0b08" }}>
+          <canvas ref={previewRef} aria-label="Card preview" className="h-auto max-h-full max-w-full" />
         </div>
 
-        {/* controls */}
-        <div className="flex w-[300px] flex-col gap-4 overflow-y-auto p-5">
+        {/* controls — min-h-0 is load-bearing, not tidying. A flex child will not shrink
+            below its content size without it, so `overflow-y-auto` here scrolled nothing:
+            the column grew, the panel grew past its own max-h-[92dvh], and DOWNLOAD sat at
+            y=969 in a 780px viewport with scrollHeight === clientHeight. Measured, not
+            assumed — the probe reported panelScrollable:false. */}
+        <div className="flex w-full min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 lg:w-[300px] lg:flex-none">
           <div>
             <div className="text-[14px] font-bold text-bright">Social card</div>
             <div className="mt-1 text-[11px] leading-snug text-faint">

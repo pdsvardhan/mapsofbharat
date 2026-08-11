@@ -98,16 +98,24 @@ export function ChooserModal({
           </div>
           <button onClick={onClose} className="text-[11px] font-semibold text-muted hover:text-foreground">✕ ESC</button>
         </div>
-        <div className="flex min-h-0 flex-1">
+        {/* Below lg the topic index becomes a horizontal strip ABOVE the list (to-do 424).
+            Side by side, its fixed 262px left the indicator list about 112px on a 390px
+            phone, so metric names and years rendered as ellipses — a reader could browse
+            topics but could not read what they were choosing, which defeats the point of
+            the chooser. As a strip the list gets the full modal width. */}
+        <div className="flex min-h-0 flex-1 max-lg:flex-col">
           {/* left topic index — scrolls: the live taxonomy is 20 categories and
               only ~9 fit the modal, so without this everything from labour down
               (crime, transport, elections, environment…) was unreachable (item 750) */}
-          <div className="flex w-[262px] flex-none flex-col border-r border-border-faint py-4">
-            <div className="flex-none px-6 pb-3 font-mono text-[10px] tracking-[.14em] text-faint">TOPICS</div>
-            <div className="atl-scroll relative min-h-0 flex-1 overflow-y-auto">
+          <div className="flex w-[262px] flex-none flex-col border-r border-border-faint py-4 max-lg:w-full max-lg:border-b max-lg:border-r-0 max-lg:py-2">
+            <div className="flex-none px-6 pb-3 font-mono text-[10px] tracking-[.14em] text-faint max-lg:hidden">TOPICS</div>
+            <div className="atl-scroll relative min-h-0 flex-1 overflow-y-auto max-lg:flex max-lg:flex-none max-lg:overflow-x-auto max-lg:overflow-y-hidden">
               {/* inside the scroller so it tracks the rows instead of drifting off them */}
+              {/* The sliding rule tracks rows VERTICALLY, so it is meaningless once the
+                  index is a horizontal strip; the selected row's own background carries
+                  the state below lg. */}
               <div
-                className="absolute left-0 w-[3px] transition-transform duration-300"
+                className="absolute left-0 w-[3px] transition-transform duration-300 max-lg:hidden"
                 style={{ height: 58, background: accent, transform: `translateY(${catIdx * 58}px)`, transitionTimingFunction: "cubic-bezier(.4,0,.2,1)" }}
               />
               {cats.map((c) => {
@@ -116,11 +124,13 @@ export function ChooserModal({
                 return (
                   <button
                     key={c} onMouseEnter={() => { if (hoverArmed) setCat(c); }} onClick={() => setCat(c)}
-                    className="block h-[58px] w-full px-6 text-left transition-colors"
+                    className="block h-[58px] w-full px-6 text-left transition-colors max-lg:h-auto max-lg:w-auto max-lg:flex-none max-lg:whitespace-nowrap max-lg:px-4 max-lg:py-2"
                     style={{ background: on ? "#17130e" : "transparent" }}
                   >
-                    <div className="text-[18px] font-bold capitalize tracking-tight" style={{ color: on ? "#eae4d6" : "#8a8477" }}>{c}</div>
-                    <div className="text-[11px] text-faint">{count} indicator{count === 1 ? "" : "s"}</div>
+                    <div className="text-[18px] font-bold capitalize tracking-tight max-lg:text-[15px]" style={{ color: on ? "#eae4d6" : "#8a8477" }}>{c}</div>
+                    {/* the per-topic count would double the strip's height on a phone for
+                        information the list itself immediately shows */}
+                    <div className="text-[11px] text-faint max-lg:hidden">{count} indicator{count === 1 ? "" : "s"}</div>
                   </button>
                 );
               })}
