@@ -15,7 +15,7 @@ import {
   METRIC_REFERENCE, colorFor, strokeForFill, fillLuminance, outlineForBackdrop, interpolateRdBu,
 } from "@/lib/breaks";
 import { Metric, catAccent } from "@/components/atlas/cats";
-import { track } from "@/lib/analytics";
+import { track, embedHost } from "@/lib/analytics";
 import { countsInStats, estimateFootnote, estimateShort } from "@/lib/estimate-kind";
 import {
   ProvenanceClass, PROVENANCE_COLOR, PROVENANCE_MUTED,
@@ -202,6 +202,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const compareRef = useRef(compare);
   const pinsRef = useRef<Sel[]>([]);
   const selectedRef = useRef<Sel | null>(null);
+  // the selected METRIC id, for the analytics events fired from map click
+  // handlers (item 938) — those are registered once, so reading `sel` directly
+  // from the closure would report whichever metric was current at mount.
+  const selRef = useRef(sel);
   const modeRef = useRef(mode);
   const coverageHiddenRef = useRef<ProvenanceClass[]>(coverageHidden);
   const brkRef = useRef(brkMethod);
@@ -256,17 +260,28 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     (window as unknown as { __mob_outline?: string }).__mob_outline = outlineModeRef.current;
   }, []);
   useEffect(() => { palRef.current = palette; }, [palette]);
+  useEffect(() => { selRef.current = sel; }, [sel]);
   useEffect(() => { revRef.current = reverse; }, [reverse]);
   useEffect(() => { cohortRef.current = cohort; }, [cohort]);
   useEffect(() => { cohortSetsRef.current = cohortSets; }, [cohortSets]);
   useEffect(() => { dataRef.current = data; }, [data]);
 
-  // embed-load: fire once when the chrome-less /embed view mounts (item 825). The
+  // embed_loaded: fire once when the chrome-less /embed view mounts (item 825). The
   // metric comes straight off the URL (init is frozen at mount) — /embed has no
   // chooser, so it never changes after this.
+  // The host of the embedding page rides along (item 938, MSR-12): off-site reach
+  // is the one thing no other event can tell us, and it is only answerable from
+  // inside the iframe. Host only, never the full referrer — see embedHost().
+  // Guarded so ONE embed load is ONE event. Without the ref this effect fires
+  // twice under React's double-mount, which tests/analytics-events.spec.ts caught
+  // — and embed_loaded is the single number MSR-12 exists for, so a silent 2x on
+  // it would have overstated off-site reach with no way to notice from the
+  // dashboard. Pre-existing since item 825; the rename is just what surfaced it.
+  const embedFiredRef = useRef(false);
   useEffect(() => {
-    if (!minimal) return;
-    track("embed-load", { metric: init.m });
+    if (!minimal || embedFiredRef.current) return;
+    embedFiredRef.current = true;
+    track("embed_loaded", { metric: init.m, domain: embedHost() });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minimal]);
 
@@ -276,6 +291,22 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (toastT.current) clearTimeout(toastT.current);
     setToast(m);
     toastT.current = setTimeout(() => setToast(null), 3400);
+  }, []);
+
+  // viz_customised: one event for "the reader changed how the data is drawn"
+  // (item 938, MSR-02), carrying WHICH control moved as a dimension — the plan
+  // names a single event, and the knob is the interesting part of it.
+  // Deliberately wired to the handlers rather than to the state: level, vintage
+  // and view are all also set programmatically (a metric that has no district
+  // series forces the level; sharing a 2011 link forces the vintage), and an
+  // effect watching the state would report those machine changes as reader
+  // choices, which is the opposite of what the funnel is asking.
+  const trackViz = useCallback((control: string, value: string) => {
+    track("viz_customised", { control, value, metric: selRef.current });
+  }, []);
+
+  const trackCompare = useCallback(() => {
+    track("compare_used", { metric: selRef.current, level: levelRef.current });
   }, []);
 
   // persisted display prefs (palette / per-metric method / reverse) — metric stays in URL
@@ -627,6 +658,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     map.setFeatureState({ source, id: s.code }, { selected: true });
     setSelected(s);
     setScaleOpen(false);
+    // region_opened: a region's profile panel is now on screen (item 938). Fired
+    // here and not in the compare branch above, which is compare_used — clicking
+    // to PIN a comparison region is a different act from opening one to read it.
+    // The early return on re-clicking the same region means a deselect (which
+    // closes the panel) correctly does not count as an open.
+    track("region_opened", { level: s.kind, region: s.name, metric: selRef.current });
   }
 
   function clearSelected() {
@@ -660,7 +697,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       setLevel("district");
     }
     // India→state→district: the canonical drill into a state's districts (item 825).
-    track("drill", { level: "district", region: name });
+    track("drill_in", { level: "district", region: name });
   }
   function exitFocus(toStates: boolean) {
     const map = mapRef.current; if (!map) return;
@@ -1120,11 +1157,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     }
   }, [showToast]);
   const copyLink = useCallback(() => {
-    track("share", { action: "link", metric: sel });
+    track("permalink_copied", { metric: sel });
     return copyText(window.location.href, "link");
   }, [copyText, sel]);
   const copyEmbed = useCallback(() => {
-    track("share", { action: "embed", metric: sel });
+    track("embed_copied", { metric: sel });
     const url = new URL(window.location.href);
     url.pathname = "/embed";
     // Name the frame after the indicator on view — a meaningful title helps the
@@ -1500,11 +1537,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 onOpenChooser={() => { setChooserOpen(true); setScaleOpen(false); setSearchOpen(false); }}
               />
               <LevelColourCard
-                level={level} onLevel={(l) => setLevel(l)} levelLock={levelLock}
-                palette={palette} onPalette={(p) => { palTouchedRef.current = true; setPalette(p); }}
-                vintage={vintage} onVintage={setVintage}
+                level={level} onLevel={(l) => { trackViz("level", l); setLevel(l); }} levelLock={levelLock}
+                palette={palette} onPalette={(p) => { trackViz("palette", p); palTouchedRef.current = true; setPalette(p); }}
+                vintage={vintage} onVintage={(v) => { trackViz("boundaries", v); setVintage(v); }}
                 vintageAvailable={!!meta?.levels?.some((l) => l === "district2011" || l === "state2011")}
-                view={view} onView={setView}
+                view={view} onView={(v) => { trackViz("view", v); setView(v); }}
               />
             </div>
 
@@ -1525,7 +1562,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}
                   method={brkMethod} mapEdges={mapBreaks}
                   paletteFn={PALETTES[palette].fn} reverse={reverse}
-                  mode={mode} onMode={setMode}
+                  mode={mode} onMode={(m) => { trackViz("mode", m); setMode(m); }}
                   coverageCounts={coverCounts} coverageHidden={coverageHidden}
                   onToggleCoverageClass={toggleCoverageClass}
                   coverageStat={coverageStatText}
@@ -1535,7 +1572,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   source={data.source} license={data.license ?? ""}
                   cohortNote={cohortActive ? `${activeCohortDef!.name} · dimming others` : null}
                   scaleOpen={scaleOpen} onToggleScale={() => setScaleOpen((o) => !o)}
-                  onReverse={() => setReverse((r) => !r)}
+                  onReverse={() => { trackViz("reverse", String(!reverse)); setReverse((r) => !r); }}
                 />
               </div>
             )}
@@ -1560,7 +1597,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 )}
                 autoReason={autoReason}
                 collapseWarn={collapseWarn}
-                reverse={reverse} onReverse={() => setReverse((r) => !r)}
+                reverse={reverse} onReverse={() => { trackViz("reverse", String(!reverse)); setReverse((r) => !r); }}
                 onClose={() => setScaleOpen(false)}
               />
             )}
@@ -1609,6 +1646,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             >
               <button
                 onClick={() => {
+                  // compare_used counts ENTERING compare mode (item 938) — leaving
+                  // it is not a use of the feature. Read off `compare` in the
+                  // render closure, not from inside the updater: React may invoke
+                  // an updater twice, which would double-count the funnel step.
+                  if (!compare) trackCompare();
                   setCompare((c) => { const n = !c; if (!n) clearPins(); else clearSelected(); return n; });
                 }}
                 aria-pressed={compare} disabled={vintage === "2011"}
@@ -1893,7 +1935,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       {chooserOpen && (
         <ChooserModal
           metrics={metrics} selected={sel}
-          onPick={(id) => { track("metric-select", { metric: id }); setSel(id); setChooserOpen(false); }}
+          onPick={(id) => { track("metric_selected", { metric: id }); setSel(id); setChooserOpen(false); }}
           onClose={() => setChooserOpen(false)}
         />
       )}
@@ -1901,7 +1943,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         open={searchOpen}
         metrics={metrics} regions={regions}
         valueOf={(code) => { const v = valuesRef.current[code]; return v == null ? null : fmtFull(v); }}
-        onMetric={(id) => { track("metric-select", { metric: id }); setSel(id); }}
+        onMetric={(id) => { track("metric_selected", { metric: id }); setSel(id); }}
         onRegion={onSearchRegion}
         onClose={() => setSearchOpen(false)}
       />

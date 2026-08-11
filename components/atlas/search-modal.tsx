@@ -52,21 +52,32 @@ export function SearchModal({
     return out;
   }, [q, metrics, regions, valueOf, onMetric, onRegion]);
 
-  // search-empty: a FAILED search — a non-empty query that matches no indicator
-  // and no place (item 825). Debounced so a query is only counted once it settles,
-  // and deduped by query so holding on a dead query does not re-fire. This is a
-  // DISTINCT event from a successful pick (onMetric / onRegion); search terms are
-  // metric/place queries, not personal data. (Fires per settled query, not on
-  // every keystroke, so partial prefixes of a match are not counted as failures.)
-  const lastEmptyRef = useRef("");
+  // Two of the twelve events fire from here (item 938, MSR-02):
+  //
+  //   search_performed  — a non-empty query that has SETTLED. Every settled query
+  //                       counts, whether or not it matched.
+  //   search_no_results — that same settled query matched no indicator and no
+  //                       place (item 825).
+  //
+  // no_results is deliberately a SUBSET of performed rather than its opposite, so
+  // the failure RATE is a division of two events the plan already names, instead
+  // of a number nobody can compute. MSR-03 calls search_no_results worth more than
+  // the other eleven combined — it is the data roadmap — and a rate is what makes
+  // it readable.
+  //
+  // Debounced so a query is counted once it settles, and deduped by query so
+  // holding on one does not re-fire; partial prefixes of an eventual match are
+  // therefore never counted as failures. Search terms are metric/place queries,
+  // not personal data.
+  const lastFiredRef = useRef("");
   useEffect(() => {
     const needle = q.trim();
     if (!open || !needle) return;
     const t = setTimeout(() => {
-      if (items.length === 0 && lastEmptyRef.current !== needle) {
-        lastEmptyRef.current = needle;
-        track("search-empty", { q: needle });
-      }
+      if (lastFiredRef.current === needle) return;
+      lastFiredRef.current = needle;
+      track("search_performed", { q: needle, results: items.length });
+      if (items.length === 0) track("search_no_results", { q: needle });
     }, 450);
     return () => clearTimeout(t);
   }, [q, items.length, open]);

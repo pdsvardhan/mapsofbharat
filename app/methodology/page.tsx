@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CiteBlock } from "@/components/atlas/cite-block";
 import { SiteFooter } from "@/components/site-footer";
+import { TrackView } from "@/components/analytics/track-view";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,10 @@ export default function MethodologyPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
+      {/* methodology_viewed (item 938, MSR-02): reaching the fine print is the
+          closest thing the site has to a trust signal, and it is the one of the
+          twelve events that no interaction on the map can stand in for. */}
+      <TrackView event="methodology_viewed" data={{ metrics: metrics.length }} />
       <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">← Back to the map</Link>
       <div className="mt-5 flex items-center gap-3">
         <span className="flex h-[30px] w-[30px] items-center justify-center rounded-sm bg-bright text-[13px] font-extrabold" style={{ color: "#14120d" }}>MB</span>
