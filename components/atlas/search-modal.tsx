@@ -108,7 +108,10 @@ export function SearchModal({
             placeholder="Type a state, district or indicator…"
             className="flex-1 bg-transparent text-[15px] text-bright placeholder:text-faint"
           />
-          <button onClick={onClose} className="text-[10.5px] font-semibold text-muted hover:text-foreground">ESC</button>
+          {/* The only way out of this dialog by touch — a phone has no Esc key,
+              and 10.5px of bare text is a ~14px target. 26px square on the touch
+              surface, the size the rest of the atlas uses (right-rail.tsx:150). */}
+          <button onClick={onClose} aria-label="Close search" className="text-[10.5px] font-semibold text-muted hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:min-w-[26px] max-lg:items-center max-lg:justify-center">ESC</button>
         </div>
         <div className="atl-scroll min-h-0 overflow-y-auto">
           {metricItems.length > 0 && (
