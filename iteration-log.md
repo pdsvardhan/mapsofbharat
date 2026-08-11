@@ -337,7 +337,7 @@ Natural next: **to-do 214** — the vs-avg legend still contradicts the scale it
 
 **Shipped (one commit per item, per the new convention itself):**
 - **669** Playwright workers capped at 2 (`PW_WORKERS` overrides) — the flakiness to-do 253 closed.
-- **668** `scripts/check-adr-refs.sh` CI gate — **first run immediately caught adr-021/adr-022 cited 37× with a stale mirror index**; entries restored from the tracker's own rows. The gate to-do 245's proposal, built and mutation-tested (adr-999 injection fails CI).
+- **668** `scripts/check-adr-refs.sh` CI gate — **first run immediately caught adr-021/adr-022 cited 37× with a stale mirror index**; entries restored from the tracker's own rows. The gate to-do 245's proposal, built and mutation-tested (injecting a synthetic ADR number fails CI).
 - **670** one-commit-per-item documented in CODING_GUIDELINES (to-do 252).
 - **665** item 644's AC mapping reconciled (target → feat-rankings-stats, audit transition row) + AC 523 finally covered (`tests/methodology.spec.ts`, strict every-metric form). To-do 254.
 - **666** `scopeMin/scopeMax` join `scopeMean` on `countsInStats` — one membership rule for the whole legend (to-do 255).

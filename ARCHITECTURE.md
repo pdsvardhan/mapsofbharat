@@ -341,12 +341,17 @@ The decisions that shape this document most:
   manual operation.
 - **API edge caching is declared but not active** — the Cloudflare Cache Rule
   does not exist yet, so `s-maxage` currently buys nothing at the edge.
-- **Declared-but-unused dependencies.** `drizzle-orm`, `drizzle-kit`, `recharts`
-  and `zustand` are in `package.json` with **no import anywhere in `app/`,
-  `lib/`, `components/` or `pipeline/`**. All SQL is raw `better-sqlite3`
-  prepared statements, state is React state plus mirror refs plus the URL query,
-  and no chart component uses Recharts. adr-007 and `CODING_GUIDELINES.md` still
-  describe drizzle and Recharts as part of the stack; that description is stale.
+- ~~**Declared-but-unused dependencies.**~~ **Resolved 2026-08-11**
+  ([adr-032](decisions/adr-032-stack-no-orm-no-chart-lib.md)). `drizzle-orm`,
+  `drizzle-kit`, `recharts` and `zustand` had **no import anywhere in `app/`,
+  `lib/`, `components/` or `pipeline/`** and are now removed from
+  `package.json`. All SQL is raw `better-sqlite3` prepared statements, state is
+  React state plus mirror refs plus the URL query, and the app ships no chart
+  component at all. adr-007's recorded stack named Recharts and drizzle and is
+  superseded by adr-032. *Correction: an earlier version of this bullet also
+  named `CODING_GUIDELINES.md` as carrying the stale description. That was
+  wrong — its Stack section has always named MapLibre, d3-scale-chromatic and
+  better-sqlite3 correctly. Only adr-007 was stale.*
 - **No keyboard / screen-reader audit.** Tracked as risk #57 in
   `CODING_GUIDELINES.md`; individual contrast and hit-target fixes have landed
   (adr-030) but the full audit has not been run.
