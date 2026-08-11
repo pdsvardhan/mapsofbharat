@@ -1,4 +1,4 @@
-<!-- generated from registry @ 4e7b1ef on 2026-08-11 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
+<!-- generated from registry @ 1ecda37 on 2026-08-11 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
 # mapsofbharat — Features & Flows (generated reference)
 
 > Generated from the Ottomate registry (the single source of truth). To change anything here, edit the feature/flow/acceptance-criteria in the tracker, then re-run `scripts/generation/gen-reference-docs.mjs --project mapsofbharat`.
@@ -10,6 +10,7 @@
 - **Canonical metric store and schema** `feat-canonical-store` — _backend_, test: `passing`
   - All data lives in one canonical store — region × metric × year × value — with full metadata on every metric.
   - AC: Schema region x metric x year x value plus metric metadata is migrated
+  - AC: Saitual (Mizoram, created 2019) intentionally has no region_keys row and renders no polygon. districts.geojson and region_keys stay one-for-one at 735, and no in-repo official source can produce its boundary, so none is invented (adr-031). Sources printing a Saitual row are dropped at district level; NCRB and JJM record a skip_reason, while ISFR folds it into Aizawl by an explicit documented alias. A keyless region_keys row is never inserted to make a count read 11.
   - AC: A metric can be loaded and queried by region and year
 - **Interactive choropleth with India to state to district drill** `feat-choropleth-map` — _ui_, test: `partial`
   - The core experience: a colour-graded map of India you can drill from country to state to district, in colour-blind-safe palettes.
@@ -82,13 +83,13 @@
 
 ## Flows
 
-- **Compare two regions, years, or metrics** `flow-compare` — test: `passing`
+- **Compare two regions, years, or metrics** `flow-compare` — test: `passing` (`tests/flows.spec.ts`)
   - User opens compare mode → Side-by-side comparison with optional difference
-- **Drill into a state to district level** `flow-drill-state` — test: `passing`
+- **Drill into a state to district level** `flow-drill-state` — test: `passing` (`tests/flows.spec.ts`)
   - User selects a state, then clicks View N districts in its profile → District-level detail for the chosen state
-- **Explore a metric on the map** `flow-explore-metric` — test: `passing`
+- **Explore a metric on the map** `flow-explore-metric` — test: `passing` (`tests/flows.spec.ts`)
   - User opens a metric view → User sees the spatial distribution and a chosen region standing
-- **Export or share the current view** `flow-export-share` — test: `passing`
+- **Export or share the current view** `flow-export-share` — test: `passing` (`tests/flows.spec.ts`)
   - User clicks export or share → A downloadable file or shareable link
-- **Ingest or refresh a dataset** `flow-ingest-dataset` — test: `passing`
+- **Ingest or refresh a dataset** `flow-ingest-dataset` — test: `not-tested`
   - Scheduled job or manual run → Fresh, cited data available to the UI
