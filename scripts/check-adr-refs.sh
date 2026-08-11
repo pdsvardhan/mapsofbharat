@@ -18,6 +18,8 @@ fail=0
 
 # 1. every adr-NNN token in the repo resolves to an id in the index
 valid=$(grep -oE 'id: adr-[0-9]{3}' "$index" | grep -oE '[0-9]{3}' | sort -u)
+# NOTE: git grep only sees TRACKED files — an untracked scratch file will not
+# trip this check. Worth knowing before concluding the gate is broken.
 refs=$(git grep -hoE 'adr-[0-9]{3}' -- ':!ottomate/decisions' ':!scripts/check-adr-refs.sh' | grep -oE '[0-9]{3}' | sort -u)
 
 missing=""

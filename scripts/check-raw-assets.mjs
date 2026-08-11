@@ -56,14 +56,25 @@ try {
   die('cannot load the typescript compiler, which is needed to read the declaration.\n  Run npm ci (including devDependencies) before building.');
 }
 
-const js = ts.transpileModule(readFileSync(decl, 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-}).outputText;
-
 // The module is self-contained (types and consts only, no imports), so it can be
-// imported straight from memory without touching the filesystem.
-const mod = await import(`data:text/javascript;base64,${Buffer.from(js, 'utf8').toString('base64')}`);
-const RAW_SOURCES = mod.RAW_SOURCES;
+// transpiled and imported straight from memory without touching the filesystem.
+// Wrapped so a syntax error or a newly-added relative import fails with a branded,
+// actionable message instead of a bare stack trace — it still fails closed either
+// way, but the reader should not have to guess which file broke.
+let RAW_SOURCES;
+try {
+  const js = ts.transpileModule(readFileSync(decl, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const mod = await import(`data:text/javascript;base64,${Buffer.from(js, 'utf8').toString('base64')}`);
+  RAW_SOURCES = mod.RAW_SOURCES;
+} catch (err) {
+  die(
+    `could not read ${declRel}: ${err?.message ?? err}\n` +
+      '  If a relative import was just added to that file, this guard cannot import it\n' +
+      '  from memory any more and needs adjusting — it must not be left passing.',
+  );
+}
 
 if (!RAW_SOURCES || typeof RAW_SOURCES !== 'object') {
   die(`${declRel} no longer exports RAW_SOURCES as an object — this guard is not reading it.`);
@@ -86,10 +97,16 @@ const paths = [...byPath.keys()];
 // A checker that finds nothing to check reports success and means nothing — that
 // is how the doc-lint passed every broken link for months, and how the first
 // version of THIS script passed a build it should have stopped. So: zero is a
-// structural failure, and a sharp drop is treated as one too. FLOOR is a
-// tripwire, not a target; raise it deliberately if the catalogue grows, and if a
-// metric is genuinely retired, lower it in the same commit that retires it.
-const FLOOR = 20; // 27 hosted files as of 2026-08-11
+// structural failure, and any drop below the known count is treated as one too.
+//
+// FLOOR is set to the EXACT current count, not a slack margin. A floor of 20
+// against a true 27 would silently tolerate losing seven files — a smaller
+// version of the bug this rewrite just fixed. Because the count now comes from
+// walking the object rather than a fragile regex, any change to it is deliberate
+// by definition: adding metrics still passes (28 >= 27), and retiring one forces
+// a one-line edit here in the same commit that retires it. Note it counts unique
+// PATHS, so consolidating several metrics onto one shared file also lowers it.
+const FLOOR = 27; // hosted files as of 2026-08-11
 if (paths.length === 0) die(`walked RAW_SOURCES and found 0 hosted files. The declaration shape has changed and this guard is no longer reading it. Fix it — do NOT leave it passing vacuously.`);
 if (paths.length < FLOOR) {
   die(
