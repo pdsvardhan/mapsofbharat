@@ -6,6 +6,7 @@ flows:
     test_status: passing
     trigger: User opens a metric view
     expected_outcome: User sees the spatial distribution and a chosen region standing
+    linked_playwright_test: tests/flows.spec.ts
     pre_conditions: []
     steps:
       - actor: user
@@ -21,7 +22,10 @@ flows:
         action: Shows tooltip/panel with value, rank, and percentile
         result: User sees the region standing
     edge_cases: []
-    linked_features: []
+    linked_features:
+      - feat-canonical-store
+      - feat-rankings-stats
+      - feat-region-detail
     linked_pages: []
   - id: flow-drill-state
     title: Drill into a state to district level
@@ -30,6 +34,7 @@ flows:
     test_status: passing
     trigger: User selects a state, then clicks View N districts in its profile
     expected_outcome: District-level detail for the chosen state
+    linked_playwright_test: tests/flows.spec.ts
     notes: "Interaction model changed at iter-51 (adr-015): state click now SELECTS
       (docked profile); drilling happens via the profile drill button. Steps
       updated 2026-07-02."
@@ -60,6 +65,7 @@ flows:
     test_status: passing
     trigger: User opens compare mode
     expected_outcome: Side-by-side comparison with optional difference
+    linked_playwright_test: tests/flows.spec.ts
     pre_conditions: []
     steps:
       - actor: user
@@ -76,7 +82,8 @@ flows:
         action: Shows the A-minus-B difference between the two regions
         result: Difference visible
     edge_cases: []
-    linked_features: []
+    linked_features:
+      - feat-compare-mode
     linked_pages: []
   - id: flow-export-share
     title: Export or share the current view
@@ -85,6 +92,7 @@ flows:
     test_status: passing
     trigger: User clicks export or share
     expected_outcome: A downloadable file or shareable link
+    linked_playwright_test: tests/flows.spec.ts
     pre_conditions: []
     steps:
       - actor: user
@@ -97,15 +105,19 @@ flows:
         action: Downloads or copies it
         result: User has the artifact
     edge_cases: []
-    linked_features: []
+    linked_features:
+      - feat-social-export
     linked_pages: []
   - id: flow-ingest-dataset
     title: Ingest or refresh a dataset
     type: automated
     priority: important
-    test_status: passing
+    test_status: not-tested
     trigger: Scheduled job or manual run
     expected_outcome: Fresh, cited data available to the UI
+    notes: "test_status demoted from 'passing' at iter-37: covered by
+      pipeline/test_pipeline.py (pytest), not by any Playwright test, so it
+      cannot back a linked_playwright_test claim."
     pre_conditions: []
     steps:
       - actor: system
