@@ -47,6 +47,15 @@ features:
       - content: Schema region x metric x year x value plus metric metadata is migrated
         test_status: not-tested
         linked_test: null
+      - content: Saitual (Mizoram, created 2019) intentionally has no region_keys row
+          and renders no polygon. districts.geojson and region_keys stay
+          one-for-one at 735, and no in-repo official source can produce its
+          boundary, so none is invented (adr-031). Sources printing a Saitual
+          row are dropped at district level; NCRB and JJM record a skip_reason,
+          while ISFR folds it into Aizawl by an explicit documented alias. A
+          keyless region_keys row is never inserted to make a count read 11.
+        test_status: not-tested
+        linked_test: null
       - content: A metric can be loaded and queried by region and year
         test_status: not-tested
         linked_test: null

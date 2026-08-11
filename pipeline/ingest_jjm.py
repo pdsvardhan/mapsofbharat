@@ -133,7 +133,11 @@ def main():
              f"new districts, logged not guessed: {[u for u in unmatched][:12]}...); "
              f"state=household-sum ratio; fuzzy {len(m.fuzzy_log)}; skip_reason "
              f"(states): Delhi & Chandigarh absent from the JJM district CSV "
-             f"(no rural JJM reporting)")
+             f"(no rural JJM reporting); skip_reason (Mizoram/Saitual): the 2019 "
+             f"district has no polygon in the Survey-of-India boundary source and "
+             f"none is derivable from any in-repo official source, so its 9,433 "
+             f"rural households have no district of their own — they still roll "
+             f"into Mizoram's state value (adr-031)")
     con.commit(); con.close()
     print(f"WROTE {n} values. fuzzy sample: {m.fuzzy_log[:12]}")
 

@@ -74,7 +74,7 @@ test.describe("analytics — same-origin Umami", () => {
     expect(pathOf(sends[0].url)).toBe("/stats/api/send");
   });
 
-  test("selecting an indicator fires a metric-select event to /stats/api/send", async ({ page }) => {
+  test("selecting an indicator fires a metric_selected event to /stats/api/send", async ({ page }) => {
     const sends = await stubAnalytics(page);
     await page.goto("/");
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
@@ -85,13 +85,13 @@ test.describe("analytics — same-origin Umami", () => {
     // pick the first real metric row in the active topic (rows carry unit/·/year)
     await dialog.getByRole("button").filter({ hasText: /·|%|per/i }).first().click();
 
-    await expect.poll(() => named(sends, "metric-select").length, { timeout: 15_000 }).toBeGreaterThan(0);
-    const ev = named(sends, "metric-select")[0];
+    await expect.poll(() => named(sends, "metric_selected").length, { timeout: 15_000 }).toBeGreaterThan(0);
+    const ev = named(sends, "metric_selected")[0];
     expect(pathOf(ev.url)).toBe("/stats/api/send");
     expect(ev.body?.payload?.data).toHaveProperty("metric");
   });
 
-  test("a nonsense search fires a DISTINCT search-empty event to /stats/api/send", async ({ page }) => {
+  test("a nonsense search fires a DISTINCT search_no_results event to /stats/api/send", async ({ page }) => {
     const sends = await stubAnalytics(page);
     await page.goto("/");
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
@@ -103,22 +103,22 @@ test.describe("analytics — same-origin Umami", () => {
     await dialog.getByRole("textbox").fill(q);
     await expect(dialog.getByText(/Nothing matches/i)).toBeVisible({ timeout: 10_000 });
 
-    // search-empty is debounced (~450ms) and deduped per query
-    await expect.poll(() => named(sends, "search-empty").length, { timeout: 15_000 }).toBeGreaterThan(0);
-    const ev = named(sends, "search-empty")[0];
+    // search_no_results is debounced (~450ms) and deduped per query
+    await expect.poll(() => named(sends, "search_no_results").length, { timeout: 15_000 }).toBeGreaterThan(0);
+    const ev = named(sends, "search_no_results")[0];
     expect(pathOf(ev.url)).toBe("/stats/api/send");
     expect(ev.body?.payload?.data?.q).toBe(q);
     // a failed search must NOT be recorded as a metric selection
-    expect(named(sends, "metric-select")).toHaveLength(0);
+    expect(named(sends, "metric_selected")).toHaveLength(0);
   });
 
-  test("the /embed view loads the tracker and fires embed-load", async ({ page }) => {
+  test("the /embed view loads the tracker and fires embed_loaded", async ({ page }) => {
     const sends = await stubAnalytics(page);
     await page.goto("/embed?m=literacy_rate");
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
 
-    await expect.poll(() => named(sends, "embed-load").length, { timeout: 15_000 }).toBeGreaterThan(0);
-    const ev = named(sends, "embed-load")[0];
+    await expect.poll(() => named(sends, "embed_loaded").length, { timeout: 15_000 }).toBeGreaterThan(0);
+    const ev = named(sends, "embed_loaded")[0];
     expect(pathOf(ev.url)).toBe("/stats/api/send");
     expect(ev.body?.payload?.data?.metric).toBe("literacy_rate");
   });

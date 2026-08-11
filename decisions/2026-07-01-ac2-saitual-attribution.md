@@ -4,6 +4,7 @@
 - **Date:** 2026-07-01
 - **Amends:** [adr-012](2026-06-26-bug18-official-subdistrict-source.md) (bug #18 fix), [adr-011](.) (Stage-1 AC re-scope)
 - **Scope:** feat-geo-backbone · iter-15 bug #18 (report 18) · acceptance criterion AC2
+- **Amended by:** [adr-031](adr-031-saitual-no-derivable-boundary.md) — closes the "future option" below
 
 ## Context
 
@@ -49,8 +50,15 @@ cleanly.
   from the 2011 geometry backbone."*
 - **Future option (not required):** if/when a post-2011 district layer is added to render present-day
   boundaries, Saitual can receive its own present-day entity. Tracked implicitly under the
-  current-day-rendering strategy ([adr-003](2026-.-current-day-rendering.md)); no open to-do created,
+  current-day-rendering strategy (adr-003 — registry entry only; that decision has no markdown body,
+  so this reference is deliberately not a link); no open to-do created,
   as this is a modeling enhancement, not a defect.
+- **Closed 2026-08-11 by [adr-031](adr-031-saitual-no-derivable-boundary.md):** that layer now exists
+  (`public/geo/districts.geojson`, 735 present-day districts, including Saitual's two 2019 siblings
+  Hnahthial and Khawzawl) — but Saitual still receives no entity, because the Survey-of-India
+  boundary source ships no Saitual polygon and none is derivable from any in-repo official source.
+  The option is closed as **not actionable on present sources**, not declined; adr-031 records what
+  would reopen it.
 
 ## Evidence
 

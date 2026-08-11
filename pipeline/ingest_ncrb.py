@@ -215,7 +215,12 @@ def main():
         assert matched_share >= 80, f"{mid}: matched-count share {matched_share:.1f}% below gate"
 
     log_load(con, "ingest_ncrb.py", SOURCE, YEAR, LICENSE, FETCHED, total_rows,
-             f"4 metrics; dropped units {len(dropped_units)}; unmatched names {len(unmatched_all)}; fuzzy {len(m.fuzzy_log)}")
+             f"4 metrics; dropped units {len(dropped_units)}; unmatched names {len(unmatched_all)}; "
+             f"fuzzy {len(m.fuzzy_log)}; skip_reason (Mizoram/Saitual): the 2019 district has no "
+             f"polygon in the Survey-of-India boundary source and none is derivable from any in-repo "
+             f"official source, so its counts stay unmatched rather than folded into a parent — "
+             f"28 IPC / 1 murder / 4 women / 0 cyber excluded from the district AND the Mizoram "
+             f"state rate (adr-031)")
     # drop-with-reason: UDISE+ education was in the locked vertical list but no
     # district report-card files are acquirable headlessly (portal needs an
     # interactive session) — recorded so the skip is auditable, not silent

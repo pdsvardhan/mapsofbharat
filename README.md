@@ -37,6 +37,10 @@ docker compose up -d --build   # :8610
 
 ## Docs & decisions
 
+- [`FEATURES.md`](FEATURES.md) — the feature/flow reference, **generated** from the Ottomate registry. Do not hand-edit; edit the registry and regenerate.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — system design: context, building blocks, deployment, cross-cutting concerns, risks
+- [`DECISIONS.md`](DECISIONS.md) — the decision register; bodies in `decisions/`
+- [`measurement-runbook.md`](measurement-runbook.md) — what is measured after launch, review cadence, decision triggers, retention
 - `CODING_GUIDELINES.md` — conventions enforced by CI
 - `decisions/` — dated decision records (boundaries, pipeline, Atlas UI overhaul, …)
 - `public_docs/` — narrative docs mirrored to the Ottomate showcase

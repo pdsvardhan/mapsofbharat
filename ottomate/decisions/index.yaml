@@ -343,3 +343,13 @@ decisions:
     tags:
       - curated
     body_path: decisions/adr-030-component-pick-gate-scope.md
+  - id: adr-031-saitual-no-derivable-boundary
+    project_slug: mapsofbharat
+    title: A district we cannot draw honestly is left undrawn, and the cost is
+      published
+    status: accepted
+    date: 2026-08-11T00:00:00.000Z
+    tags:
+      - curated
+      - cat:reliability
+    body_path: decisions/adr-031-saitual-no-derivable-boundary.md
