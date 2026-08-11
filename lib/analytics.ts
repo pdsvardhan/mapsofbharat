@@ -36,14 +36,86 @@ export type AnalyticsEvent =
   | "embed_loaded"
   | "methodology_viewed";
 
-/** Fire a custom Umami event. Safe to call from anywhere. */
+// Events fired before the tracker exists are QUEUED, not dropped.
+//
+// The tracker is an afterInteractive script: measured on a production build, it
+// installs window.umami at 115-171ms on /methodology, while that page's view
+// effect runs at ~71ms. The old code was a bare `window.umami?.track(...)`, so
+// the call hit `undefined`, no-opped exactly as its comment promised, and the
+// event died in-process — nothing was ever attempted on the wire.
+// methodology_viewed had therefore NEVER been recorded once.
+//
+// The bug was invisible to tests/analytics-events.spec.ts by construction: that
+// spy is installed via addInitScript before any page script, so window.umami is
+// always present at effect time. A spy proves the call was MADE; it cannot prove
+// anything was LISTENING. Only driving the real app and then reading Umami's own
+// store showed the gap.
+//
+// embed_loaded was not safe either, merely lucky: it survived only because
+// india-map is a heavy client chunk whose effect lands at ~308ms, well after the
+// tracker. A slower network or a lighter bundle flips it. The queue removes the
+// race for every event rather than reordering one page's effects.
+const MAX_QUEUED = 50;
+const POLL_MS = 100;
+const GIVE_UP_MS = 15_000;
+
+let queue: Array<[AnalyticsEvent, Record<string, unknown> | undefined]> = [];
+let poll: ReturnType<typeof setInterval> | null = null;
+
+function tracker(): Window["umami"] | undefined {
+  try {
+    return typeof window !== "undefined" && window.umami?.track ? window.umami : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function flush(): boolean {
+  const u = tracker();
+  if (!u) return false;
+  const pending = queue;
+  queue = [];
+  for (const [event, data] of pending) {
+    try {
+      u.track(event, data);
+    } catch {
+      /* never let analytics throw */
+    }
+  }
+  return true;
+}
+
+function waitForTracker(): void {
+  if (poll !== null) return;
+  const started = Date.now();
+  poll = setInterval(() => {
+    // Stop either when the tracker turns up, or when it plainly is not coming —
+    // blocked, disabled, or offline. Dropping the queue then is the correct
+    // outcome, and the bounded wait is what stops a blocked tracker leaving a
+    // timer and an ever-growing array behind for the life of the page.
+    if (flush() || Date.now() - started > GIVE_UP_MS) {
+      clearInterval(poll!);
+      poll = null;
+      queue = [];
+    }
+  }, POLL_MS);
+}
+
+/** Fire a custom Umami event. Safe to call from anywhere, at any time. */
 export function track(event: AnalyticsEvent, data?: Record<string, unknown>): void {
   if (typeof window === "undefined") return;
-  try {
-    window.umami?.track(event, data);
-  } catch {
-    /* never let analytics throw */
+  const u = tracker();
+  if (u) {
+    try {
+      u.track(event, data);
+    } catch {
+      /* never let analytics throw */
+    }
+    return;
   }
+  // Bounded: analytics must never be the reason a tab grows without limit.
+  if (queue.length < MAX_QUEUED) queue.push([event, data]);
+  waitForTracker();
 }
 
 /**

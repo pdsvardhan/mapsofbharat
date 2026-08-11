@@ -171,6 +171,43 @@ test.describe("the twelve analytics events (item 938)", () => {
     expect(String(ev[0].d!.domain)).not.toContain("/");
   });
 
+  // REGRESSION (found by the feature verifier, iteration 148). Every other test
+  // in this file installs the spy via addInitScript, i.e. BEFORE any page script
+  // — so window.umami is always present when a view effect runs, and all of them
+  // passed while methodology_viewed was in fact never reaching Umami at all.
+  //
+  // In production the tracker is an afterInteractive script that installs
+  // window.umami at 115-171ms, whereas /methodology's view effect runs at ~71ms.
+  // The old bare `window.umami?.track(...)` no-opped and the event was lost.
+  //
+  // So this test does the opposite of the others: it BLOCKS the real tracker,
+  // lets the page fire its event into the void, and only then installs a tracker
+  // — which is the actual production ordering. It fails against the pre-queue
+  // code and passes with it.
+  test("an event fired before the tracker loads is queued, not dropped", async ({ page }) => {
+    const late: Ev[] = [];
+    await page.route("**/stats/script.js", (r) => r.abort());
+    await page.exposeFunction("__mobLate", (e: string, d?: Record<string, unknown>) => { late.push({ e, d }); });
+
+    await page.goto("/methodology");
+    await expect(page.getByRole("heading", { name: /Methodology/i }).first()).toBeVisible({ timeout: 15_000 });
+
+    // nothing is listening yet — this is the window in which the event was lost
+    await page.waitForTimeout(300);
+    expect(late).toHaveLength(0);
+
+    // the tracker turns up late, exactly as the real afterInteractive script does
+    await page.evaluate(() => {
+      (window as unknown as { umami: { track: (e: string, d?: Record<string, unknown>) => void } }).umami = {
+        track: (e, d) => { (window as unknown as { __mobLate: (e: string, d?: Record<string, unknown>) => void }).__mobLate(e, d); },
+      };
+    });
+
+    // the queue polls at 100ms; give it a few ticks
+    await expect.poll(() => late.map((x) => x.e), { timeout: 5_000 }).toContain("methodology_viewed");
+    expect(late.filter((x) => x.e === "methodology_viewed")).toHaveLength(1);
+  });
+
   test("methodology_viewed fires once on the methodology page", async ({ page }) => {
     await record(page);
     await page.goto("/methodology");

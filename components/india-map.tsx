@@ -1564,7 +1564,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   paletteFn={PALETTES[palette].fn} reverse={reverse}
                   mode={mode} onMode={(m) => { trackViz("mode", m); setMode(m); }}
                   coverageCounts={coverCounts} coverageHidden={coverageHidden}
-                  onToggleCoverageClass={toggleCoverageClass}
+                  onToggleCoverageClass={(c) => { trackViz("coverage-class", String(c)); toggleCoverageClass(c); }}
                   coverageStat={coverageStatText}
                   avgNote={`avg ${fmtVal(scopeMean)}${focusActive ? " (state avg)" : ""}`}
                   scope={focusActive ? "within state" : level === "district" ? "districts" : "states"}
@@ -1582,6 +1582,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             {view === "map" && scaleOpen && (
               <ScalePopover
                 method={brkMethod} onMethod={(m) => {
+                  // The class-break method is the most explicit "how the data is
+                  // drawn" control on the page — it is the whole subject of
+                  // adr-025 — so it belongs in viz_customised more than the
+                  // palette does.
+                  trackViz("break-method", m);
                   pickedForMetricRef.current = true;
                   if (sel) {
                     // session ref drives precedence, persisted map drives localStorage
@@ -1867,7 +1872,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 rankView={rankView} onToggleRankView={() => setRankView((v) => (v === "top" ? "bottom" : "top"))}
                 sortDir={sortDir} onToggleSortDir={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
                 cohorts={cohortDefs} cohort={cohort}
-                onCohort={(k) => { ensureCohorts(); setCohort(k); }}
+                onCohort={(k) => { trackViz("cohort", String(k)); ensureCohorts(); setCohort(k); }}
                 cohortEnabled={level === "state" && !!data}
                 scopeSub={railScopeSub}
                 fmtVal={fmtVal}

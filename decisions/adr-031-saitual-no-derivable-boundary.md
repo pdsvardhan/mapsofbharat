@@ -82,9 +82,15 @@ argued only in this file.** Concretely:
    at 10. No row is inserted without a polygon — a keyed district with no geometry would appear in
    search, stats and rankings while rendering nowhere, and would break the one-for-one invariant
    between the store and the geometry that `reaggregate.py` maintains.
-2. The two adapters that receive a Saitual row carry an explicit `skip_reason` in their `load_log`
-   notes, in the same idiom as the existing UDISE+, APY and JJM-states skips, so the drop is
-   auditable at the point of loss.
+2. `ingest_ncrb.py` and `ingest_jjm.py` carry an explicit `skip_reason` string, in the same idiom as
+   the existing UDISE+, APY and JJM-states skips, so the drop becomes auditable at the point of
+   loss. **It is in the adapter SOURCE and is not yet in `load_log`** — at the time of writing
+   `select count(*) from load_log where notes like '%skip_reason (Mizoram/Saitual)%'` returns **0**,
+   and it lands on the next FULL pipeline run. It was not backfilled by re-running the two adapters
+   alone because that would have been destructive: `ingest_ncrb.py` writes 728 rows per metric while
+   the live store holds 742, the extra 14 being `estimated=1` rows from `fill_new_districts.py`
+   (adr-018) that `write_values()`'s DELETE would remove — greying out 14 districts to add a log
+   line. A single-adapter re-run must be followed by `fill_new_districts.py`; tracked as a to-do.
 3. adr-013's future option is closed as **not actionable on present sources** — not as declined. It
    reopens the moment either unblocker below lands.
 
@@ -105,8 +111,11 @@ Until one of those exists, drawing the boundary means inventing it.
 
 ## Consequences
 
-- Mizoram renders 10 districts against the 11 that NCRB and JJM report. The gap is now stated in
-  the load log instead of being inferable only from a name missing out of a list.
+- Mizoram renders 10 districts against the 11 that its sources report. **At least four source
+  families print a Saitual row** — `pipeline/raw-new/` holds one under `crime` (NCRB), `labour`
+  (MGNREGA, listed in its `load_log` unmatched array), `religion` and `water` (JJM) — plus ISFR,
+  which aliases it away (below). Only NCRB and JJM carry a `skip_reason`; the rest record it only as
+  an unmatched name, or not at all.
 - **NCRB.** The Saitual row is the *only* unmatched Mizoram unit, and its counts are excluded from
   both the district layer and Mizoram's state rate: 28 of 3,587 IPC cases (0.8%), 1 of 31 murders
   (3.2%), 4 of 147 crimes against women (2.7%), 0 cyber. Mizoram's crime rates are therefore very
@@ -114,11 +123,20 @@ Until one of those exists, drawing the boundary means inventing it.
 - **JJM.** Saitual's 9,433 rural households are unmatched at district level but still roll into
   Mizoram's state value, per the adapter's existing rule that unmatched districts count toward
   their state. The state figure stays complete; only the district is missing.
-- **This is a clean absence, not a silent misattribution.** Measured: Saitual's closest
-  `region_keys` candidate is Saiha at a 0.667 difflib ratio, below `region_match.py`'s 0.82 fuzzy
-  cutoff, and `RegionMatcher.match("Mizoram", "Saitual")` returns `None` with an empty fuzzy log.
-  Saitual's rows are not being folded into a neighbouring district. That was the failure mode worth
-  checking, and it is not present.
+- **The generic matcher does not misattribute it — but one adapter folds it deliberately.**
+  Measured: Saitual's closest `region_keys` candidate is Saiha at a 0.667 difflib ratio, below
+  `region_match.py`'s 0.82 fuzzy cutoff, and `RegionMatcher.match("Mizoram", "Saitual")` returns
+  `None` with an empty fuzzy log. So nothing is folded by accident.
+
+  It is folded on purpose in one place. `pipeline/ingest_isfr.py` carries `"saitual": "aizawl"` in
+  `DIST_ALIASES`, commented as attributing Saitual to its 2011 parent per adr-013's convention. That
+  is a documented attribution rather than a silent misattribution, and it is consistent with adr-013
+  — but it does mean forest-cover numbers for Saitual's territory are reported under Aizawl while
+  NCRB's and JJM's are dropped. **The project is not internally consistent about this**, and that
+  inconsistency is now on the record rather than buried in an alias table.
+
+  An earlier draft of this ADR claimed flatly that "Saitual's rows are not being folded into a
+  neighbouring district". That was wrong, and the independent code verifier caught it.
 - `pipeline/expectations.json` is untouched — 735 remains correct and no count assertion moves.
 - **No boundary was fabricated.** The alternative considered and rejected — inserting a
   `region_keys` row with no polygon so the count reads 11 — would have made the defect harder to
