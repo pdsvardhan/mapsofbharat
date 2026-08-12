@@ -19,7 +19,7 @@ which writes straight to the `design_decisions` ledger.
 |---|---|---|---|
 | **R2 weight** | `metric-row-cluster` | swatch-shape · surface-depth · corner-radius · border-treatment · bar-shape | **none — generated and published ahead of this session** |
 | **R3 motion** | `metric-row-cluster` | count-up-motion · bar-grow-motion, plus item 752's entrance / hover / un-hover | **R2 must be LOCKED first** |
-| **R4 metric detail** | region-row (new target) | visual only — see scope ruling below | anatomy + target context (prepped ahead) |
+| **R4 metric detail** | `metric-rank-table`, region-row archetype | visual only — see scope ruling below | stamping pass DONE (`f5379a6`); anatomy + context drafted |
 
 **Order of play:** pick R2 → generate R3 → pick R3 → generate R4 → pick R4.
 
@@ -35,6 +35,33 @@ not chosen yet. It is a real dependency, not caution.
 `category-row.row-layout=baseline-columns-with-leader`, `panel.padding-density=12`.
 Rejected at R1 and never to be re-offered: `card-2up`, `88`, `banded-card`, `24`,
 `stacked-two-line`, `52`, `headword-over-provenance`, `18`.
+
+**R4 had a blocker that this plan originally missed.** The prep pass measured the
+metric-detail subtree and found **zero design stamps** — `decompose()` returned
+`{oid:null, parts:[], hasStamps:false}`, `scopeChoices()` returned a single option
+with `opensAxes:[]`, and `anatomyForScope(whole)` returned `sub_decisions:[]`. The
+round had nothing to name. `data-testid` is a test hook the extractor does not read,
+so the 747 test ids on the page counted for nothing. Fixed at `f5379a6`: the same
+presentational no-op stamps the locked cluster uses — `data-oid=metric-rank-table`
+plus roles `region-list` / `region-row` / `region-estimate`. `decompose()` now
+returns those three parts. 22/22 on the table specs, typecheck clean.
+
+**Two further findings from that prep, both real:**
+- **The page is not a clean archetype at page level.** The whole subtree derives as
+  tier `surface`, and `questionsForTier("surface")` returns zero questions, so
+  `validateRecord` fails outright. R4 must run at **composite tier on the rank
+  table**, never as a surface round.
+- **`region-row` is not in the anatomy catalog** (`archetypes` holds only
+  `media-card`, `button`, `data-table-row`). Same gap R1 hit for `metric-row`, same
+  answer: carry a derived `anatomy_inline`. Do not reuse `data-table-row` — it is a
+  near neighbour, not this row.
+- **The component mounts TWICE** — the `/metric/<id>` page and the atlas table view
+  (`india-map.tsx:1781`). Any region-row change lands on both surfaces.
+- **Row hover / selected / click are dead code.** `DataTable` declares `onRowClick`
+  and `selectedCode`; neither mount passes them. So `required_states` is `["rest"]`
+  only, and the round must not offer hover-highlight, select-affordance or
+  selected-signal axes — they would be inventing behaviour that does not exist
+  (to-do #503).
 
 **R4 scope ruling (owner, 2026-08-11): VISUAL TREATMENT ONLY.** `/metric/<id>` pages
 are the project's organic-search surface — item 913's own description says the
