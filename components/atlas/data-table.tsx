@@ -185,7 +185,15 @@ export function DataTable({
   }
 
   return (
-    <div className="atl-scroll min-h-0 flex-1 overflow-auto">
+    // Design-round stamps (2026-08-11): data-oid/data-role are read by the
+    // Ottomate design pipeline to derive this component's anatomy, and by the
+    // constraint checker, which asserts that the same data-role resolves to the
+    // same styling wherever it appears. Presentational no-ops. This is the
+    // REGION-ROW archetype: the metric-row cluster's locked decisions do not
+    // govern it, which is why it needs a round of its own (to-do 428 item 913).
+    // The component mounts twice — the /metric/<id> detail page and the atlas
+    // table view — so a change here lands on both.
+    <div data-oid="metric-rank-table" className="atl-scroll min-h-0 flex-1 overflow-auto">
       {/* Five columns — rank, region, state, value, estimate — do not fit a 374px
           plate at a readable size. Below lg the table keeps a real minimum and
           SCROLLS inside this box rather than compressing; the scroll is contained
@@ -212,12 +220,13 @@ export function DataTable({
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody data-role="region-list">
           {rows.map(({ e, rank }) => {
             const on = e.code === selectedCode;
             return (
               <tr
                 key={e.code}
+                data-role="region-row"
                 data-testid="data-table-row"
                 onClick={onRowClick ? () => onRowClick(e) : undefined}
                 className={`border-b border-border-faint ${onRowClick ? "cursor-pointer hover:bg-elevated" : ""}`}
@@ -235,7 +244,7 @@ export function DataTable({
                 <td className="px-3 py-1.5 text-right font-mono text-[12px] text-bright">
                   {fmtCell(e.value)}
                 </td>
-                <td className="px-3 py-1.5 text-[11px]">
+                <td data-role="region-estimate" className="px-3 py-1.5 text-[11px]">
                   {e.estimated ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span
