@@ -1661,7 +1661,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 aria-pressed={compare} disabled={vintage === "2011"}
                 title={vintage === "2011" ? "Compare works on current-day boundaries — switch BOUNDARIES back to TODAY" : undefined}
                 className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                style={{ background: compare ? "#d1502f" : "transparent", color: compare ? "#16110b" : "#d8ccbe" }}
+                style={{ background: compare ? "var(--accent)" : "transparent", color: compare ? "var(--accent-ink)" : "#d8ccbe" }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
                   <rect x="3" y="3" width="13" height="13" rx="1.5" /><rect x="8" y="8" width="13" height="13" rx="1.5" />
@@ -1787,6 +1787,21 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   entries={entries}
                   rankOf={rankOf}
                   fmtVal={fmtVal}
+                  // to-do 503: DataTable has always declared these two, and until now
+                  // NEITHER mount passed them, so its row hover, selected and click
+                  // states were dead code shipped on every row. Wired here and not on
+                  // the /metric/{id} mount for a reason: that page is server-rendered
+                  // and has no selection concept, so the props are correctly absent
+                  // there. Selecting from the table goes through the SAME clickFeature
+                  // the map and the ranking rail use, so a row click paints the map
+                  // feature, re-clicking the selected row deselects, and region_opened
+                  // fires once — three behaviours a private handler here would have
+                  // had to reimplement and would have drifted from.
+                  selectedCode={selected?.code ?? null}
+                  onRowClick={(e) => {
+                    const source = e.kind === "state" ? "states" : "districts";
+                    clickFeature({ code: e.code, name: e.name, state: e.sub, kind: e.kind }, source);
+                  }}
                 />
               </div>
             )}

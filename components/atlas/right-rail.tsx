@@ -42,7 +42,9 @@ const BINS = 9;
 
 // Amber for a SHAKY inheritance badge (adr-026) — distinct from the accent orange
 // a normal "est." uses, so a weak sibling match reads as a stronger caution.
-const SHAKY_COLOR = "#e0a92e";
+// The value lives in globals.css as --shaky; this was a literal duplicated here and
+// in data-table.tsx, i.e. one caveat with two definitions (to-do 502).
+const SHAKY_COLOR = "var(--shaky)";
 
 function reducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;

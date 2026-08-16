@@ -21,7 +21,9 @@ import { estimateBadge, estimateNote, estimateShort } from "@/lib/estimate-kind"
 
 // Amber for a SHAKY inheritance — the same badge colour the rail uses (adr-026),
 // so a weak sibling match reads as the same stronger caution here as everywhere.
-const SHAKY_COLOR = "#e0a92e";
+// "Same colour" is now enforced rather than asserted: both read --shaky from
+// globals.css instead of each carrying its own literal (to-do 502).
+const SHAKY_COLOR = "var(--shaky)";
 
 export type SortKey = "rank" | "name" | "value";
 
@@ -80,7 +82,7 @@ export function ViewToggle({
             // the 26px the rest of the atlas uses for a finger. Matches the LEVEL
             // and BOUNDARIES pairs so the three rows stay a set at every width.
             className={`px-2.5 py-1 text-[10.5px] font-bold max-lg:min-h-[26px] ${fill ? "flex-1" : ""}`}
-            style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
+            style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--muted)" }}
           >
             {v === "map" ? "MAP" : "TABLE"}
           </button>

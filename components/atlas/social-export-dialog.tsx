@@ -151,8 +151,8 @@ export function SocialExportDialog({
   };
 
   const seg = (on: boolean) => ({
-    background: on ? "#d1502f" : "transparent",
-    color: on ? "#16110b" : "#d8ccbe",
+    background: on ? "var(--accent)" : "transparent",
+    color: on ? "var(--accent-ink)" : "#d8ccbe",
   });
 
   return (

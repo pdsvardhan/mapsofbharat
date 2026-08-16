@@ -143,7 +143,12 @@ type Palette = {
 const THEMES: Record<SocialTheme, Palette> = {
   ink: {
     bg: "#0d0f14", plate: "#101109", text: "#e9e3d5", muted: "#a49d8c", dim: "#6a6455",
-    border: "#3b3626", accent: "#d1502f", accentInk: "#16110b", nodata: "#2a271d",
+    // accentInk tracks --accent-ink in globals.css. Raised from #16110b to #0a0806
+    // with to-do 501: the card draws to a canvas and cannot read a CSS variable, so
+    // this is the one place the value is legitimately a literal — but it is the SAME
+    // text on the SAME accent as the on-screen controls, and #16110b measures 4.38:1
+    // against #d1502f, under the 4.5:1 AA floor. An exported PNG gets read too.
+    border: "#3b3626", accent: "#d1502f", accentInk: "#0a0806", nodata: "#2a271d",
     nodataLine: "rgba(233,227,213,0.16)",
     mapLine: "rgba(233,227,213,0.30)", leader: "rgba(164,157,140,0.65)", halo: "rgba(13,15,20,0.72)",
   },

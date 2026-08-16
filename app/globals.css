@@ -41,6 +41,13 @@
   --accent-ink: #0a0806;
   --accent-border: #6b3020;
   --gold: #e6b34a;
+  /* The estimate-SHAKY signal (adr-026): an inherited value whose donor is a weak
+     sibling match. Amber, deliberately not --gold — gold is a decorative accent and
+     this is a data-quality warning; if they were one token, restyling the ornament
+     would silently restyle a caveat. Was a private `SHAKY_COLOR` const duplicated in
+     right-rail.tsx and data-table.tsx, so the same caveat had two definitions that
+     could drift apart on the metric detail page and the atlas (to-do 502). */
+  --shaky: #e0a92e;
   --map-neutral: #26231c;
   --map-nodata: #2a271d;
 }
@@ -64,6 +71,7 @@
   --color-accent-ink: var(--accent-ink);
   --color-accent-border: var(--accent-border);
   --color-gold: var(--gold);
+  --color-shaky: var(--shaky);
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plexmono), ui-monospace, monospace;
 }
