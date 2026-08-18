@@ -41,6 +41,17 @@
   --accent-ink: #0a0806;
   --accent-border: #6b3020;
   --gold: #e6b34a;
+  /* The estimate-SHAKY signal (adr-026): an inherited value whose donor is a weak
+     sibling match. Amber, deliberately not --gold — gold is a decorative accent and
+     this is a data-quality warning; if they were one token, restyling the ornament
+     would silently restyle a caveat. Was a private `SHAKY_COLOR` const duplicated in
+     right-rail.tsx and data-table.tsx, so the same caveat had two definitions that
+     could drift apart on the metric detail page and the atlas (to-do 502). */
+  --shaky: #e0a92e;
+  /* Data-motion timing — see the .rankbar/.rankbin block below for why these are
+     shared and why the curve is an ease-out. */
+  --motion-data-dur: 560ms;
+  --motion-data-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --map-neutral: #26231c;
   --map-nodata: #2a271d;
 }
@@ -64,6 +75,7 @@
   --color-accent-ink: var(--accent-ink);
   --color-accent-border: var(--accent-border);
   --color-gold: var(--gold);
+  --color-shaky: var(--shaky);
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plexmono), ui-monospace, monospace;
 }
@@ -96,8 +108,36 @@ body {
 .atl-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .atl-scroll::-webkit-scrollbar-track { background: transparent; }
 
-/* animated rank / compare bars */
-.rankbar { transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease; }
+/* ── Data motion (design round `metric-row-cluster`, R3 — authored 2026-08-13) ──
+   ONE duration and ONE easing for "a figure and its distribution settling", so the
+   count-up and the bars finish together and read as a single event rather than two
+   overlapping ones. Ease-OUT, not ease-in-out: data arriving should decelerate into
+   place; easing in makes a number look like it hesitated. CountUp in right-rail.tsx
+   runs the same 560ms and the same curve in rAF and MUST be changed with these.
+
+   Two classes, because there are two geometries and they were previously one:
+     .rankbar — HORIZONTAL bars, the data dimension is WIDTH  (right-rail 515, 596)
+     .rankbin — the VERTICAL 9-bin histogram, the dimension is HEIGHT (right-rail 194)
+   `.rankbar` transitioned `width` only, and the histogram bins are `flex-1` with an
+   inline `height`, so their width never changed and the transition animated nothing.
+   The nine bars have been snapping since they were written while carrying a class
+   that promised otherwise — bar.grow-motion declared and dead. Same defect family as
+   the SHAKY colour: one name covering two meanings, so a fix to one silently missed
+   the other. */
+.rankbar { transition: width var(--motion-data-dur) var(--motion-data-ease), background 0.3s ease; }
+.rankbin {
+  transition: height var(--motion-data-dur) var(--motion-data-ease), background 0.3s ease;
+  transform-origin: bottom;
+  animation: atlGrowY 420ms var(--motion-data-ease) both;
+}
+
+/* Grow-in on mount, which is when the panel first appears on selecting a region.
+   scaleY rather than height so it composites off the main thread and needs no
+   knowledge of the final inline height. The three cases are deliberately distinct:
+   mount grows, a metric change transitions the heights, and a selection change
+   within one metric moves only the highlight — because the distribution belongs to
+   the metric, not the region, so its bar heights genuinely should not move. */
+@keyframes atlGrowY { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 
 @keyframes atlPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -116,7 +156,10 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .atl-liveDot, .atl-fade, .atl-pop { animation: none; }
-  .rankbar { transition: none; }
+  .rankbar, .rankbin { transition: none; }
+  /* .rankbin also carries a mount animation, so clearing the transition alone would
+     have left the grow-in running for readers who asked for no motion. */
+  .rankbin { animation: none; transform: none; }
 }
 
 /* ── Keyboard focus (item 470) ────────────────────────────────────────

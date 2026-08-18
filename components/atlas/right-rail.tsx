@@ -42,7 +42,9 @@ const BINS = 9;
 
 // Amber for a SHAKY inheritance badge (adr-026) — distinct from the accent orange
 // a normal "est." uses, so a weak sibling match reads as a stronger caution.
-const SHAKY_COLOR = "#e0a92e";
+// The value lives in globals.css as --shaky; this was a literal duplicated here and
+// in data-table.tsx, i.e. one caveat with two definitions (to-do 502).
+const SHAKY_COLOR = "var(--shaky)";
 
 function reducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -56,6 +58,10 @@ function CountUp({ value, format }: { value: number; format: (v: number) => stri
   useEffect(() => {
     if (reducedMotion()) { setShown(value); fromRef.current = value; return; }
     const from = fromRef.current;
+    // 560ms and the cubic ease-out below are the SHARED data-motion timing:
+    // --motion-data-dur / --motion-data-ease in globals.css drive the bars with the
+    // same values so the figure and its distribution settle together. Changing one
+    // without the other splits a single event into two (R3, 2026-08-13).
     const t0 = performance.now(), dur = 560;
     const tick = (t: number) => {
       const k = Math.min(1, (t - t0) / dur);
@@ -144,8 +150,19 @@ export function RegionProfile({
       // plate, so every pixel of inset comes straight out of the width the
       // indicator names below have to identify themselves in. See the row
       // comment further down for what that width buys.
-      className="flex-none border-b border-border-soft p-3"
-      style={{ borderLeft: "2px solid #d1502f", background: "linear-gradient(90deg,rgba(209,80,47,.07),transparent)" }}
+      // panel.border-treatment = rules-3px-above-and-below, and
+      // panel.surface-depth = flat-no-lift (design round `metric-row-cluster` R2,
+      // ledger rows 95 and 97, authored 2026-08-13). The ruled-sheet direction: the
+      // panel is a band ruled off the sheet, not an object drawn on it. So the 2px
+      // accent rule down the left edge and the accent wash behind it are GONE — an
+      // open-sided band has no side edges, and a gradient is a drawn surface.
+      //
+      // Losing them costs nothing in signalling. The round's colour budget allows
+      // accent on ONE element, and this panel was spending it four times (left rule,
+      // wash, live dot, selected histogram bar). What says "selected" is the word
+      // SELECTED, the pulsing accent dot beside it, and now the rules that bracket
+      // the band — form, not a tinted background.
+      className="flex-none border-y-[3px] border-border p-3"
     >
       <div className="flex items-baseline justify-between">
         <span className="flex items-center gap-2 text-[10px] font-bold tracking-[.14em] text-faint">
@@ -187,9 +204,13 @@ export function RegionProfile({
       </div>
       {hasMetric && sel.value != null && (
         <>
-          <div className="mt-3 flex h-6 items-end gap-0.5" aria-hidden>
+          {/* bar.bar-shape = abutting-columns (R2, ledger row 98). The nine bins are a
+              rank DISTRIBUTION, i.e. a histogram, and histogram bars abut because the
+              variable is continuous; a gap says "nine unrelated categories". The 2px
+              gap-0.5 that was here said the wrong thing about the data. */}
+          <div className="mt-3 flex h-6 items-end gap-0" aria-hidden>
             {bins.map((b, i) => (
-              <span key={i} data-role="bar" className="rankbar flex-1" style={{ height: `${b.h}%`, background: b.on ? "#d1502f" : "#3b3626" }} />
+              <span key={i} data-role="bar" className="rankbin flex-1" style={{ height: `${b.h}%`, background: b.on ? "var(--accent)" : "var(--border)" }} />
             ))}
           </div>
           <div className="mt-2 text-[12px] text-muted">{sentence}</div>

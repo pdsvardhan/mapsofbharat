@@ -137,7 +137,7 @@ export function LevelColourCard({
                 // take the 26px this codebase already settled on for a finger
                 // (right-rail.tsx:150). Desktop keeps its measured 24px alignment.
                 className="flex-1 px-2.5 py-1 text-[10.5px] font-bold disabled:cursor-not-allowed disabled:opacity-40 max-lg:min-h-[26px]"
-                style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
+                style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--muted)" }}
               >
                 {l === "state" ? "STATES" : "DISTRICTS"}
               </button>
@@ -184,7 +184,7 @@ export function LevelColourCard({
                       ? "Render this census metric on the districts the 2011 census actually reported"
                       : "Render on current-day districts (2011 counts reaggregated via the crosswalk)"}
                     className="px-2 py-1 text-[10.5px] font-bold max-lg:min-h-[26px]"
-                    style={{ background: on ? "#d1502f" : "transparent", color: on ? "#16110b" : "#a49d8c" }}
+                    style={{ background: on ? "var(--accent)" : "transparent", color: on ? "var(--accent-ink)" : "var(--muted)" }}
                   >
                     {label}
                   </button>
@@ -295,7 +295,7 @@ export function LegendCard({
               <button
                 key={m} onClick={() => onMode(m)} aria-pressed={mode === m} data-legend-mode={m}
                 className="px-1.5 py-0.5 text-[9px] font-bold max-lg:min-h-[26px] max-lg:px-2"
-                style={{ background: mode === m ? "#d1502f" : "transparent", color: mode === m ? "#16110b" : "#a49d8c" }}
+                style={{ background: mode === m ? "var(--accent)" : "transparent", color: mode === m ? "var(--accent-ink)" : "var(--muted)" }}
               >
                 {label}
               </button>
@@ -473,7 +473,7 @@ export function ScalePopover({
             <button
               key={k} onClick={() => onMethod(k)} aria-pressed={method === k}
               className="px-1.5 py-1 text-[9px] font-bold"
-              style={{ background: method === k ? "#d1502f" : "transparent", color: method === k ? "#16110b" : "#a49d8c" }}
+              style={{ background: method === k ? "var(--accent)" : "transparent", color: method === k ? "var(--accent-ink)" : "var(--muted)" }}
             >
               {label}
             </button>

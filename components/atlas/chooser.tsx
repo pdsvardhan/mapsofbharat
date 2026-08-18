@@ -139,7 +139,11 @@ export function ChooserModal({
           {/* right metric list */}
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex flex-none items-center gap-3 border-b border-border-faint px-6 pb-3 pt-5">
-              <span data-role="swatch" className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-lg" style={{ background: hexA(accent, 0.16) }}>
+              {/* swatch.swatch-shape = square-tile (R2, ledger row 94). Square, not
+                  rounded-lg: the ruled-sheet direction takes its cue from a printed
+                  tabulation sheet, where a legend key is a tile, and it keeps the
+                  swatch square with the 0-radius panel it sits inside. */}
+              <span data-role="swatch" className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-none" style={{ background: hexA(accent, 0.16) }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                   <path d={CAT_ICON[cat] ?? CAT_ICON.demographics} />
                 </svg>
