@@ -72,3 +72,35 @@ gate; kept short and enforced by CI (`.gitea/workflows/ci.yml`).
 - CI must pass: `npm run lint`, `npm run typecheck`, `npm run build`, and
   `pytest pipeline/test_pipeline.py`.
 - Smoke tests (`npm run test:e2e`) run against a live instance; set `BASE_URL`.
+
+## Colour and motion come from tokens, never from literals
+
+Every colour that appears on screen is defined once, in `app/globals.css`, and used
+by name. This is not tidiness — it is the fix for a shipped WCAG failure. When
+`--accent-ink` was raised to `#0a0806` to clear the 4.5:1 floor, seven hard-coded
+`#16110b` literals kept the old value, so the controls the fix was made for kept
+failing (to-do #501, adr-033). A literal is a copy of a decision, and copies drift.
+
+- Use `var(--token)` in inline styles and the Tailwind alias (`text-accent-ink`,
+  `bg-accent`) in classes. Do not write a hex in a component.
+- A literal beside a token on the same style object is a drift waiting to happen.
+  Tokenise the whole declaration, not the one value you came to fix.
+- The one legitimate exception is canvas rendering: `lib/social-export.ts` draws the
+  PNG card and cannot read a CSS variable. It carries literals **with a comment
+  naming the token each one tracks**, and it must be updated when that token moves.
+- Do not reuse a token because the colour happens to match. `--shaky` and `--gold`
+  are the same family of amber and are deliberately separate: gold is ornament,
+  shaky is a data-quality warning, and one token for both means restyling the
+  ornament silently restyles a caveat.
+
+**A class name must be true everywhere it is used.** `.rankbar` transitions `width`
+and belongs on horizontal bars; `.rankbin` transitions `height` and belongs on the
+vertical histogram. They were one class, and on the histogram — which is `flex-1`
+with an inline `height` — the width transition animated nothing, so nine bars snapped
+for months while advertising a grow. If a class has to mean two things, split it.
+
+**Shared motion timing.** `--motion-data-dur` / `--motion-data-ease` are the timing
+for "a figure and its distribution settling". `CountUp` runs the same values in rAF
+and carries a comment saying so. Change them together or one event settles twice.
+Anything animated must be cleared under `prefers-reduced-motion` — including
+animations, not just transitions.

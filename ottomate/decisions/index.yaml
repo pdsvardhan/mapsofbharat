@@ -372,3 +372,12 @@ decisions:
       - curated
       - cat:system
     body_path: decisions/adr-032-stack-no-orm-no-chart-lib.md
+  - id: adr-033-one-definition-per-visual-fact
+    project_slug: mapsofbharat
+    title: "One definition per visual fact: colour, motion and the classes that carry them"
+    status: accepted
+    date: 2026-08-13T00:00:00.000Z
+    tags:
+      - curated
+      - cat:system
+    body_path: decisions/adr-033-one-definition-per-visual-fact.md

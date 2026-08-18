@@ -150,8 +150,19 @@ export function RegionProfile({
       // plate, so every pixel of inset comes straight out of the width the
       // indicator names below have to identify themselves in. See the row
       // comment further down for what that width buys.
-      className="flex-none border-b border-border-soft p-3"
-      style={{ borderLeft: "2px solid #d1502f", background: "linear-gradient(90deg,rgba(209,80,47,.07),transparent)" }}
+      // panel.border-treatment = rules-3px-above-and-below, and
+      // panel.surface-depth = flat-no-lift (design round `metric-row-cluster` R2,
+      // ledger rows 95 and 97, authored 2026-08-13). The ruled-sheet direction: the
+      // panel is a band ruled off the sheet, not an object drawn on it. So the 2px
+      // accent rule down the left edge and the accent wash behind it are GONE — an
+      // open-sided band has no side edges, and a gradient is a drawn surface.
+      //
+      // Losing them costs nothing in signalling. The round's colour budget allows
+      // accent on ONE element, and this panel was spending it four times (left rule,
+      // wash, live dot, selected histogram bar). What says "selected" is the word
+      // SELECTED, the pulsing accent dot beside it, and now the rules that bracket
+      // the band — form, not a tinted background.
+      className="flex-none border-y-[3px] border-border p-3"
     >
       <div className="flex items-baseline justify-between">
         <span className="flex items-center gap-2 text-[10px] font-bold tracking-[.14em] text-faint">
@@ -193,7 +204,11 @@ export function RegionProfile({
       </div>
       {hasMetric && sel.value != null && (
         <>
-          <div className="mt-3 flex h-6 items-end gap-0.5" aria-hidden>
+          {/* bar.bar-shape = abutting-columns (R2, ledger row 98). The nine bins are a
+              rank DISTRIBUTION, i.e. a histogram, and histogram bars abut because the
+              variable is continuous; a gap says "nine unrelated categories". The 2px
+              gap-0.5 that was here said the wrong thing about the data. */}
+          <div className="mt-3 flex h-6 items-end gap-0" aria-hidden>
             {bins.map((b, i) => (
               <span key={i} data-role="bar" className="rankbin flex-1" style={{ height: `${b.h}%`, background: b.on ? "var(--accent)" : "var(--border)" }} />
             ))}
