@@ -58,6 +58,10 @@ function CountUp({ value, format }: { value: number; format: (v: number) => stri
   useEffect(() => {
     if (reducedMotion()) { setShown(value); fromRef.current = value; return; }
     const from = fromRef.current;
+    // 560ms and the cubic ease-out below are the SHARED data-motion timing:
+    // --motion-data-dur / --motion-data-ease in globals.css drive the bars with the
+    // same values so the figure and its distribution settle together. Changing one
+    // without the other splits a single event into two (R3, 2026-08-13).
     const t0 = performance.now(), dur = 560;
     const tick = (t: number) => {
       const k = Math.min(1, (t - t0) / dur);
@@ -191,7 +195,7 @@ export function RegionProfile({
         <>
           <div className="mt-3 flex h-6 items-end gap-0.5" aria-hidden>
             {bins.map((b, i) => (
-              <span key={i} data-role="bar" className="rankbar flex-1" style={{ height: `${b.h}%`, background: b.on ? "#d1502f" : "#3b3626" }} />
+              <span key={i} data-role="bar" className="rankbin flex-1" style={{ height: `${b.h}%`, background: b.on ? "var(--accent)" : "var(--border)" }} />
             ))}
           </div>
           <div className="mt-2 text-[12px] text-muted">{sentence}</div>
