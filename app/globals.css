@@ -95,9 +95,25 @@
   --font-mono: var(--font-plexmono), ui-monospace, monospace;
 }
 
-* {
-  border-color: var(--border);
-  box-sizing: border-box;
+/* @layer base is load-bearing, not cosmetic. Unlayered declarations WIN over layered
+   ones in the cascade regardless of specificity, and Tailwind v4 emits its utilities
+   into `@layer utilities`. While this rule sat unlayered, it beat every single
+   `border-<colour>` utility in the app: measured 2026-08-13, 52 declarations across
+   18 files asked for --border-soft (31), --border-faint (16) or an accent (5), and
+   all 52 painted --border instead. The whole intended border hierarchy — faint
+   hairlines between rows, soft edges on panels, strong rules for structure — was
+   collapsed to one strongest value everywhere, and the class names read as if it
+   were not. Nothing was misspelled and no utility was missing; the cascade simply
+   discarded them, which is why it survived so long and why no test saw it.
+
+   Putting the rule in `base` restores the intent: it still supplies the default
+   border colour for every element that asks for none, and now loses to any element
+   that asks for a specific one. adr-034. */
+@layer base {
+  * {
+    border-color: var(--border);
+    box-sizing: border-box;
+  }
 }
 
 body {

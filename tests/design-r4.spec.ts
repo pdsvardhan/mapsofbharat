@@ -1,4 +1,4 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 // R4 "region-row" — the rank-table selected-row affordance
 // (design ledger row 101, authored 2026-08-13). Target: data-oid="metric-rank-table".
@@ -13,11 +13,6 @@ import { test, expect, Page } from "@playwright/test";
 //
 // The fix inherits the chooser's existing answer rather than inventing a third, so
 // these assertions also pin the two components AGREEING — that is the actual claim.
-
-async function openTable(page: Page) {
-  await page.goto("/metric/literacy_rate");
-  await page.waitForSelector('[data-oid="metric-rank-table"]', { timeout: 20_000 });
-}
 
 test.describe("R4 region-row selected affordance (ledger row 101)", () => {
   test("the selected row carries a FORM cue and the aria state, not colour alone", async ({ page }) => {
