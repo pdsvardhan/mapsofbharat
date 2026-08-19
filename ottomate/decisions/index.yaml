@@ -381,3 +381,12 @@ decisions:
       - curated
       - cat:system
     body_path: decisions/adr-033-one-definition-per-visual-fact.md
+  - id: adr-034-border-cascade-layer
+    project_slug: mapsofbharat
+    title: The border hierarchy the code asked for and the cascade threw away
+    status: accepted
+    date: 2026-08-13T00:00:00.000Z
+    tags:
+      - curated
+      - cat:system
+    body_path: decisions/adr-034-border-cascade-layer.md

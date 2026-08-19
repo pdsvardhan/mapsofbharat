@@ -40,6 +40,19 @@
      old value — both read as black. */
   --accent-ink: #0a0806;
   --accent-border: #6b3020;
+  /* Selected-surface roles (design round `metric-rank-table` R4, 2026-08-13).
+     These were THREE literals and TWO answers to one question: #241a12 on the
+     chooser's selected metric row, #17130e on the chooser's topic strip, the ranking
+     rail's selected row AND the rank table's selected row. So "how does a selected
+     row read?" was answered two different ways inside one app.
+
+     Resolved toward #241a12, which the R2 round contract already names
+     palette.selected-row in its held controls — the ledger had the role named while
+     the code had no token for it. #17130e keeps its own name because a selected
+     SECTION is a different question from a selected ROW; merging them would repeat
+     the --gold/--shaky mistake in the other direction. */
+  --selected-row: #241a12;
+  --selected-section: #17130e;
   --gold: #e6b34a;
   /* The estimate-SHAKY signal (adr-026): an inherited value whose donor is a weak
      sibling match. Amber, deliberately not --gold — gold is a decorative accent and
@@ -74,15 +87,33 @@
   --color-accent-text: var(--accent-text);
   --color-accent-ink: var(--accent-ink);
   --color-accent-border: var(--accent-border);
+  --color-selected-row: var(--selected-row);
+  --color-selected-section: var(--selected-section);
   --color-gold: var(--gold);
   --color-shaky: var(--shaky);
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plexmono), ui-monospace, monospace;
 }
 
-* {
-  border-color: var(--border);
-  box-sizing: border-box;
+/* @layer base is load-bearing, not cosmetic. Unlayered declarations WIN over layered
+   ones in the cascade regardless of specificity, and Tailwind v4 emits its utilities
+   into `@layer utilities`. While this rule sat unlayered, it beat every single
+   `border-<colour>` utility in the app: measured 2026-08-13, 52 declarations across
+   18 files asked for --border-soft (31), --border-faint (16) or an accent (5), and
+   all 52 painted --border instead. The whole intended border hierarchy — faint
+   hairlines between rows, soft edges on panels, strong rules for structure — was
+   collapsed to one strongest value everywhere, and the class names read as if it
+   were not. Nothing was misspelled and no utility was missing; the cascade simply
+   discarded them, which is why it survived so long and why no test saw it.
+
+   Putting the rule in `base` restores the intent: it still supplies the default
+   border colour for every element that asks for none, and now loses to any element
+   that asks for a specific one. adr-034. */
+@layer base {
+  * {
+    border-color: var(--border);
+    box-sizing: border-box;
+  }
 }
 
 body {
