@@ -35,7 +35,7 @@ export default function CorrectionsPage() {
       <div className="mt-5 flex items-center gap-3">
         <span
           className="flex h-[30px] w-[30px] items-center justify-center rounded-sm bg-bright text-[13px] font-extrabold"
-          style={{ color: "#14120d" }}
+          style={{ color: "var(--bright-ink)" }}
         >
           MB
         </span>

@@ -152,7 +152,7 @@ export function SocialExportDialog({
 
   const seg = (on: boolean) => ({
     background: on ? "var(--accent)" : "transparent",
-    color: on ? "var(--accent-ink)" : "#d8ccbe",
+    color: on ? "var(--accent-ink)" : "var(--text-warm)",
   });
 
   return (
@@ -175,7 +175,7 @@ export function SocialExportDialog({
             and overflow-hidden, a full-height preview pushed DOWNLOAD to y=1157 in a 780px
             viewport, where it was clipped rather than scrollable — horizontally fixed but
             still untappable, which is the same defect wearing a different axis. */}
-        <div className="grid max-w-full flex-none place-items-center border-b border-border-soft p-5 max-lg:max-h-[42dvh] lg:border-b-0 lg:border-r" style={{ background: "#0a0b08" }}>
+        <div className="grid max-w-full flex-none place-items-center border-b border-border-soft p-5 max-lg:max-h-[42dvh] lg:border-b-0 lg:border-r" style={{ background: "#0a0b08" /* no-token: the export preview letterbox, deliberately darker than --background */ }}>
           <canvas ref={previewRef} aria-label="Card preview" className="h-auto max-h-full max-w-full" />
         </div>
 
@@ -263,7 +263,7 @@ export function SocialExportDialog({
                       className="h-[20px] flex-1 rounded-sm border transition-transform hover:-translate-y-0.5"
                       style={{
                         background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => PALETTES[p].fn(rev ? 1 - t : t)).join(",")})`,
-                        borderColor: pal === p ? "#d1502f" : "#3b3626",
+                        borderColor: pal === p ? "var(--accent)" : "var(--border)",
                       }}
                     />
                   ))}
@@ -274,7 +274,7 @@ export function SocialExportDialog({
                   // Same control, same token as the legend's REVERSE and the ⚙ SCALE
                   // popover's DIRECTION row: --accent as an ON label measured 4.35:1
                   // (items 431/473).
-                  style={{ color: rev ? "var(--accent-text)" : "#a49d8c" }}
+                  style={{ color: rev ? "var(--accent-text)" : "var(--muted)" }}
                 >
                   ↔ REVERSE {rev ? "ON" : "OFF"}
                 </button>

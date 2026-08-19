@@ -67,6 +67,39 @@
   --motion-data-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --map-neutral: #26231c;
   --map-nodata: #2a271d;
+
+  /* ── Roles that existed in the app but had no name (to-do #523) ─────────────
+     Each of these was a bare hex repeated across files. None of the VALUES change
+     here — they are the values already shipping, given the name they were missing,
+     so this pass cannot alter a rendered pixel or a measured contrast ratio. What
+     changes is that there is now one definition to edit instead of N copies to
+     find, which is the whole of #501 and #502. */
+
+  /* Ink ON the bright/cream fill: the MB monogram plate on /methodology, /terms,
+     /privacy and /corrections, the footer mark, and the lineage step markers.
+     Was #14120d hand-copied into six files — the same shape as --accent-ink
+     before item 431, where a token moved and five stale copies did not. */
+  --bright-ink: #14120d;
+
+  /* The strong hairline — rules and edges that must read above --border without
+     becoming text. Was #4a4433 in five places across three files. Non-text, so
+     the 3:1 floor applies rather than 4.5:1. */
+  --border-strong: #4a4433;
+
+  /* Label text one step below --foreground: the UNSELECTED row label in the
+     ranking rail and the compare panel. Was #ccc4b2 in three places. */
+  --text-soft: #ccc4b2;
+
+  /* The warm control label on the toolbar, the share menu and the export dialog.
+     Was #d8ccbe in three places. Deliberately NOT merged with --text-soft: they
+     are two distinct tones on two distinct surfaces, and collapsing them would
+     repeat the --gold/--shaky mistake this file already records. */
+  --text-warm: #d8ccbe;
+
+  /* The unfilled part of a bar — the rail's rank bar and the compare panel's.
+     Was #1c1a12 in two places, both as a Tailwind arbitrary value, which is the
+     one form the palette can never be grepped out of. */
+  --bar-track: #1c1a12;
 }
 
 @theme inline {
@@ -91,6 +124,11 @@
   --color-selected-section: var(--selected-section);
   --color-gold: var(--gold);
   --color-shaky: var(--shaky);
+  --color-bright-ink: var(--bright-ink);
+  --color-border-strong: var(--border-strong);
+  --color-text-soft: var(--text-soft);
+  --color-text-warm: var(--text-warm);
+  --color-bar-track: var(--bar-track);
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plexmono), ui-monospace, monospace;
 }
@@ -116,6 +154,14 @@
   }
 }
 
+/* Layered for the same reason the `*` rule above is (adr-034, to-do #524): unlayered
+   wins over layered regardless of specificity, so an unlayered `body` outranks any
+   utility placed on <body>. It already did — `antialiased` is on the element in
+   layout.tsx and was losing to the -webkit-font-smoothing below. Same value, so
+   nothing rendered differently and nothing caught it, which is exactly how the border
+   bug survived too. In @layer base it still beats Tailwind's preflight (same layer,
+   later source order) and now loses to any utility that asks for something specific. */
+@layer base {
 body {
   background: var(--background);
   color: var(--foreground);
@@ -132,6 +178,7 @@ body {
   font-family: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
 }
 
 /* thin editorial scrollbars */
@@ -232,7 +279,13 @@ body {
    Which of the two carries the indicator matters: forced-colors mode drops
    box-shadow outright and keeps outline, so the outline is the indicator
    and the shadow is only its plate. Doing it with box-shadow alone would
-   leave high-contrast users with nothing. */
+   leave high-contrast users with nothing.
+
+   cascade-exempt: this rule MUST stay unlayered. The rule it has to beat —
+   maplibre-gl.css's unscoped `:focus-visible { box-shadow: 0 0 2px 2px #0096ff }` — is
+   itself unlayered, and an unlayered rule beats a layered one at any specificity. Move
+   this into @layer base and the vendor takes the focus ring on `/` and `/embed`, the
+   two routes where the map is the page. */
 :root :focus-visible {
   outline: 2px solid var(--accent-text);
   outline-offset: 2px;
@@ -241,7 +294,10 @@ body {
 
 /* Forced colours (Windows High Contrast): the plate is gone by definition,
    so the outline carries all of it. Pinned to the system focus colour
-   rather than left to be force-mapped from a brand orange. */
+   rather than left to be force-mapped from a brand orange.
+
+   cascade-exempt: same reason as the rule above — it must outrank maplibre-gl.css's
+   own unlayered :focus-visible, and a layered rule can never beat an unlayered one. */
 @media (forced-colors: active) {
   :root :focus-visible {
     outline: 2px solid Highlight;

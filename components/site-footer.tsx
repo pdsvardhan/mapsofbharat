@@ -15,7 +15,7 @@ export function SiteFooter() {
       <span className="flex items-center gap-2 font-semibold text-faint">
         <span
           className="flex h-[18px] w-[18px] items-center justify-center rounded-sm bg-bright text-[9px] font-extrabold"
-          style={{ color: "#14120d" }}
+          style={{ color: "var(--bright-ink)" }}
           aria-hidden="true"
         >
           MB

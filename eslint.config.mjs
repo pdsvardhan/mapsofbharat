@@ -2,6 +2,8 @@ import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";
 
+import noHexLiterals from "./eslint-rules/no-hex-literals.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -19,6 +21,33 @@ const eslintConfig = [
       "build/**",
       "next-env.d.ts",
     ],
+  },
+
+  // ── Palette discipline (to-do #523) ──────────────────────────────────────────
+  // A hex colour in a component must say which token it tracks. The rule and the
+  // reasoning live in eslint-rules/no-hex-literals.mjs.
+  {
+    files: ["components/**/*.{ts,tsx}", "app/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+    plugins: { mob: { rules: { "no-hex-literals": noHexLiterals } } },
+    rules: { "mob/no-hex-literals": "error" },
+  },
+  {
+    // Rendered OUTSIDE the document, where no CSS variable can be resolved: Satori
+    // builds the OG images and node-canvas draws the social cards, both from a plain
+    // colour string. `manifest.ts` and `themeColor` are read by the browser chrome,
+    // also as literals. These are palette copies and they can drift — the mitigation
+    // is that each file keeps its colours in ONE named block at the top, so the drift
+    // is greppable, rather than scattered through the render code.
+    // NOTE the globs: `app/metric/[slug]/…` would be read as a CHARACTER CLASS by
+    // minimatch — `[slug]` matches one of s/l/u/g — so the literal Next.js dynamic
+    // segment never matches and the ignore silently does nothing. Verified: the
+    // bracketed form left all six opengraph-image violations reported. Use `**`.
+    files: [
+      "app/metric/**/opengraph-image.tsx",
+      "app/manifest.ts",
+      "lib/social-export.ts",
+    ],
+    rules: { "mob/no-hex-literals": "off" },
   },
 ];
 

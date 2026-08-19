@@ -38,7 +38,7 @@ export function ShareMenu({
         onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" aria-label="Share this view"
         disabled={disabled}
         className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors hover:bg-elevated disabled:opacity-40"
-        style={{ color: "#d8ccbe" }}
+        style={{ color: "var(--text-warm)" }}
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />

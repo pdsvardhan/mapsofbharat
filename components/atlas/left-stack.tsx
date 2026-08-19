@@ -40,10 +40,10 @@ export function Crumbs({
       )}
       {items.map((c, i) => (
         <span key={c.label + i} className="flex items-center gap-2">
-          <button onClick={c.onClick} style={{ color: c.on ? "#eae4d6" : "#a49d8c" }} className="hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:items-center">
+          <button onClick={c.onClick} style={{ color: c.on ? "var(--foreground-bright)" : "var(--muted)" }} className="hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:items-center">
             {c.label}
           </button>
-          {i < items.length - 1 && <span style={{ color: "#4a4433" }}>/</span>}
+          {i < items.length - 1 && <span style={{ color: "var(--border-strong)" }}>/</span>}
         </span>
       ))}
     </nav>
@@ -222,7 +222,7 @@ export function LevelColourCard({
                 className="h-[18px] flex-1 rounded-sm border transition-transform hover:-translate-y-0.5 max-lg:h-[26px]"
                 style={{
                   background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(PALETTES[p].fn).join(",")})`,
-                  borderColor: palette === p ? "#d1502f" : "#3b3626",
+                  borderColor: palette === p ? "var(--accent)" : "var(--border)",
                 }}
               />
             ))}
@@ -344,7 +344,7 @@ export function LegendCard({
         </div>
       ) : mode === "vs_avg" ? (
         <>
-          <div className="mt-2 h-2" style={{ background: "linear-gradient(90deg,#b2182b,#f7f7f7,#2166ac)" }} />
+          <div className="mt-2 h-2" style={{ background: "linear-gradient(90deg,#b2182b,#f7f7f7,#2166ac)" /* no-token: ColorBrewer RdBu endpoints — a data-palette swatch, not a UI role */ }} />
           <div className="mt-1 flex justify-between font-mono text-[9.5px] text-faint"><span>below avg</span><span>{avgNote}</span><span>above avg</span></div>
         </>
       ) : binned && edges.length ? (
@@ -399,8 +399,8 @@ export function LegendCard({
               title={reverse ? "Colour scale reversed — click to restore" : "Reverse the colour scale"}
               className="ml-auto inline-flex min-h-[24px] items-center rounded-sm border px-2 text-[9.5px] font-bold tracking-[.05em] hover:bg-elevated"
               style={{
-                borderColor: reverse ? "#6b3020" : "#3b3626",
-                color: reverse ? "#e0603d" : "#a49d8c",
+                borderColor: reverse ? "var(--accent-border)" : "var(--border)",
+                color: reverse ? "var(--accent-hover)" : "var(--muted)",
               }}
             >
               ↔ REVERSE{reverse ? " ON" : ""}
@@ -488,13 +488,13 @@ export function ScalePopover({
           // The legend's own REVERSE control already used #e0603d for its ON label
           // (iter-35); this popover row is the same setting and still carried the raw
           // accent at 4.35:1. Same role, same token now (items 431/473).
-          style={{ color: reverse ? "var(--accent-text)" : "#a49d8c" }}
+          style={{ color: reverse ? "var(--accent-text)" : "var(--muted)" }}
         >
           ↔ REVERSE {reverse ? "ON" : "OFF"}
         </button>
       </div>
       {collapseWarn && (
-        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug" style={{ color: "#e0913f" }} data-collapse-warn>
+        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug" style={{ color: "#e0913f" /* no-token: the collapse warning's amber, deliberately not --shaky, which flags DATA quality */ }} data-collapse-warn>
           <span className="font-bold tracking-[.1em]">HEADS UP — </span>
           {METHOD_LABEL[method]} puts {Math.round(collapseWarn.share * 100)}% of regions in one class here.{" "}
           <button

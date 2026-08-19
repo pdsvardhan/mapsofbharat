@@ -51,7 +51,13 @@ export const PROVENANCE_NOTE: Record<ProvenanceClass, string> = {
 };
 
 /** Categorical fills — Okabe–Ito, colour-blind-safe and distinct from the value
- *  ramps. Luminances span 0.47–0.64, all well clear of the dark backdrop. */
+ *  ramps. Luminances span 0.47–0.64, all well clear of the dark backdrop.
+ *
+ *  no-token: a data palette, not a set of UI roles. Okabe–Ito is chosen as a whole
+ *  for its colour-blind separation, so the four values are only correct together —
+ *  pulling them into the theme would invite someone to retune one to match the
+ *  interface and quietly break the property the set exists for. Sibling to PALETTES
+ *  in lib/breaks.ts and CAT_ACCENT in components/atlas/cats.ts. */
 export const PROVENANCE_COLOR: Record<ProvenanceClass, string> = {
   measured: "#009e73", // bluish green (teal)
   aggregated: "#56b4e9", // sky blue
@@ -61,7 +67,7 @@ export const PROVENANCE_COLOR: Record<ProvenanceClass, string> = {
 
 /** Fill for a region whose class is toggled OFF, or which has no value — it
  *  recedes to the map's neutral no-data tone so the visible classes stand out. */
-export const PROVENANCE_MUTED = "#2a271d";
+export const PROVENANCE_MUTED = "#2a271d"; // token: --map-nodata
 
 /** Which provenance class one value belongs to. An estimate of unknown kind is
  *  treated as 'inherited' (the modal, and the most conservative disclosure) so a

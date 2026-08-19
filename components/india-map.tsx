@@ -32,8 +32,8 @@ import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/co
 import { DataTable } from "@/components/atlas/data-table";
 
 const INDIA_BOUNDS: [number, number, number, number] = [67, 6, 98, 37];
-const NEUTRAL = "#26231c"; // no indicator picked
-const NODATA = "#2a271d"; // indicator picked, region missing a value
+const NEUTRAL = "#26231c"; // no indicator picked. token: --map-neutral (MapLibre paint takes a colour, not a var())
+const NODATA = "#2a271d"; // indicator picked, region missing a value. token: --map-nodata
 
 type MetricData = {
   /** Which metric this payload is for. The previous metric's rows stay painted
@@ -425,7 +425,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (!ref.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: ref.current,
-      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0d0f14" } }] },
+      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0d0f14" /* token: --background */ } }] },
       bounds: INDIA_BOUNDS, fitBoundsOptions: { padding: 24 },
       attributionControl: false, maxZoom: 12, minZoom: 3, dragRotate: false,
       // MapLibre v5 moved this under canvasContextAttributes — the old
@@ -458,9 +458,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       };
       const linePaint = (hairline: number) => ({
         "line-color": ["case",
-          ["boolean", ["feature-state", "selected"], false], "#d1502f",
-          ["boolean", ["feature-state", "pinned"], false], "#e6b34a",
-          ["boolean", ["feature-state", "hover"], false], "#e9e3d5",
+          ["boolean", ["feature-state", "selected"], false], "#d1502f", // token: --accent
+          ["boolean", ["feature-state", "pinned"], false], "#e6b34a", // token: --gold
+          ["boolean", ["feature-state", "hover"], false], "#e9e3d5", // token: --foreground
           // item 760: per-region seam, falling back to a flat hairline before any
           // metric is picked (no feature-state has been set yet). The fallback is
           // 0.20, not the original 0.10: at state level state-outline used to draw
@@ -594,7 +594,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         "fill-color-transition": { duration: 400 },
       };
       const linePaint = (w: number) => ({
-        "line-color": ["case", ["boolean", ["feature-state", "hover"], false], "#e9e3d5", "rgba(233,227,213,0.10)"],
+        "line-color": ["case", ["boolean", ["feature-state", "hover"], false], "#e9e3d5", "rgba(233,227,213,0.10)"], // token: --foreground (and its 10% wash)
         "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.1, w],
       });
       map.addLayer({ id: "d2011-fill", type: "fill", source: "districts2011", layout: { visibility: "none" }, paint: fillPaint } as any);
@@ -1348,7 +1348,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // ── full Atlas chrome ────────────────────────────────────────────────────
   return (
     <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(90% 120% at 50% -10%, #15140f, #0b0c10 60%)" }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(90% 120% at 50% -10%, #15140f, #0b0c10 60%)" /* no-token: a one-off vignette gradient, not a palette role */ }} />
 
       {/* MASTHEAD
           The three fixed tracks (300 + 360 + 300 = 960 minimum) put the search
@@ -1360,7 +1360,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           the slack; the two links keep their glyph and drop their label, in a
           26px square — the size right-rail.tsx:150 already settled on for a
           touch target here, over WCAG 2.2's 24px floor. */}
-      <header className="relative z-10 flex h-16 flex-none items-center gap-3 border-b px-5 max-lg:gap-2 max-lg:px-3" style={{ borderColor: "#2a2619" }}>
+      <header className="relative z-10 flex h-16 flex-none items-center gap-3 border-b px-5 max-lg:gap-2 max-lg:px-3" style={{ borderColor: "var(--border-soft)" }}>
         <div className="flex flex-none items-center gap-3 lg:w-[300px]">
           {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark; next/image adds no value for a 30px inline logo */}
           <img src="/brand/mark.png" alt="" aria-hidden="true" width={30} height={30} className="h-[30px] w-[30px] flex-none object-contain max-lg:h-6 max-lg:w-6" />
@@ -1428,7 +1428,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         <div className="relative min-w-0 flex-1 p-4 max-lg:p-2 max-lg:pb-[54px]">
           <div
             className="relative h-full border border-border"
-            style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" }}
+            style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" /* no-token: one-off vignette gradient */ }}
             onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY })}
           >
             {/* The MapLibre host stays MOUNTED in table view (display:none) —
@@ -1647,7 +1647,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 // and both docks are one tap from closed.
                 narrow && (railOpen || ctrlOpen) ? "max-lg:hidden" : "max-lg:bottom-[54px]"
               } ${view === "table" ? "hidden" : ""}`}
-              style={{ background: "rgba(16,17,13,.96)", borderColor: compare ? "#6b3020" : "#3b3626", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
+              style={{ background: "rgba(16,17,13,.96)", borderColor: compare ? "var(--accent-border)" : "var(--border)", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
             >
               <button
                 onClick={() => {
@@ -1661,16 +1661,16 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 aria-pressed={compare} disabled={vintage === "2011"}
                 title={vintage === "2011" ? "Compare works on current-day boundaries — switch BOUNDARIES back to TODAY" : undefined}
                 className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                style={{ background: compare ? "var(--accent)" : "transparent", color: compare ? "var(--accent-ink)" : "#d8ccbe" }}
+                style={{ background: compare ? "var(--accent)" : "transparent", color: compare ? "var(--accent-ink)" : "var(--text-warm)" }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
                   <rect x="3" y="3" width="13" height="13" rx="1.5" /><rect x="8" y="8" width="13" height="13" rx="1.5" />
                 </svg>
                 {compare ? "Comparing" : "Compare"}
               </button>
-              <span className="w-px flex-none" style={{ background: "#2a2619" }} />
+              <span className="w-px flex-none" style={{ background: "var(--border-soft)" }} />
               <ShareMenu disabled={false} onCopyLink={copyLink} onCopyEmbed={copyEmbed} copied={copied} shareCaption={shareCaption} />
-              <span className="w-px flex-none" style={{ background: "#2a2619" }} />
+              <span className="w-px flex-none" style={{ background: "var(--border-soft)" }} />
               <button
                 onClick={() => setSocialOpen(true)} disabled={!data || vintage === "2011"}
                 title={vintage === "2011" ? "Cards render current-day boundaries — switch BOUNDARIES back to TODAY" : undefined}
@@ -1688,7 +1688,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             {view === "map" && compare && pins.length < 2 && (
               <div
                 className="atl-pop absolute left-1/2 top-3.5 z-[6] -translate-x-1/2 rounded-sm border px-3.5 py-2 text-[12px] font-semibold max-lg:top-[60px] max-lg:max-w-[calc(100%-1rem)] max-lg:text-[11.5px]"
-                style={{ background: "rgba(26,23,14,.96)", borderColor: "#6b3020", color: "#eecdb8" }}
+                style={{ background: "rgba(26,23,14,.96)", borderColor: "var(--accent-border)", color: "#eecdb8" /* no-token: warm ink for the pinned-region chip, single use */ }}
               >
                 {!data ? "Pick an indicator, then click two regions" : pins.length === 0 ? "Click the first region to compare" : "Now click a second region"}
               </div>
@@ -1729,7 +1729,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             {view === "map" && hovered && tip && (
               <div
                 className="pointer-events-none fixed z-[60] whitespace-nowrap border px-2.5 py-1.5"
-                style={{ left: tip.x + 14, top: tip.y + 14, background: "rgba(13,15,20,.96)", borderColor: "#4a4433" }}
+                style={{ left: tip.x + 14, top: tip.y + 14, background: "rgba(13,15,20,.96)", borderColor: "var(--border-strong)" }}
               >
                 <span className="text-[12px] font-bold text-bright">{hovered.name}</span>
                 {data && <span className="ml-2 font-mono text-[10.5px] text-muted">{fmtHover(hoverValue)}</span>}
@@ -1825,7 +1825,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             // border-box, so the handle is not clipped by a pixel of its own edge.
             railOpen ? "max-lg:h-[62dvh]" : "max-lg:h-[47px]"
           }`}
-          style={{ borderColor: "#211e14" }}
+          style={{ borderColor: "var(--border-faint)" }}
           aria-label="Rankings and profile"
         >
           {narrow && (
@@ -1853,7 +1853,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               scopeSub={focusActive && focus ? `${focus.name} districts` : level === "district" ? "districts" : "states"}
               slots={[
                 {
-                  label: "SLOT A", accent: "#e6b34a",
+                  label: "SLOT A", accent: "#e6b34a", // token: --gold (a value handed to ComparePanel, not a CSS context here)
                   entry: pins[0] && data ? {
                     name: pins[0].name, sub: pins[0].kind === "district" ? pins[0].state : "state",
                     val: va != null ? fmtFull(va) : "no data",
@@ -1863,7 +1863,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   onClear: () => { const p = pins[0]; if (p) { mapRef.current?.setFeatureState({ source: p.kind === "state" ? "states" : "districts", id: p.code }, { pinned: false }); setPins(pins.slice(1)); } },
                 },
                 {
-                  label: "SLOT B", accent: "#d1502f",
+                  label: "SLOT B", accent: "#d1502f", // token: --accent
                   entry: pins[1] && data ? {
                     name: pins[1].name, sub: pins[1].kind === "district" ? pins[1].state : "state",
                     val: vb != null ? fmtFull(vb) : "no data",
@@ -1970,7 +1970,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       {toast && (
         <div
           className="atl-pop fixed bottom-6 left-1/2 z-[70] max-w-[520px] -translate-x-1/2 border px-4 py-2.5 text-[12px] font-medium"
-          style={{ background: "#1a1712", borderColor: "#4a4433", borderLeft: "2px solid #d1502f", color: "#ccc4b2" }}
+          style={{ background: "var(--elevated)", borderColor: "var(--border-strong)", borderLeft: "2px solid var(--accent)", color: "var(--text-soft)" }}
         >
           {toast}
         </div>

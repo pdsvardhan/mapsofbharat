@@ -142,7 +142,7 @@ export default function CoveragePage() {
                   </div>
 
                   {/* Stacked provenance bar — measured vs each estimate kind */}
-                  <div className="mt-2 flex h-2 w-full overflow-hidden rounded-[2px]" style={{ background: "#2a271d" }}>
+                  <div className="mt-2 flex h-2 w-full overflow-hidden rounded-[2px]" style={{ background: "var(--map-nodata)" }}>
                     {seg.map(([cls, n]) =>
                       n > 0 ? (
                         <span

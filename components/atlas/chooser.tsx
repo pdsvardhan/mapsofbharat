@@ -127,7 +127,7 @@ export function ChooserModal({
                     className="block h-[58px] w-full px-6 text-left transition-colors max-lg:h-auto max-lg:w-auto max-lg:flex-none max-lg:whitespace-nowrap max-lg:px-4 max-lg:py-2"
                     style={{ background: on ? "var(--selected-section)" : "transparent" }}
                   >
-                    <div className="text-[18px] font-bold capitalize tracking-tight max-lg:text-[15px]" style={{ color: on ? "#eae4d6" : "#8a8477" }}>{c}</div>
+                    <div className="text-[18px] font-bold capitalize tracking-tight max-lg:text-[15px]" style={{ color: on ? "var(--foreground-bright)" : "var(--faint)" }}>{c}</div>
                     {/* the per-topic count would double the strip's height on a phone for
                         information the list itself immediately shows */}
                     <div className="text-[11px] text-faint max-lg:hidden">{count} indicator{count === 1 ? "" : "s"}</div>

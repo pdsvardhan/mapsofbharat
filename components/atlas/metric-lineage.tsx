@@ -92,7 +92,7 @@ export function MetricLineage({
         {steps.map((s, i) => (
           <li key={s.label} className="flex flex-col gap-2 p-4" style={{ background: "var(--panel)" }}>
             <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 flex-none items-center justify-center rounded-sm bg-bright font-mono text-[11px] font-bold" style={{ color: "#14120d" }}>
+              <span className="flex h-5 w-5 flex-none items-center justify-center rounded-sm bg-bright font-mono text-[11px] font-bold" style={{ color: "var(--bright-ink)" }}>
                 {i + 1}
               </span>
               <span className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">
