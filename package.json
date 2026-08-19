@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "prebuild": "node scripts/check-raw-assets.mjs"
+    "check:css": "node scripts/check-globals-layers.mjs",
+    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
