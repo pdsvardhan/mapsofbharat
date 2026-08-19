@@ -572,3 +572,45 @@ All three are fixed and mutation-proven. The guard now transpiles the declaratio
 - *api-limitation* — Ottomate to-do titles are capped at 300 characters, hit four times.
 
 **Next session context:** pick **R2** at `/projects/mapsofbharat/design/metric-row-cluster` (decisions 89–93, proposed). Then R3 motion — which genuinely cannot be pre-generated, because it animates the forms R2 chooses and the isolation gate holds every other axis constant — then R4 on the now-stamped `metric-rank-table`. The full plan, including the three parallel build items (#481, #482, risk 57) with their hazards and required mutation proofs, is at `planning/2026-08-12-next-session-plan.md`. Two SOFT anti-gaslight advisories stand (`stale-verification` ×12, `stale-spec` ×1); all HARD rules are 0.
+
+## Session 2026-08-20 — planning + pre-launch indexing
+
+**Stage:** Stage 4 iterate · iter-41 shipped, then a full planning pass
+**What changed:**
+- **#525 shipped and live at `d9f92ae`** — the site was deployed but indexable under its
+  INTERNAL name: `robots.txt` said `Allow: /`, the home canonical pointed at
+  `mapsofbharat.vault7a.xyz`, and the sitemap advertised `mapsofbharat.in`, which does not
+  resolve. Added `IS_LAUNCHED` (default UNLAUNCHED, fails safe). While unlaunched:
+  `Disallow: /`, no sitemap or host line, and `X-Robots-Tag: noindex, nofollow` on every
+  page. `robots.txt` is now `force-dynamic` — Next prerendered it, so a runtime flag flip
+  would have moved the header and left robots.txt disagreeing.
+- Both launch states PROVEN against two running servers: `SITE_LAUNCHED=true` returns the
+  original robots verbatim and drops the header. Switchover is one env var.
+- Two existing SEO specs made launch-aware, both branches asserted rather than skipped.
+- **Planning pass:** `planning/EXECUTION.md` (5 parallel streams with file ownership),
+  `planning/PLAN.md`, and sub-plans for #408 symbol maps, #405 hardening (split 7 ways)
+  and #913 metric detail. `planning/TESTING-CHECKLIST.md` accumulates what the owner tests.
+
+**Decisions:** no new ADRs. Owner rulings recorded: design rounds SUSPENDED (author and
+show, don't offer options); Ottomate tracker is source of truth with `TASKS.md` generated;
+#913 keeps DOM order and changes visual weight only; R2's colour-budget overage accepted;
+#410 after launch.
+
+**Friction:**
+- *tooling* — SSH heredocs mangled a patch twice. The second time it wrote a literal
+  BACKSPACE byte (0x08) where `\b` was intended, producing `/Disallow:\s*\/api\x08/i`,
+  a regex that can never match. Write scripts to a file and scp them; never heredoc.
+- *tooling* — my own new assertion `/Allow:\s*\//i` was unanchored and matched inside
+  `Disallow: /`, so it passed on the opposite state. Anchor regexes that distinguish two
+  states.
+- *self* — twice counted the wrong thing and reported it: 66 "lint problems" was a grep
+  line-count (real figure 64), and "5 HARD anti-gaslight violations" was the number of
+  HARD *rules*, all with count 0. Read the field, not the row count.
+
+**Next session context:** **Run Wave 1 of `planning/EXECUTION.md` autonomously.** Owner
+instruction: do not check in until Wave 1 is done or context is nearly exhausted. Every
+decision needed is already recorded in the banner at the top of that file — do not re-ask.
+Start the three Stream R research agents (unattended), then work Stream Q. Branch order
+Q → O → S → M; `app/globals.css` is owned by Q alone. Ask before any production deploy.
+Ottomate tool work is a separate track (`Desktop/Projects/Ottomate/TASKS.md`); **#237, a
+plaintext admin password reused across the media stack, should be done regardless.**
