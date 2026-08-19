@@ -17,6 +17,19 @@
 // At the domain switchover this collapses to a one-line change: set SITE_URL to
 // the same value as CANONICAL_URL and every canonical, OG and sitemap URL agrees
 // again. Nothing else needs editing.
+// LAUNCH STATE (to-do 525). The site is DEPLOYED and reachable at SITE_URL long
+// before it is LAUNCHED, and those are different things. While unlaunched it must
+// not be indexed AT ALL — not because the content is secret, but because the only
+// address that exists today is the internal one. If a crawler indexes
+// mapsofbharat.vault7a.xyz first, that becomes the URL search engines know, and
+// the real domain then has to fight its own predecessor for the same content.
+//
+// Default is UNLAUNCHED, deliberately: forgetting to set a flag must fail toward
+// "not indexed", never toward an accidental public debut. Flip by setting
+// SITE_LAUNCHED=true in the environment at the same moment SITE_URL becomes
+// CANONICAL_URL — one switchover, both changes.
+export const IS_LAUNCHED = process.env.SITE_LAUNCHED === "true";
+
 export const CANONICAL_URL = "https://mapsofbharat.in";
 
 export const SITE_URL = "https://mapsofbharat.vault7a.xyz";

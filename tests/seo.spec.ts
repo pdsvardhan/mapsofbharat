@@ -4,20 +4,37 @@ import { test, expect } from "@playwright/test";
 // instance with the canonical DB mounted read-only (DB_PATH), so the sitemap
 // enumerates real /metric/{id} pages rather than degrading to the static set.
 
+// LAUNCH-AWARE (to-do 525). Until SITE_LAUNCHED=true the site is deployed but
+// deliberately NOT indexable, so the post-launch posture asserted below is a FUTURE
+// state. Both states are asserted rather than skipped: a skip reads as green, and
+// this project has already been bitten by tests that passed by not running.
+const LAUNCHED = process.env.SITE_LAUNCHED === "true";
+
 const CANON = "https://mapsofbharat.in";
 const STATIC_PATHS = ["/", "/explore", "/methodology", "/coverage", "/corrections", "/terms", "/privacy"];
 
 test.describe("SEO floor — robots + sitemap (item 881)", () => {
-  test("/robots.txt allows indexing, disallows /api + /embed, links the sitemap", async ({ request }) => {
+  test("/robots.txt matches the launch state", async ({ request }) => {
     const res = await request.get("/robots.txt");
     expect(res.ok()).toBeTruthy();
     const body = await res.text();
-
     expect(body).toMatch(/User-Agent:\s*\*/i);
-    expect(body).toMatch(/Allow:\s*\//i);
-    expect(body).toMatch(/Disallow:\s*\/api\b/i);
-    expect(body).toMatch(/Disallow:\s*\/embed\b/i);
-    // sitemap reference on the canonical public domain
+
+    if (!LAUNCHED) {
+      // Pre-launch: everything disallowed, nothing advertised. Detail lives in
+      // tests/noindex.spec.ts; this branch only guarantees the two postures can
+      // never be mistaken for one another.
+      expect(body).toMatch(/Disallow:\s*\/\s*$/m);
+      expect(body.toLowerCase()).not.toContain("sitemap:");
+      return;
+    }
+
+    // ANCHORED. Unanchored, /Allow:\s*\//i matches inside "Disallow: /" — so the
+    // pre-launch body satisfied this line by accident, and the branch only failed
+    // one assertion later. A check that can pass on the opposite state is not a check.
+    expect(body).toMatch(/^Allow:\s*\/\s*$/im);
+    expect(body).toMatch(/Disallow:\s*\/api/i);
+    expect(body).toMatch(/Disallow:\s*\/embed/i);
     expect(body).toMatch(/Sitemap:\s*https:\/\/mapsofbharat\.in\/sitemap\.xml/i);
   });
 

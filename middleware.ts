@@ -1,3 +1,4 @@
+import { IS_LAUNCHED } from "@/lib/site";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -92,6 +93,14 @@ export function middleware(req: NextRequest) {
   // crawler that only reads headers still skips it — belt-and-braces with the
   // robots metadata on app/embed/layout.tsx. This does NOT touch frame-ancestors.
   if (isEmbed) {
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+  // Pre-launch, EVERY page carries the same header (to-do 525). robots.txt alone is
+  // not enough: a Disallow tells a crawler not to fetch, so a URL discovered from an
+  // external link can still be listed as a bare result the crawler never read. The
+  // header is what a crawler that DOES fetch obeys. Same belt-and-braces reasoning
+  // as /embed above, applied site-wide until SITE_LAUNCHED=true.
+  if (!IS_LAUNCHED) {
     res.headers.set("X-Robots-Tag", "noindex, nofollow");
   }
   return res;

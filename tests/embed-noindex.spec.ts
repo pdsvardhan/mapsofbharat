@@ -21,9 +21,18 @@ test.describe("/embed noindex (item 882)", () => {
     expect((content || "").toLowerCase()).toContain("noindex");
   });
 
-  test("/ does NOT carry an X-Robots-Tag noindex header", async ({ request }) => {
-    const res = await request.get("/");
-    const tag = (res.headers()["x-robots-tag"] || "").toLowerCase();
-    expect(tag).not.toContain("noindex");
+  test("the / noindex header follows the launch state; /embed always has it", async ({ request }) => {
+    // Pre-launch (to-do 525) EVERY page carries noindex, so "/ has no noindex" is a
+    // post-launch statement. What must hold in BOTH states is that /embed is never
+    // indexable — that is item 882's actual claim, asserted unconditionally.
+    const LAUNCHED = process.env.SITE_LAUNCHED === "true";
+
+    const embed = await request.get("/embed");
+    expect((embed.headers()["x-robots-tag"] || "").toLowerCase()).toContain("noindex");
+
+    const root = await request.get("/");
+    const tag = (root.headers()["x-robots-tag"] || "").toLowerCase();
+    if (LAUNCHED) expect(tag).not.toContain("noindex");
+    else expect(tag).toContain("noindex");
   });
 });
