@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 
-import { correctionsDb } from "@/lib/corrections-db";
+import { correctionsDb, correctionsDbPath } from "@/lib/corrections-db";
 import { hashIp } from "@/lib/ip";
 
 export const runtime = "nodejs";
@@ -150,5 +150,11 @@ export async function GET(req: Request) {
     )
     .all();
 
-  return NextResponse.json({ ok: true, reports });
+  // db_path lets a test PROVE which store it is about to write to rather than infer
+  // it from BASE_URL (to-do #481 — the corrections spec once wrote seven real rows
+  // into the production reader-report DB, and nothing in it could have known).
+  // Owner-only by construction: this branch is past the token compare above, and the
+  // body it sits in already returns the reports themselves, so a filesystem path is
+  // not a new class of disclosure.
+  return NextResponse.json({ ok: true, db_path: correctionsDbPath(), reports });
 }
