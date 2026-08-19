@@ -511,7 +511,11 @@ export function RankingRail({
                 key={r.entry.code}
                 onClick={() => onRowClick(r.entry!)} onMouseEnter={() => onRowEnter(r.entry!)} onMouseLeave={onRowLeave}
                 className="flex w-full items-center gap-2 border-b border-border-faint px-1 py-[7px] text-left transition-transform hover:translate-x-[3px] hover:bg-elevated"
-                style={{ background: r.entry.code === selectedCode ? "#17130e" : undefined }}
+                // R4: was #17130e, a THIRD literal for this surface and the lighter
+                // of the two values in use. Now the one --selected-row token, so the
+                // rail, the chooser's metric row and the rank table answer "selected"
+                // identically instead of two ways (ledger row 101).
+                style={{ background: r.entry.code === selectedCode ? "var(--selected-row)" : undefined }}
               >
                 <span
                   className="h-[26px] w-[3px] flex-none transition-colors"

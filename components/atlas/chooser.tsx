@@ -125,7 +125,7 @@ export function ChooserModal({
                   <button
                     key={c} onMouseEnter={() => { if (hoverArmed) setCat(c); }} onClick={() => setCat(c)}
                     className="block h-[58px] w-full px-6 text-left transition-colors max-lg:h-auto max-lg:w-auto max-lg:flex-none max-lg:whitespace-nowrap max-lg:px-4 max-lg:py-2"
-                    style={{ background: on ? "#17130e" : "transparent" }}
+                    style={{ background: on ? "var(--selected-section)" : "transparent" }}
                   >
                     <div className="text-[18px] font-bold capitalize tracking-tight max-lg:text-[15px]" style={{ color: on ? "#eae4d6" : "#8a8477" }}>{c}</div>
                     {/* the per-topic count would double the strip's height on a phone for
@@ -173,7 +173,7 @@ export function ChooserModal({
                     // for touch, and the name is unclipped at full width.
                     title={`${m.name} — ${m.source}`}
                     className="grid h-8 w-full items-center gap-x-2 border-b border-border-faint px-2 text-left transition-colors duration-[160ms] hover:bg-elevated"
-                    style={{ gridTemplateColumns: ROW_COLS, background: active ? "#241a12" : undefined }}
+                    style={{ gridTemplateColumns: ROW_COLS, background: active ? "var(--selected-row)" : undefined }}
                   >
                     <span className="font-mono text-[11px] text-faint">{String(i + 1).padStart(2, "0")}</span>
                     <span className="truncate text-[15px] font-bold text-bright">

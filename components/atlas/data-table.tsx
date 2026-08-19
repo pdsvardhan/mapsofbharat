@@ -231,10 +231,33 @@ export function DataTable({
                 data-role="region-row"
                 data-testid="data-table-row"
                 onClick={onRowClick ? () => onRowClick(e) : undefined}
+                // region-row.selected-affordance (R4, ledger row 101). Three things
+                // were wrong here and all three were invisible to the suite:
+                //   1. #17130e was a hard-coded literal, and the WRONG one of the two
+                //      values this app used for a selected row.
+                //   2. Selection was signalled by COLOUR ALONE. That is a floor, not a
+                //      preference, and it got worse the moment to-do 503 wired row
+                //      selection on — before that the state was unreachable.
+                //   3. No aria-current, so a screen reader was told nothing at all.
+                // The fix INHERITS the chooser's answer (chooser.tsx region-row) rather
+                // than inventing a third: surface step + a 6px accent marker + the aria
+                // state. Two components, same archetype, same question, one answer.
+                aria-current={on ? "true" : undefined}
                 className={`border-b border-border-faint ${onRowClick ? "cursor-pointer hover:bg-elevated" : ""}`}
-                style={{ background: on ? "#17130e" : undefined }}
+                style={{ background: on ? "var(--selected-row)" : undefined }}
               >
                 <td className="px-3 py-1.5 font-mono text-[11px] text-faint">
+                  {/* The marker is decorative — aria-current above is what carries the
+                      state to a reader, so this is aria-hidden. 6px non-text, judged
+                      against the 3:1 UI floor rather than 4.5:1. */}
+                  {on && (
+                    <span
+                      aria-hidden
+                      data-testid="row-selected-marker"
+                      className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                      style={{ background: "var(--accent)" }}
+                    />
+                  )}
                   {rank == null ? "—" : rank}
                 </td>
                 <th scope="row" className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-bright">
