@@ -3,36 +3,86 @@ on:
   push:
     branches: ['**']
   pull_request:
+
+# Two jobs, deliberately split by what they NEED rather than by what they do.
+#
+# `quality` needs only the repo, so it is fast and runs anywhere. `e2e` needs the
+# canonical atlas DB and the raw source tree, BOTH of which are gitignored (12MB
+# and 825MB) — which is why the end-to-end suite had never actually run in CI and
+# sat behind a `vars.RUN_TESTS` flag that was never turned on. The runner is
+# self-hosted on the box where that data lives, so the job mounts it READ-ONLY
+# (see container.volumes below, permitted via act_runner valid_volumes).
+#
+# The build happens once, in `e2e`, because it is the slow step and `quality`
+# does not need an artefact — only type and lint correctness.
 jobs:
-  quality:                      # always hard — fast gates (standard CI template, todo 4)
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-adr-refs.sh
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      # Survey-of-India boundary gate (#405): checksum + geometry fingerprint (vs
-      # scripts/boundary-fingerprint.json) + always-on extent asserts. Blocks any commit that
-      # silently changes the boundary geojson or crops claimed territory (J&K/Ladakh/Aksai
-      # Chin/Arunachal). Intentional edits: `node scripts/check-boundaries.mjs --write` (reviewed).
+
+      # Survey-of-India boundary gate (#405): checksum + geometry + property
+      # fingerprint (vs scripts/boundary-fingerprint.json) + always-on extent
+      # asserts. Blocks any commit that silently changes the boundary geojson or
+      # crops claimed territory (J&K / Ladakh / Aksai Chin / Arunachal), and the
+      # extent asserts run even under --write so a regenerated golden cannot
+      # launder a crop. Mutation-proven 7/7 on 2026-08-20.
+      # Intentional edits: `node scripts/check-boundaries.mjs --write` (reviewed).
       - run: node scripts/check-boundaries.mjs
+
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm run lint --if-present || echo "lint warnings (non-blocking)"
-      - run: npm run build
-  # Full Playwright e2e needs a SERVED app + the canonical DB (gitignored, ~12MB), which CI
-  # doesn't have — so it stays gated behind the RUN_TESTS repo variable. The full flow_test
-  # matrix runs nightly on the server (03:30 cron, per the feature-verifier design) where the
-  # DB lives. To run e2e in CI you'd seed a fixture DB + serve the standalone build first.
-  tests:
-    if: ${{ vars.RUN_TESTS == 'true' }}
+
+      # The cascade guard (#524) — an unlayered bare selector in globals.css
+      # outranks every Tailwind utility, app-wide and silently.
+      - run: node scripts/check-globals-layers.mjs
+
+      # Lint as a RATCHET, not a wish. This step used to be
+      # `npm run lint || echo "lint warnings (non-blocking)"`, which let a commit
+      # add any number of new problems while CI stayed green — a check that could
+      # not fail. The backlog (mostly `any` in the MapLibre glue and vendored
+      # matplotlib JS) does not block work, but it can only shrink.
+      - run: node scripts/check-lint-baseline.mjs
+
+  e2e:
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.49.0-jammy
+      # READ-ONLY. The job reads the real catalogue and the real source files; it
+      # can never write to either. Both paths are allow-listed in the runner's
+      # container.valid_volumes.
+      volumes:
+        - /mnt/storage/websites/mapsofbharat/data:/host-data:ro
+        - /mnt/storage/websites/mapsofbharat/pipeline/raw-new:/host-raw-new:ro
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
+
+      # test-isolated.sh resolves a free port from the kernel socket table rather
+      # than guessing; the playwright image ships without iproute2.
+      - run: apt-get update -qq && apt-get install -y -qq iproute2
+
       - run: npm ci
-      - run: npm test --if-present
-      - run: npx playwright test --if-present
+
+      # Stage the gitignored data into the places the app expects. The DB is
+      # copied (12MB) so the app's read-only handle owns its own inode; the raw
+      # tree is symlinked, because copying 825MB per push to read a few files
+      # would dominate the run.
+      - name: Stage the canonical DB and the raw source tree
+        run: |
+          mkdir -p data pipeline
+          cp /host-data/mapsofbharat.db data/mapsofbharat.db
+          ln -sfn /host-raw-new pipeline/raw-new
+          ls -la data/mapsofbharat.db
+          echo "raw-new entries: $(find -L pipeline/raw-new -type f | wc -l)"
+
+      - run: npm run build
+
+      # The full suite against a scratch instance of the STANDALONE build — never
+      # the production container. The harness proves the instance writes to a
+      # throwaway corrections store before it hands it to the suite (#481).
+      - run: bash scripts/test-isolated.sh --reporter=line
