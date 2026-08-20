@@ -189,3 +189,31 @@ test.describe("913-D — the Pro placeholder reads as unavailable, not broken", 
     expect(parseFloat(s.opacity)).toBe(1);
   });
 });
+
+test.describe("913-D — the downloads use the atlas's own button language", () => {
+  test("hover changes COLOUR, not opacity — the whole app has no opacity hovers", async ({ page }) => {
+    // The two download buttons were the only hover:opacity in the codebase. Fading a
+    // control on hover is the same visual language as fading a DISABLED one, which is
+    // the exact ambiguity the Pro placeholder fix above removed — so using it on the
+    // primary download said "unavailable" on the one control that is most available.
+    // The atlas primary CTA moves --accent -> --accent-hover; this now does too.
+    await page.goto(METRIC);
+    const btn = page.locator('[data-testid="raw-download"]');
+    await expect(btn).toBeVisible();
+
+    const rest = await btn.evaluate((el) => {
+      const c = getComputedStyle(el);
+      return { bg: c.backgroundColor, opacity: c.opacity };
+    });
+    await btn.hover();
+    await page.waitForTimeout(250);
+    const hovered = await btn.evaluate((el) => {
+      const c = getComputedStyle(el);
+      return { bg: c.backgroundColor, opacity: c.opacity };
+    });
+
+    expect(hovered.bg, "hover moves the fill").not.toBe(rest.bg);
+    expect(parseFloat(rest.opacity), "at rest, fully opaque").toBe(1);
+    expect(parseFloat(hovered.opacity), "hover must not fade the control").toBe(1);
+  });
+});

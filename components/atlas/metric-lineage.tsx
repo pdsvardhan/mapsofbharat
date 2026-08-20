@@ -121,7 +121,7 @@ export function MetricLineage({
               <a
                 data-testid="raw-download"
                 href={`/metric/${metricId}/raw`}
-                className="inline-flex w-fit items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-[12px] font-bold hover:opacity-90"
+                className="inline-flex w-fit items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-[12px] font-bold transition-colors hover:bg-accent-hover"
                 style={{ color: "var(--accent-ink)" }}
               >
                 ↓ Download raw source
@@ -138,7 +138,7 @@ export function MetricLineage({
                 href={sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-fit items-center gap-1.5 rounded-sm border border-accent px-3 py-1.5 text-[12px] font-bold text-accent-text hover:opacity-80"
+                className="inline-flex w-fit items-center gap-1.5 rounded-sm border border-accent px-3 py-1.5 text-[12px] font-bold text-accent-text transition-colors hover:bg-elevated"
               >
                 Raw source (official) ↗
               </a>
