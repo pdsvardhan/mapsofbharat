@@ -192,33 +192,48 @@ export default async function MetricPage({
           </h1>
         </div>
         {detail.methodology ? (
-          <p className="mt-4 max-w-3xl leading-relaxed text-muted">{detail.methodology}</p>
+          (() => {
+            // Seven dense lines of caveat sit above the first number on a page
+            // people reach from search. Moving them is a CONTENT-ORDER change and
+            // is explicitly out of scope (and CSS order would desync the visual
+            // and screen-reader orders). Weight is not: the lead sentence reads
+            // at body weight and the rest recedes, so the eye reaches the number.
+            const m = detail.methodology.match(/^([\s\S]*?[.!?])(\s+)([\s\S]*)$/);
+            const lead = m ? m[1] : detail.methodology;
+            const rest = m ? m[3] : "";
+            return (
+              <p className="mt-4 max-w-3xl leading-relaxed text-muted" data-methodology>
+                <span data-methodology-lead className="text-foreground">{lead}</span>
+                {rest ? <span data-methodology-rest className="text-faint"> {rest}</span> : null}
+              </p>
+            );
+          })()
         ) : null}
       </header>
 
       {/* Headline stats + coverage, all in the SSR HTML */}
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="border border-border px-4 py-3" style={{ background: "var(--panel)" }}>
+        <div className="border-y-[3px] border-border px-1 py-3" data-band="stat" data-stat="average">
           <div className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">
             National average
           </div>
-          <div className="mt-1 font-mono text-[22px] font-bold text-bright">
+          <div className="mt-1 font-mono text-[34px] font-bold leading-none text-bright">
             {detail.stats_count ? fmtUnit(detail.mean) : "—"}
           </div>
-          <div className="mt-1 text-[11px] text-muted">
+          <div className="mt-2 text-[11px] text-muted">
             over {detail.stats_count.toLocaleString("en-IN")} {scopeNoun}
           </div>
         </div>
-        <div className="border border-border px-4 py-3" style={{ background: "var(--panel)" }}>
+        <div className="border-y-[3px] border-border px-1 py-3" data-band="stat" data-stat="range">
           <div className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">Range</div>
-          <div className="mt-1 font-mono text-[16px] font-bold text-bright">
+          <div className="mt-1 font-mono text-[15px] font-semibold leading-snug text-foreground">
             {detail.stats_count ? `${fmtUnit(detail.min)} – ${fmtUnit(detail.max)}` : "—"}
           </div>
-          <div className="mt-1 text-[11px] text-muted">lowest to highest{unitLabel ? ` (${detail.unit})` : ""}</div>
+          <div className="mt-2 text-[11px] text-muted">lowest to highest{unitLabel ? ` (${detail.unit})` : ""}</div>
         </div>
-        <div className="border border-border px-4 py-3" style={{ background: "var(--panel)" }}>
+        <div className="border-y-[3px] border-border px-1 py-3" data-band="stat" data-stat="coverage">
           <div className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">Coverage</div>
-          <div className="mt-1 font-mono text-[16px] font-bold text-bright">
+          <div className="mt-1 font-mono text-[15px] font-semibold leading-snug text-foreground">
             {measured.toLocaleString("en-IN")} of {detail.count.toLocaleString("en-IN")} {scopeNoun}
           </div>
           <div className="mt-1 text-[11px] text-muted">
@@ -264,7 +279,8 @@ export default async function MetricPage({
           src={`/embed?m=${encodeURIComponent(detail.id)}&lvl=${level}`}
           title={`${detail.name} — interactive choropleth of India`}
           loading="lazy"
-          className="h-[520px] w-full border border-border"
+          data-map-frame
+          className="mx-auto block h-[660px] w-full max-w-[700px] border border-border"
           style={{ background: "var(--panel)" }}
         />
       </section>
@@ -311,7 +327,9 @@ export default async function MetricPage({
         <h2 className="mb-3 text-[13px] font-bold uppercase tracking-[.12em] text-faint">
           Share &amp; embed
         </h2>
-        <MetricShare pageUrl={pageUrl} embedSnippet={embedSnippet} atlasUrl={atlasUrl} />
+        <div className="border-y-[3px] border-border px-1 py-4" data-band="share">
+          <MetricShare pageUrl={pageUrl} embedSnippet={embedSnippet} atlasUrl={atlasUrl} />
+        </div>
       </section>
 
       <footer className="mt-10 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-muted">
