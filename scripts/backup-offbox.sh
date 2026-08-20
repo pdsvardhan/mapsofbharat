@@ -5,7 +5,11 @@
 #   scripts/backup-offbox.sh --local-only # snapshot + verify, skip the push (drills)
 #   scripts/backup-offbox.sh --no-raw     # skip the 825MB raw tree (fast path)
 #
-#   MOB_BACKUP_REMOTE   rclone target, e.g. "b2:vault7a-mob" or "drive:backups/mob".
+#   MOB_BACKUP_REMOTE   rclone target, e.g. "r2:vault7a-mob" or "b2:vault7a-mob".
+#                       ~1.3GB total, not ~10GB: the raw tree is mirrored
+#                       incrementally rather than re-archived nightly, so it fits
+#                       inside a free tier (Cloudflare R2 and Backblaze B2 both
+#                       give 10GB).
 #                       REQUIRED unless --local-only. There is no default: a backup
 #                       that silently stays on the box is worse than none, because
 #                       you believe you are covered.
@@ -120,21 +124,56 @@ log "backup-offbox: staging $OUT"
 snapshot_db "$REPO/data/mapsofbharat.db"   "$OUT/mapsofbharat.db"  "canonical atlas DB"
 snapshot_db "$REPO/data-rw/corrections.db" "$OUT/corrections.db"   "reader corrections DB"
 
-# ── The raw tree ─────────────────────────────────────────────────────────────
-if [ "$WITH_RAW" -eq 1 ]; then
-  if [ -d "$REPO/pipeline/raw-new" ] || [ -d "$REPO/pipeline/raw" ]; then
-    log "  raw tree: archiving (this is the slow part)"
-    tar czf "$OUT/pipeline-raw.tar.gz" -C "$REPO" \
-      $( [ -d "$REPO/pipeline/raw-new" ] && echo pipeline/raw-new ) \
-      $( [ -d "$REPO/pipeline/raw" ] && echo pipeline/raw ) 2>/dev/null \
-      || fail "raw tree: tar failed"
-    # Verify the archive is readable and non-trivial, rather than trusting tar's exit.
-    local_count="$(tar tzf "$OUT/pipeline-raw.tar.gz" 2>/dev/null | wc -l)"
-    [ "$local_count" -gt 100 ] || fail "raw tree: archive lists only $local_count entries — refusing to call that a backup"
-    log "  raw tree ok — $(du -h "$OUT/pipeline-raw.tar.gz" | cut -f1), $local_count entries"
-  else
-    log "  raw tree: neither pipeline/raw-new nor pipeline/raw exists — skipping"
-  fi
+# -- The raw tree ------------------------------------------------------------
+#
+# Mirrored as FILES, not rolled into a dated tarball, and that is a deliberate
+# change from the first version of this script.
+#
+# A tarball differs in every byte each night, so every night re-uploads the whole
+# ~1GB. Seven daily plus four weekly copies is ~10GB of remote storage and several
+# GB of egress a week, for data that barely changes: these are government source
+# files, written once and thereafter only added to. That cost is the difference
+# between "set up a remote in five minutes on a free tier" and "choose a paid
+# storage plan first", which is the actual thing standing between this project and
+# an off-box backup.
+#
+# As a mirror, rclone moves only what changed: ~1.2GB once, then kilobytes.
+#
+# The honest trade, stated rather than buried: the raw mirror is CURRENT-STATE, not
+# point-in-time. Delete a source file and the next sync deletes it remotely too.
+# That is the right shape for append-mostly source data and exactly the wrong shape
+# for the databases, which is why those stay as dated snapshots above. --backup-dir
+# parks anything the sync would remove under raw-deleted/<date>, so a deletion is
+# still recoverable without paying to store a second full copy every night.
+RAW_DIRS=()
+[ -d "$REPO/pipeline/raw-new" ] && RAW_DIRS+=("pipeline/raw-new")
+[ -d "$REPO/pipeline/raw" ] && RAW_DIRS+=("pipeline/raw")
+
+raw_file_count=0
+if [ "${#RAW_DIRS[@]}" -gt 0 ]; then
+  for d in "${RAW_DIRS[@]}"; do
+    raw_file_count=$((raw_file_count + $(find "$REPO/$d" -type f | wc -l)))
+  done
+fi
+
+if [ "$WITH_RAW" -eq 1 ] && [ "${#RAW_DIRS[@]}" -gt 0 ]; then
+  # Mirror LOCALLY first, then push the mirror. One code path, and it means
+  # --local-only still protects the raw tree against an accidental delete instead
+  # of protecting only the databases - which matters while no remote exists yet,
+  # because --local-only is the mode the nightly cron runs in.
+  for d in "${RAW_DIRS[@]}"; do
+    rclone sync "$REPO/$d" "$STAGE/raw-current/$d" \
+      --backup-dir "$STAGE/raw-deleted/$STAMP" \
+      --transfers 4 --retries 3 \
+      || fail "local raw mirror of $d failed"
+  done
+  staged_raw="$(find "$STAGE/raw-current" -type f | wc -l)"
+  log "  raw tree: $raw_file_count files -> local mirror holds $staged_raw"
+  [ "$staged_raw" -ge "$(( raw_file_count * 9 / 10 ))" ] \
+    || fail "local raw mirror holds $staged_raw of $raw_file_count files"
+  echo "$raw_file_count" > "$OUT/raw-file-count.txt"
+else
+  log "  raw tree: skipped"
 fi
 
 # A manifest, so a restorer can tell what they are holding without unpacking it.
@@ -160,6 +199,21 @@ if [ "$LOCAL_ONLY" -eq 1 ]; then
 else
   command -v rclone >/dev/null 2>&1 || fail "rclone not installed"
   log "backup-offbox: pushing to $REMOTE"
+  if [ "$WITH_RAW" -eq 1 ] && [ "${#RAW_DIRS[@]}" -gt 0 ]; then
+    for d in "${RAW_DIRS[@]}"; do
+      log "  mirroring $d (incremental - only changed files move)"
+      rclone sync "$STAGE/raw-current/$d" "$REMOTE/raw-current/$d"         --transfers 4 --retries 3         --backup-dir "$REMOTE/raw-deleted/$STAMP"         || fail "rclone sync of $d failed"
+    done
+    remote_raw="$(rclone size "$REMOTE/raw-current" --json 2>/dev/null | sed -n 's/.*"count":\([0-9]*\).*//p')"
+    if [ -n "$remote_raw" ]; then
+      log "  remote raw mirror holds $remote_raw files (local $raw_file_count)"
+      # A mirror that quietly lost most of its files is the failure worth catching;
+      # rclone exiting 0 says the transfer ran, not that the bytes are there.
+      if [ "$remote_raw" -lt "$(( raw_file_count * 9 / 10 ))" ]; then
+        fail "remote raw mirror holds $remote_raw of $raw_file_count files - treat tonight as FAILED"
+      fi
+    fi
+  fi
   rclone sync "$STAGE/daily"  "$REMOTE/daily"  --transfers 2 --retries 3 \
     || fail "rclone sync of daily failed — the copy is STILL only on this box"
   rclone sync "$STAGE/weekly" "$REMOTE/weekly" --transfers 2 --retries 3 \

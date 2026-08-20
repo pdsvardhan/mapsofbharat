@@ -148,19 +148,42 @@ fi
 curl -sf "http://127.0.0.1:$PORT/" | grep -qi "<html" || fail "the home page did not render from restored data"
 log "home page renders"
 
-# ── 4. the raw tree, the asset git does not carry ────────────────────────────
-if [ -f "$SNAP/pipeline-raw.tar.gz" ]; then
-  n="$(tar tzf "$SNAP/pipeline-raw.tar.gz" | wc -l)"
-  [ "$n" -gt 100 ] || fail "raw archive lists only $n entries"
-  mkdir -p "$WORK/raw" && tar xzf "$SNAP/pipeline-raw.tar.gz" -C "$WORK/raw" || fail "raw archive failed to extract"
-  live="$(find "$REPO/pipeline/raw-new" -type f 2>/dev/null | wc -l)"
-  back="$(find "$WORK/raw/pipeline/raw-new" -type f 2>/dev/null | wc -l)"
-  log "raw tree restored — $n archived entries, raw-new: live $live vs restored $back"
-  [ "$back" -ge "$live" ] || echo "  NOTE: restored raw-new has fewer files than live; the snapshot predates recent additions" >&2
+# -- 4. the raw tree, the asset git does not carry --------------------------
+#
+# Restored from the MIRROR rather than an archive. The mirror is current-state by
+# design (see backup-offbox.sh), so the check is that it holds what the live tree
+# holds -- not that it matches a snapshot taken at some past moment.
+MIRROR="$( [ "$FROM_REMOTE" -eq 1 ] && echo "$REMOTE/raw-current" || echo "$STAGE/raw-current" )"
+declared=0
+[ -f "$SNAP/raw-file-count.txt" ] && declared="$(cat "$SNAP/raw-file-count.txt")"
+
+if [ "$FROM_REMOTE" -eq 1 ]; then
+  mirrored="$(rclone size "$MIRROR" --json 2>/dev/null | sed -n "s/.*[\"]count[\"]:\([0-9]*\).*//p")"
 else
-  log "WARNING: this snapshot carries no raw tree (taken with --no-raw?)"
+  mirrored="$(find "$MIRROR" -type f 2>/dev/null | wc -l)"
 fi
 
+if [ -z "$mirrored" ] || [ "$mirrored" = "0" ]; then
+  fail "the raw mirror at $MIRROR is empty - the one asset git cannot rebuild is NOT backed up"
+fi
+log "raw mirror holds $mirrored files (backup recorded $declared at snapshot time)"
+
+# Actually restore a file and read it, rather than trusting a count. A mirror of
+# 903 zero-byte files would satisfy any count check.
+if [ "$FROM_REMOTE" -eq 1 ]; then
+  mkdir -p "$WORK/rawprobe"
+  probe="$(rclone lsf "$MIRROR/pipeline/raw" --files-only 2>/dev/null | head -1)"
+  [ -n "$probe" ] || fail "no files listed under the remote raw mirror"
+  rclone copy "$MIRROR/pipeline/raw/$probe" "$WORK/rawprobe" 2>/dev/null \
+    || fail "could not restore $probe from the remote mirror"
+  sz="$(stat -c%s "$WORK/rawprobe/$probe" 2>/dev/null || echo 0)"
+else
+  probe="$(find "$MIRROR" -type f -size +1k | head -1)"
+  [ -n "$probe" ] || fail "no non-trivial file found in the local raw mirror"
+  sz="$(stat -c%s "$probe" 2>/dev/null || echo 0)"
+fi
+[ "$sz" -gt 1024 ] || fail "the restored raw probe is $sz bytes - a mirror of empty files is not a backup"
+log "restored a raw source file and read it back ($sz bytes)"
 ELAPSED=$(( $(date +%s) - START ))
 echo
 echo "──────────────────────────────────────────────────────────────"
