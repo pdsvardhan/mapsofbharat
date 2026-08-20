@@ -98,6 +98,25 @@ jobs:
 
       - run: npm run build
 
+      # Point the STANDALONE output at the mounted raw trees.
+      #
+      # Next traces pipeline/raw* into .next/standalone at build time. On the server
+      # those are real directories and it copies them; here they are symlinks to a
+      # read-only mount and the trace does not follow them, so the standalone tree
+      # ends up without them. The build guard still passed - it checks the SOURCE
+      # tree, which is present - and then at runtime /metric/<id>/raw fell back to a
+      # 307 redirect to censusindia.gov.in with x-raw-source: fallback-official-link.
+      #
+      # That is #498's failure mode wearing a different hat: source-present,
+      # output-missing. Recorded as its own to-do, because the guard should be
+      # asserting the OUTPUT rather than the input.
+      - name: Point the standalone build at the mounted raw trees
+        run: |
+          mkdir -p .next/standalone/pipeline
+          ln -sfn /host-raw-new .next/standalone/pipeline/raw-new
+          ln -sfn /host-raw .next/standalone/pipeline/raw
+          find -L .next/standalone/pipeline -type f | wc -l
+
       # The full suite against a scratch instance of the STANDALONE build — never
       # the production container. The harness proves the instance writes to a
       # throwaway corrections store before it hands it to the suite (#481).
