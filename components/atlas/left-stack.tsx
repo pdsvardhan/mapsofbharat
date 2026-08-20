@@ -14,6 +14,7 @@ import {
   type CoverageCounts,
 } from "@/lib/coverage";
 import { useDismiss } from "@/lib/use-dismiss";
+import { legendStops, symbolRadius, type SymbolLevel } from "@/lib/symbols";
 import { SEGMENTED_WIDTH, ViewToggle } from "@/components/atlas/data-table";
 
 /** Legend view mode — shared with india-map's Mode. */
@@ -96,7 +97,7 @@ export function IndicatorCard({
 
 export function LevelColourCard({
   level, onLevel, levelLock, palette, onPalette, vintage, onVintage, vintageAvailable,
-  view, onView,
+  view, onView, symbolOn,
 }: {
   level: "state" | "district";
   onLevel: (l: "state" | "district") => void;
@@ -111,6 +112,10 @@ export function LevelColourCard({
    *  swap sits with LEVEL / BOUNDARIES / MAP COLOUR in the same controls card. */
   view?: "map" | "table";
   onView?: (v: "map" | "table") => void;
+  /** Proportional-symbol mode (#408): the ramp paints nothing, so offering a
+   *  palette picker would be a live control with no effect — the same "visible,
+   *  enabled and inert" problem the VIEW gate below already avoids. */
+  symbolOn?: boolean;
 }) {
   const lockMsg = (l: "state" | "district") =>
     levelLock && levelLock !== l ? "This indicator is only available at the " + levelLock + " level" : undefined;
@@ -208,7 +213,7 @@ export function LevelColourCard({
           visible, enabled and inert is worse than an absent one: it invites a click
           and answers with silence. Gated on `view` rather than removed, because the
           row is correct and useful the moment the map is back. */}
-      {view !== "table" && (
+      {view !== "table" && !symbolOn && (
         <>
           <div className="mt-3 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-[.12em] text-faint">MAP COLOUR</span>
@@ -238,6 +243,7 @@ export function LegendCard({
   mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
+  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -260,6 +266,12 @@ export function LegendCard({
   /** Flip the ramp. Same state the ⚙ SCALE popover's DIRECTION row drives — this
    *  is a second trigger for one setting, not a second setting. */
   onReverse: () => void;
+  /** Proportional symbols (#408). `symbolable` is whether this metric's unit is a
+   *  COUNT, which is the only case where a choropleth misreads as area. When
+   *  symbols are on the ramp is replaced by a nested-circle key: size is the
+   *  encoding, so a colour scale would explain something the map is not saying. */
+  symbolable: boolean; symbolOn: boolean; onSymbol: () => void;
+  symbolMax: number; symbolLevel: SymbolLevel;
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
@@ -290,6 +302,26 @@ export function LegendCard({
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-[10px] font-bold tracking-[.1em] text-faint">{metricName.toUpperCase()}</span>
         <div className="flex flex-none items-center gap-1.5">
+          {/* SIZE / SHADE. Only offered for a count metric — for a rate there is
+              nothing to fix and circles would invent a problem. */}
+          {symbolable && (
+            <div className="flex border border-border" data-symbol-toggle>
+              {([[true, "SIZE"], [false, "SHADE"]] as [boolean, string][]).map(([on, label]) => (
+                <button
+                  key={label} onClick={() => { if (symbolOn !== on) onSymbol(); }}
+                  aria-pressed={symbolOn === on} data-symbol-mode={on ? "size" : "shade"}
+                  title={on
+                    ? "Draw each region as a circle sized by its value — a count read as colour is read as area"
+                    : "Shade each region by its value (area bias applies to counts)"}
+                  className="px-1.5 py-0.5 text-[9px] font-bold max-lg:min-h-[26px] max-lg:px-2"
+                  style={{ background: symbolOn === on ? "var(--accent)" : "transparent", color: symbolOn === on ? "var(--accent-ink)" : "var(--muted)" }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {!symbolOn && (
           <div className="flex border border-border">
             {([["value", "VALUE"], ["vs_avg", "VS AVG"], ["coverage", "COVERAGE"]] as [LegendMode, string][]).map(([m, label]) => (
               <button
@@ -301,9 +333,10 @@ export function LegendCard({
               </button>
             ))}
           </div>
+          )}
           {/* The ⚙ SCALE popover only governs value-mode class breaks — irrelevant
               to the categorical coverage view, so it is hidden there. */}
-          {mode !== "coverage" && (
+          {!symbolOn && mode !== "coverage" && (
             <button
               onClick={onToggleScale} aria-expanded={scaleOpen} data-scale-toggle
               className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated max-lg:min-h-[26px] max-lg:px-2"
@@ -313,7 +346,44 @@ export function LegendCard({
           )}
         </div>
       </div>
-      {mode === "coverage" ? (
+      {symbolOn ? (
+        // Nested reference circles, sharing a BASELINE rather than a centre.
+        // Concentric-from-the-centre is the other convention and it is harder to
+        // read at a glance: the eye compares the tops of stacked discs far more
+        // reliably than two radii about a shared origin. Three stops, chosen so the
+        // circles step visibly (a quarter and a sixteenth of the maximum VALUE give
+        // a half and a quarter of the maximum RADIUS) — value quartiles would give
+        // three near-identical discs on data this heavy-tailed.
+        (() => {
+          const stops = legendStops(symbolMax);
+          const rmax = symbolRadius(symbolMax, symbolMax, symbolLevel);
+          const W = 2 * rmax + 8;
+          const H = 2 * rmax + 10;
+          return (
+            <div className="mt-2 flex items-end gap-3" data-symbol-legend>
+              <svg width={W} height={H} className="flex-none overflow-visible" aria-hidden>
+                {stops.map((v) => {
+                  const r = symbolRadius(v, symbolMax, symbolLevel);
+                  return (
+                    <circle
+                      key={v} cx={W / 2} cy={H - 4 - r} r={r}
+                      fill="var(--accent)" fillOpacity={0.22}
+                      stroke="var(--accent)" strokeOpacity={0.85} strokeWidth={0.8}
+                    />
+                  );
+                })}
+              </svg>
+              <div className="flex flex-1 flex-col justify-end gap-[3px] pb-0.5">
+                {stops.map((v) => (
+                  <div key={v} data-symbol-legend-row className="font-mono text-[9.5px] text-faint">
+                    {fmt(v)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()
+      ) : mode === "coverage" ? (
         // COVERAGE view (item 830): the categorical provenance key REPLACES the
         // value legend. Each class present in the data lists its colour + count and
         // is a show/hide toggle, so a reader can isolate e.g. inherited districts.
@@ -374,7 +444,20 @@ export function LegendCard({
           </div>
         </>
       )}
-      {mode !== "coverage" && (
+      {symbolOn && (
+        <div data-symbol-method-line className="mt-2 text-[9.5px] font-semibold tracking-[.05em] text-faint">
+          <a
+            href="/methodology#symbol-maps" target="_blank" rel="noopener noreferrer"
+            data-symbol-method
+            className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
+          >
+            PROPORTIONAL SYMBOLS
+          </a>
+          <span aria-hidden> · </span>
+          <span>circle AREA ∝ value</span>
+        </div>
+      )}
+      {!symbolOn && mode !== "coverage" && (
         <div
           data-legend-method-line
           className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-faint"
