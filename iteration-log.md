@@ -614,3 +614,106 @@ Start the three Stream R research agents (unattended), then work Stream Q. Branc
 Q → O → S → M; `app/globals.css` is owned by Q alone. Ask before any production deploy.
 Ottomate tool work is a separate track (`Desktop/Projects/Ottomate/TASKS.md`); **#237, a
 plaintext admin password reused across the media stack, should be done regardless.**
+
+---
+
+## Session 2026-08-20 — Wave 1 and Wave 2, executed autonomously
+
+**Stage:** Stage 4 iterate — research, guards, hardening, two features
+**Duration:** ~7 h
+**What changed:**
+
+**Stream R — three research agents, two of them ending in a recorded "no".**
+- *R1 (#455)* — **0 of 124 metrics have two comparable time points.** Not below a
+  threshold: zero. No region is observed twice for any metric; the five metrics with
+  several distinct years are RBI fiscal rows where `year` is a per-state vintage stamp.
+  The slope chart is **struck permanently**. Transition + small multiples survive and are
+  stronger than research/766 assumed — 8 families of 3+ metrics share a unit and geometry,
+  three of them part-to-whole sets on all 733 districts.
+- *R2 (#386)* — **district election turnout is not honestly derivable.** Three independent
+  defeaters: 542 PCs cannot cover 735 districts (≥246 districts, 33.5%, would carry a
+  neighbour's value); with the same weight on numerator and denominator the apportionment
+  weight **cancels algebraically**, so the output is a resampling of the PC surface, not a
+  measurement; and no PC geometry exists in the repo. Unblocked only by assembly-segment
+  data, which nests inside districts by the Delimitation Commission's own rule.
+- *R3 (#531)* — **rescoped #408 before it was built.** Of the 29 HOTSPOT metrics only 4
+  want symbols, 3 want a denominator we already hold, 22 are already rates. Route by unit
+  semantics, not the HOTSPOT flag. Also found the pop_density error (see #548) and that
+  district `area_km2` is not stored at all.
+
+**Stream Q — six guards, every one mutation-proven.** Q0 generated `../Ottomate/TASKS.md`
+from the tracker (kills the second hand-kept copy). Q1 retitled #408. Q2 deleted the
+June-dated `PENDING-AND-NEXT-SESSION.md`. Q3 `kill-port.sh` resolves the PID from
+`ss -lntp` and refuses container-owned ports without `--force` (8610 is production).
+Q4 the corrections spec now proves where it writes and refuses production stores.
+Q5 an ESLint rule bans unannotated hex; 111 violations retired, five recurring roles
+became real tokens. Q6 refuses an unlayered bare selector in `globals.css`.
+
+**Stream O — 405-A done, 405-B owner-blocked.** Off-box backup script with WAL-safe
+snapshots, verified row counts, and a **performed** restore drill (124 metrics, catalogue
+identical to production, raw tree at parity). Later reshaped so the raw tree is mirrored
+incrementally rather than re-archived nightly: **~1.3 GB instead of ~10 GB**, which is what
+turns "choose a storage plan" into "run rclone config".
+
+**Stream S — proportional symbol maps (#408 phase 1)** for the 9 count metrics. Centroids
+verified inside their own polygons (a naive centroid falls outside for 7 of 735). Radius
+∝ √value in a pure function so the classic bug is unit-testable. Nested-circle legend.
+Parity made structural by wrapping `setFeatureState`/`removeFeatureState` once.
+
+**Stream M — #913 metric detail page.** Eight containers became ruled bands, measured
+against the live atlas panel. Hierarchy in the three stats. Map fills its frame. The Pro
+placeholder reads as unbuilt rather than broken.
+
+**Wave 2 — CI, and the guards that were never wired in.**
+- **CI had been failing on every push for weeks and nobody noticed** (runs 753–756 all
+  red). The build needed data CI did not have.
+- The full 249-test suite now runs on every push against the real database, via read-only
+  host mounts on the self-hosted runner. Green in ~4.5 min.
+- Lint is a **ratchet** (cannot rise; failing on a fall forces you to bank it).
+- **405-C was already built** — the boundary gate has been in CI since #405. What it never
+  had was proof it could fire. 6 of 7 mutations caught; the seventh was a real hole
+  (a property rename passed as a "reformat", which would blank every state name while the
+  gate printed PASS). Closed, now 7/7.
+- `/api/health` **could not fail** — it returned a hardcoded "ok", so the container
+  healthcheck and any future uptime monitor were both watching something with no failure
+  mode. It now opens the store, counts the catalogue, and answers 503.
+
+**Decisions:** no new ADRs. Owner rulings carried forward unchanged.
+
+**Friction:**
+- *self* — **my test harness was subtly wrong and produced a credible lie.** It ran
+  `next start` against an `output: "standalone"` build, so pages served but the client
+  bundle never loaded: 200 of 214 passed and 14 failed in a pattern that looked exactly
+  like a regression in my own colour changes. It was not. Serve standalone the way the
+  Dockerfile does.
+- *self* — **a mutation harness reported "6 of 6 mutations survived" while the tests were
+  catching every one.** Two causes, both mine: it piped the run through `tail -4`, cutting
+  off Playwright's "N failed" summary before the grep that decided the verdict; and it
+  never checked that a mutation had applied. Never truncate before a verdict; always
+  assert the mutation landed. Same family as last session's grep-line-count error.
+- *tooling* — Python text-mode writes on Windows convert files to CRLF and broke two shell
+  scripts. Use `newline=""`, or run the patch on the server.
+- *tooling* — `app/metric/[slug]/page.tsx` has **mixed** line endings, so an LF-anchored
+  patch silently matched nothing in half the file and applied one of four edits. Recorded
+  as #550.
+- *self* — reported the M5 consistency sweep as done having completed only half of it. The
+  owner's question found it. Re-checking against the plan is not optional.
+- *env* — Chromium SIGSEGVs at cold launch with 2 workers in the CI container (2 of 3
+  runs). Capped to `PW_WORKERS=1` in CI, which is the same cap to-do 253 already found for
+  this box.
+
+**Next session context:** **Start with #549 → #548, then launch.** `pop_density` reads
+~100× too high across Ladakh and J&K (Leh 339/km² against a real ~3) because
+`ingest_census_a01` divides by the sum of *enumerated* sub-district areas; the adapter's
+own comments admit it and the reader is never told. That is a wrong number on a live public
+map in a politically sensitive geography, and it should not survive first contact with
+inbound traffic. #549 is the cheap sibling: the adapter already computes district area and
+discards it, and persisting it makes #548 visible rather than buried.
+
+After that: launch (#499, plus the two owner ops items), then growth — #547 (transitions +
+small multiples, now proven buildable), #409, #410.
+
+**Owner-blocked, both needing credentials only they have:** #544 (one `rclone config`; the
+backup is now ~1.3 GB so a free tier covers it) and #545 (an external uptime monitor — and
+note it only becomes useful *after* a production deploy, since production still runs the
+old always-ok health endpoint).
