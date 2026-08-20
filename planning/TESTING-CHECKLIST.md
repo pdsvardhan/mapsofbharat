@@ -124,3 +124,32 @@ one got. Those nine now draw as **circles sized by value** instead.
   timed (12 seconds, catalogue identical to production). They still do not leave the
   box — that needs a cloud remote only you can set up.
 - `mapsofbharat` has **no uptime monitor**, while 16 other services on the box do.
+
+---
+
+## Wave 2 — 2026-08-20 (CI, guards, backups)
+
+Almost all of this is invisible to a reader. Nothing here changes the site's
+appearance, so the only thing to *look* at is the one item below.
+
+### Worth a glance
+
+- [ ] **`/api/health`** now does real work — it opens the database and counts the
+      catalogue, and answers **503** instead of 200 when it cannot. Visit
+      `https://mapsofbharat.vault7a.xyz/api/health` **after the next production
+      deploy** and you should see `"checks":{"db":true,"metrics":124}`. Before that
+      deploy it still shows the old always-ok response.
+
+### Nothing to test, but worth knowing
+
+- **CI now actually runs.** It had been failing on every push for weeks and nobody
+  noticed — the build step needed data that CI did not have. The full 249-test
+  suite now runs on every push against the real database, in about three minutes.
+- **Lint is a ratchet.** It cannot go up. It also fails if it goes *down*, to make
+  you bank the improvement.
+- **The boundary gate is proven.** It has guarded Survey-of-India compliance since
+  #405 and had never been shown to fail at anything. It now catches all seven
+  defects tested, including a property-rename hole it used to wave through as a
+  "reformat".
+- **Backups got ~8x cheaper.** The raw tree is mirrored incrementally rather than
+  re-archived nightly: ~1.3GB total instead of ~10GB, which fits a free tier.
