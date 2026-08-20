@@ -74,6 +74,10 @@ function rampFromStops(stops: string[]): (t: number) => string {
   };
 }
 
+/** no-token: colour-ramp STOPS, interpolated numerically by rampFromStops() — they are
+ *  inputs to a function, not styling. A CSS variable cannot be interpolated here, and
+ *  these ramps are chosen for perceptual uniformity across a data range rather than to
+ *  match the interface palette. */
 export const PALETTES: Record<PaletteId, { name: string; fn: (t: number) => string; note: string }> = {
   navyYellow: {
     name: "Navy – Yellow",

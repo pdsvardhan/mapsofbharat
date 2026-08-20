@@ -42,7 +42,7 @@ export default function MethodologyPage() {
       <TrackView event="methodology_viewed" data={{ metrics: metrics.length }} />
       <Link href="/" className="text-[13px] font-semibold text-accent-text hover:underline">← Back to the map</Link>
       <div className="mt-5 flex items-center gap-3">
-        <span className="flex h-[30px] w-[30px] items-center justify-center rounded-sm bg-bright text-[13px] font-extrabold" style={{ color: "#14120d" }}>MB</span>
+        <span className="flex h-[30px] w-[30px] items-center justify-center rounded-sm bg-bright text-[13px] font-extrabold" style={{ color: "var(--bright-ink)" }}>MB</span>
         <h1 className="text-[30px] font-extrabold tracking-tight text-bright">Methodology &amp; sources</h1>
       </div>
       <p className="mt-4 leading-relaxed text-muted">

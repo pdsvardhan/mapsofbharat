@@ -455,9 +455,9 @@ export function RankingRail({
                   <button
                     key={c.key} onClick={() => { onCohort(c.key); setCohortOpen(false); }}
                     className="flex w-full items-center justify-between border-b border-border-faint px-3 py-2 text-left hover:bg-elevated"
-                    style={{ background: cohort === c.key ? "#1f1b14" : undefined }}
+                    style={{ background: cohort === c.key ? "#1f1b14" /* no-token: the cohort strip's own selected tone, single use */ : undefined }}
                   >
-                    <span className="text-[12.5px] font-semibold" style={{ color: cohort === c.key ? "#eae4d6" : "#ccc4b2" }}>{c.name}</span>
+                    <span className="text-[12.5px] font-semibold" style={{ color: cohort === c.key ? "var(--foreground-bright)" : "var(--text-soft)" }}>{c.name}</span>
                     <span className="font-mono text-[9px] font-bold text-faint">{c.codes ? c.codes.size : entries.length}</span>
                   </button>
                 ))}
@@ -519,7 +519,7 @@ export function RankingRail({
               >
                 <span
                   className="h-[26px] w-[3px] flex-none transition-colors"
-                  style={{ background: r.entry.code === selectedCode ? "#d1502f" : r.entry.code === hoveredCode ? "#8a8477" : "transparent" }}
+                  style={{ background: r.entry.code === selectedCode ? "var(--accent)" : r.entry.code === hoveredCode ? "var(--faint)" : "transparent" }}
                 />
                 <span data-testid="rail-rank" className="w-[22px] flex-none font-mono text-[10px] text-faint">
                   {/* Branch on the rank itself, not on `estimated` (item 645). The old
@@ -529,16 +529,16 @@ export function RankingRail({
                   {r.rank == null ? "—" : String(r.rank).padStart(2, "0")}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold" style={{ color: r.entry.code === selectedCode ? "#f0e9db" : "#ccc4b2" }}>
+                  <span className="block truncate text-[13px] font-semibold" style={{ color: r.entry.code === selectedCode ? "#f0e9db" /* no-token: brightest label tone, selected row only */ : "var(--text-soft)" }}>
                     {r.entry.name}
                   </span>
                   {r.entry.sub && <span className="block truncate text-[9.5px] text-faint">{r.entry.sub}</span>}
-                  <span className="mt-1 block h-[3px] bg-[#1c1a12]">
+                  <span className="mt-1 block h-[3px] bg-[var(--bar-track)]">
                     <span
                       className="rankbar block h-full"
                       style={{
                         width: `${Math.max(4, Math.round(((r.entry.value - min) / span) * 100))}%`,
-                        background: r.entry.code === selectedCode ? "#d1502f" : "#4a4433",
+                        background: r.entry.code === selectedCode ? "var(--accent)" : "var(--border-strong)",
                       }}
                     />
                   </span>
@@ -597,7 +597,7 @@ export function ComparePanel({
             key={s.label}
             className="mb-2.5 px-3 py-3"
             style={{
-              border: `1px solid ${s.entry ? "#4a4433" : "#2a2619"}`,
+              border: `1px solid ${s.entry ? "var(--border-strong)" : "var(--border-soft)"}`,
               borderLeft: `3px solid ${s.accent}`,
               background: s.entry ? "rgba(30,27,18,0.5)" : "transparent",
             }}
@@ -615,7 +615,7 @@ export function ComparePanel({
                   </div>
                   <span className="whitespace-nowrap font-mono text-[20px] font-semibold text-bright">{s.entry.val}</span>
                 </div>
-                <div className="mt-2 h-[5px] rounded-sm bg-[#1c1a12]">
+                <div className="mt-2 h-[5px] rounded-sm bg-[var(--bar-track)]">
                   <span className="rankbar block h-full rounded-sm" style={{ width: `${s.entry.barPct}%`, background: s.accent }} />
                 </div>
               </>
@@ -628,7 +628,7 @@ export function ComparePanel({
           <div className="mt-1.5 border-t border-border-soft pt-3.5">
             <div className="text-[10px] font-bold tracking-[.14em] text-faint">THE GAP</div>
             <div className="mt-1.5 font-mono text-[30px] font-semibold leading-none tracking-tight text-accent-text">{gap}</div>
-            <div className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: "#c4b9a9" }}>{sentence}</div>
+            <div className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: "#c4b9a9" /* no-token: the compare sentence's own tone, single use */ }}>{sentence}</div>
           </div>
         )}
       </div>

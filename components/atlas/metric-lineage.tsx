@@ -88,11 +88,11 @@ export function MetricLineage({
       </h2>
 
       {/* The lineage chain — raw source → processing → external inputs → final data */}
-      <ol className="grid grid-cols-1 gap-px overflow-hidden border border-border sm:grid-cols-2 lg:grid-cols-4" style={{ background: "var(--border)" }}>
+      <ol className="grid grid-cols-1 gap-px overflow-hidden border-y-[3px] border-border sm:grid-cols-2 lg:grid-cols-4" data-band="lineage" style={{ background: "var(--border-faint)" }}>
         {steps.map((s, i) => (
-          <li key={s.label} className="flex flex-col gap-2 p-4" style={{ background: "var(--panel)" }}>
+          <li key={s.label} className="flex flex-col gap-2 p-4" style={{ background: "var(--background)" }}>
             <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 flex-none items-center justify-center rounded-sm bg-bright font-mono text-[11px] font-bold" style={{ color: "#14120d" }}>
+              <span className="flex h-5 w-5 flex-none items-center justify-center rounded-sm bg-bright font-mono text-[11px] font-bold" style={{ color: "var(--bright-ink)" }}>
                 {i + 1}
               </span>
               <span className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">
@@ -107,7 +107,7 @@ export function MetricLineage({
       {/* Tiered downloads: raw = free for everyone, processed = view-only / Pro */}
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2" data-testid="downloads">
         {/* Raw source — free */}
-        <div className="flex flex-col gap-2 border border-border p-4" style={{ background: "var(--panel)" }}>
+        <div className="flex flex-col gap-2 border-y-[3px] border-border px-1 py-4" data-band="download-free">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-[.1em] text-bright">
               Raw source data
@@ -151,7 +151,7 @@ export function MetricLineage({
         </div>
 
         {/* Processed dataset — view-only now, Pro later. No accounts are built. */}
-        <div className="flex flex-col gap-2 border border-border p-4" style={{ background: "var(--panel)" }}>
+        <div className="flex flex-col gap-2 border-y-[3px] border-border px-1 py-4" data-band="download-pro">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-[.1em] text-bright">
               Processed dataset
@@ -166,7 +166,7 @@ export function MetricLineage({
             disabled
             aria-disabled="true"
             title="Coming soon on Pro"
-            className="inline-flex w-fit cursor-not-allowed items-center gap-1.5 rounded-sm border border-border-soft px-3 py-1.5 text-[12px] font-bold text-faint opacity-60"
+            className="inline-flex w-fit cursor-default items-center gap-1.5 rounded-sm border border-dashed border-border-soft px-3 py-1.5 text-[12px] font-bold text-muted"
           >
             ↓ Download processed dataset — Pro (coming soon)
           </button>

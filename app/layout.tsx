@@ -77,7 +77,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0c10",
+  themeColor: "#0b0c10", // no-token: read by the browser chrome as a literal, before any stylesheet exists
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

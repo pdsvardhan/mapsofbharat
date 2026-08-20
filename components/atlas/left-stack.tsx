@@ -14,6 +14,7 @@ import {
   type CoverageCounts,
 } from "@/lib/coverage";
 import { useDismiss } from "@/lib/use-dismiss";
+import { legendStops, symbolRadius, type SymbolLevel } from "@/lib/symbols";
 import { SEGMENTED_WIDTH, ViewToggle } from "@/components/atlas/data-table";
 
 /** Legend view mode — shared with india-map's Mode. */
@@ -40,10 +41,10 @@ export function Crumbs({
       )}
       {items.map((c, i) => (
         <span key={c.label + i} className="flex items-center gap-2">
-          <button onClick={c.onClick} style={{ color: c.on ? "#eae4d6" : "#a49d8c" }} className="hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:items-center">
+          <button onClick={c.onClick} style={{ color: c.on ? "var(--foreground-bright)" : "var(--muted)" }} className="hover:text-foreground max-lg:inline-flex max-lg:min-h-[26px] max-lg:items-center">
             {c.label}
           </button>
-          {i < items.length - 1 && <span style={{ color: "#4a4433" }}>/</span>}
+          {i < items.length - 1 && <span style={{ color: "var(--border-strong)" }}>/</span>}
         </span>
       ))}
     </nav>
@@ -96,7 +97,7 @@ export function IndicatorCard({
 
 export function LevelColourCard({
   level, onLevel, levelLock, palette, onPalette, vintage, onVintage, vintageAvailable,
-  view, onView,
+  view, onView, symbolOn,
 }: {
   level: "state" | "district";
   onLevel: (l: "state" | "district") => void;
@@ -111,6 +112,10 @@ export function LevelColourCard({
    *  swap sits with LEVEL / BOUNDARIES / MAP COLOUR in the same controls card. */
   view?: "map" | "table";
   onView?: (v: "map" | "table") => void;
+  /** Proportional-symbol mode (#408): the ramp paints nothing, so offering a
+   *  palette picker would be a live control with no effect — the same "visible,
+   *  enabled and inert" problem the VIEW gate below already avoids. */
+  symbolOn?: boolean;
 }) {
   const lockMsg = (l: "state" | "district") =>
     levelLock && levelLock !== l ? "This indicator is only available at the " + levelLock + " level" : undefined;
@@ -208,7 +213,7 @@ export function LevelColourCard({
           visible, enabled and inert is worse than an absent one: it invites a click
           and answers with silence. Gated on `view` rather than removed, because the
           row is correct and useful the moment the map is back. */}
-      {view !== "table" && (
+      {view !== "table" && !symbolOn && (
         <>
           <div className="mt-3 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-[.12em] text-faint">MAP COLOUR</span>
@@ -222,7 +227,7 @@ export function LevelColourCard({
                 className="h-[18px] flex-1 rounded-sm border transition-transform hover:-translate-y-0.5 max-lg:h-[26px]"
                 style={{
                   background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map(PALETTES[p].fn).join(",")})`,
-                  borderColor: palette === p ? "#d1502f" : "#3b3626",
+                  borderColor: palette === p ? "var(--accent)" : "var(--border)",
                 }}
               />
             ))}
@@ -238,6 +243,7 @@ export function LegendCard({
   mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
+  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -260,6 +266,12 @@ export function LegendCard({
   /** Flip the ramp. Same state the ⚙ SCALE popover's DIRECTION row drives — this
    *  is a second trigger for one setting, not a second setting. */
   onReverse: () => void;
+  /** Proportional symbols (#408). `symbolable` is whether this metric's unit is a
+   *  COUNT, which is the only case where a choropleth misreads as area. When
+   *  symbols are on the ramp is replaced by a nested-circle key: size is the
+   *  encoding, so a colour scale would explain something the map is not saying. */
+  symbolable: boolean; symbolOn: boolean; onSymbol: () => void;
+  symbolMax: number; symbolLevel: SymbolLevel;
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
@@ -290,6 +302,26 @@ export function LegendCard({
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-[10px] font-bold tracking-[.1em] text-faint">{metricName.toUpperCase()}</span>
         <div className="flex flex-none items-center gap-1.5">
+          {/* SIZE / SHADE. Only offered for a count metric — for a rate there is
+              nothing to fix and circles would invent a problem. */}
+          {symbolable && (
+            <div className="flex border border-border" data-symbol-toggle>
+              {([[true, "SIZE"], [false, "SHADE"]] as [boolean, string][]).map(([on, label]) => (
+                <button
+                  key={label} onClick={() => { if (symbolOn !== on) onSymbol(); }}
+                  aria-pressed={symbolOn === on} data-symbol-mode={on ? "size" : "shade"}
+                  title={on
+                    ? "Draw each region as a circle sized by its value — a count read as colour is read as area"
+                    : "Shade each region by its value (area bias applies to counts)"}
+                  className="px-1.5 py-0.5 text-[9px] font-bold max-lg:min-h-[26px] max-lg:px-2"
+                  style={{ background: symbolOn === on ? "var(--accent)" : "transparent", color: symbolOn === on ? "var(--accent-ink)" : "var(--muted)" }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {!symbolOn && (
           <div className="flex border border-border">
             {([["value", "VALUE"], ["vs_avg", "VS AVG"], ["coverage", "COVERAGE"]] as [LegendMode, string][]).map(([m, label]) => (
               <button
@@ -301,9 +333,10 @@ export function LegendCard({
               </button>
             ))}
           </div>
+          )}
           {/* The ⚙ SCALE popover only governs value-mode class breaks — irrelevant
               to the categorical coverage view, so it is hidden there. */}
-          {mode !== "coverage" && (
+          {!symbolOn && mode !== "coverage" && (
             <button
               onClick={onToggleScale} aria-expanded={scaleOpen} data-scale-toggle
               className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated max-lg:min-h-[26px] max-lg:px-2"
@@ -313,7 +346,44 @@ export function LegendCard({
           )}
         </div>
       </div>
-      {mode === "coverage" ? (
+      {symbolOn ? (
+        // Nested reference circles, sharing a BASELINE rather than a centre.
+        // Concentric-from-the-centre is the other convention and it is harder to
+        // read at a glance: the eye compares the tops of stacked discs far more
+        // reliably than two radii about a shared origin. Three stops, chosen so the
+        // circles step visibly (a quarter and a sixteenth of the maximum VALUE give
+        // a half and a quarter of the maximum RADIUS) — value quartiles would give
+        // three near-identical discs on data this heavy-tailed.
+        (() => {
+          const stops = legendStops(symbolMax);
+          const rmax = symbolRadius(symbolMax, symbolMax, symbolLevel);
+          const W = 2 * rmax + 8;
+          const H = 2 * rmax + 10;
+          return (
+            <div className="mt-2 flex items-end gap-3" data-symbol-legend>
+              <svg width={W} height={H} className="flex-none overflow-visible" aria-hidden>
+                {stops.map((v) => {
+                  const r = symbolRadius(v, symbolMax, symbolLevel);
+                  return (
+                    <circle
+                      key={v} cx={W / 2} cy={H - 4 - r} r={r}
+                      fill="var(--accent)" fillOpacity={0.22}
+                      stroke="var(--accent)" strokeOpacity={0.85} strokeWidth={0.8}
+                    />
+                  );
+                })}
+              </svg>
+              <div className="flex flex-1 flex-col justify-end gap-[3px] pb-0.5">
+                {stops.map((v) => (
+                  <div key={v} data-symbol-legend-row className="font-mono text-[9.5px] text-faint">
+                    {fmt(v)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()
+      ) : mode === "coverage" ? (
         // COVERAGE view (item 830): the categorical provenance key REPLACES the
         // value legend. Each class present in the data lists its colour + count and
         // is a show/hide toggle, so a reader can isolate e.g. inherited districts.
@@ -344,7 +414,7 @@ export function LegendCard({
         </div>
       ) : mode === "vs_avg" ? (
         <>
-          <div className="mt-2 h-2" style={{ background: "linear-gradient(90deg,#b2182b,#f7f7f7,#2166ac)" }} />
+          <div className="mt-2 h-2" style={{ background: "linear-gradient(90deg,#b2182b,#f7f7f7,#2166ac)" /* no-token: ColorBrewer RdBu endpoints — a data-palette swatch, not a UI role */ }} />
           <div className="mt-1 flex justify-between font-mono text-[9.5px] text-faint"><span>below avg</span><span>{avgNote}</span><span>above avg</span></div>
         </>
       ) : binned && edges.length ? (
@@ -374,7 +444,20 @@ export function LegendCard({
           </div>
         </>
       )}
-      {mode !== "coverage" && (
+      {symbolOn && (
+        <div data-symbol-method-line className="mt-2 text-[9.5px] font-semibold tracking-[.05em] text-faint">
+          <a
+            href="/methodology#symbol-maps" target="_blank" rel="noopener noreferrer"
+            data-symbol-method
+            className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
+          >
+            PROPORTIONAL SYMBOLS
+          </a>
+          <span aria-hidden> · </span>
+          <span>circle AREA ∝ value</span>
+        </div>
+      )}
+      {!symbolOn && mode !== "coverage" && (
         <div
           data-legend-method-line
           className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-faint"
@@ -399,8 +482,8 @@ export function LegendCard({
               title={reverse ? "Colour scale reversed — click to restore" : "Reverse the colour scale"}
               className="ml-auto inline-flex min-h-[24px] items-center rounded-sm border px-2 text-[9.5px] font-bold tracking-[.05em] hover:bg-elevated"
               style={{
-                borderColor: reverse ? "#6b3020" : "#3b3626",
-                color: reverse ? "#e0603d" : "#a49d8c",
+                borderColor: reverse ? "var(--accent-border)" : "var(--border)",
+                color: reverse ? "var(--accent-hover)" : "var(--muted)",
               }}
             >
               ↔ REVERSE{reverse ? " ON" : ""}
@@ -488,13 +571,13 @@ export function ScalePopover({
           // The legend's own REVERSE control already used #e0603d for its ON label
           // (iter-35); this popover row is the same setting and still carried the raw
           // accent at 4.35:1. Same role, same token now (items 431/473).
-          style={{ color: reverse ? "var(--accent-text)" : "#a49d8c" }}
+          style={{ color: reverse ? "var(--accent-text)" : "var(--muted)" }}
         >
           ↔ REVERSE {reverse ? "ON" : "OFF"}
         </button>
       </div>
       {collapseWarn && (
-        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug" style={{ color: "#e0913f" }} data-collapse-warn>
+        <div className="mt-3 border-t border-border-soft pt-2 text-[10px] leading-snug" style={{ color: "#e0913f" /* no-token: the collapse warning's amber, deliberately not --shaky, which flags DATA quality */ }} data-collapse-warn>
           <span className="font-bold tracking-[.1em]">HEADS UP — </span>
           {METHOD_LABEL[method]} puts {Math.round(collapseWarn.share * 100)}% of regions in one class here.{" "}
           <button

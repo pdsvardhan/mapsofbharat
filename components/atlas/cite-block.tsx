@@ -69,7 +69,7 @@ export function CiteBlock(props: CiteProps) {
       <h2 className="mb-3 text-[13px] font-bold uppercase tracking-[.12em] text-faint">
         To cite this
       </h2>
-      <div className="flex flex-col gap-3 border border-border p-4" style={{ background: "var(--panel)" }}>
+      <div className="flex flex-col gap-3 border-y-[3px] border-border px-1 py-4" data-band="cite">
         <p className="font-mono text-[12px] leading-relaxed text-muted">{shown}</p>
         <div className="flex items-center gap-3">
           <button

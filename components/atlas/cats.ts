@@ -19,6 +19,13 @@ export const CAT_ORDER = [
   "environment", "infrastructure", "transport", "elections",
 ];
 
+/** no-token: a CATEGORICAL DATA palette — one hue per topic — not a set of UI roles.
+ *  These are consumed as plain colour strings by MapLibre paint and the canvas card
+ *  exporter, neither of which can resolve a CSS variable, and twenty single-use tokens
+ *  would describe the data rather than the interface. Sibling to PALETTES in
+ *  lib/breaks.ts and PROVENANCE_COLOR in lib/coverage.ts, which are the same kind of
+ *  thing. The ONE value here that is also a UI role is the fallback in catAccent(),
+ *  which is annotated separately. */
 export const CAT_ACCENT: Record<string, string> = {
   demographics: "#d1502f",
   society: "#c2708f",
@@ -106,7 +113,7 @@ export const CAT_ICON: Record<string, string> = {
 };
 
 export function catAccent(cat: string): string {
-  return CAT_ACCENT[cat] ?? "#d1502f";
+  return CAT_ACCENT[cat] ?? "#d1502f"; // token: --accent
 }
 
 export function orderedCategories(metrics: Metric[]): string[] {

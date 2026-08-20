@@ -28,12 +28,13 @@ import { SocialExportDialog } from "@/components/atlas/social-export-dialog";
 import type { SocialFeature } from "@/lib/social-export";
 import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
+import { symbolEligible, symbolRadius, type SymbolLevel } from "@/lib/symbols";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
 import { DataTable } from "@/components/atlas/data-table";
 
 const INDIA_BOUNDS: [number, number, number, number] = [67, 6, 98, 37];
-const NEUTRAL = "#26231c"; // no indicator picked
-const NODATA = "#2a271d"; // indicator picked, region missing a value
+const NEUTRAL = "#26231c"; // no indicator picked. token: --map-neutral (MapLibre paint takes a colour, not a var())
+const NODATA = "#2a271d"; // indicator picked, region missing a value. token: --map-nodata
 
 type MetricData = {
   /** Which metric this payload is for. The previous metric's rows stay painted
@@ -80,7 +81,7 @@ function bbox(geom: { coordinates: unknown }): [number, number, number, number] 
 
 function readUrl() {
   if (typeof window === "undefined")
-    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false, vin: "current" as Vintage };
+    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false, vin: "current" as Vintage, sym: null as boolean | null };
   const p = new URLSearchParams(window.location.search);
   const m = p.get("m") || "";
   // Jenks is the global default (iter-53 item 404); explicit URL param wins
@@ -101,6 +102,11 @@ function readUrl() {
     brkPinned: !!brkParam,
     palPinned: !!p.get("pal"),
     vin: (p.get("vin") === "2011" ? "2011" : "current") as Vintage,
+    // Render mode override (#408). Absent means "let the metric decide", which is
+    // the normal case — the param only appears once the reader has deliberately
+    // flipped it, so a plain shared link still shows each metric in its honest form
+    // rather than pinning whatever the sharer happened to be looking at.
+    sym: p.get("sym") === "1" ? true : p.get("sym") === "0" ? false : null,
   };
 }
 
@@ -157,6 +163,20 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // contract is untouched. The map engine is never unmounted (that would orphan
   // MapLibre), so every toggle preserves metric / vintage / drill / selection.
   const [view, setView] = useState<"map" | "table">("map");
+  // Render mode (#408). Proportional symbols instead of a choropleth, for metrics
+  // whose unit is a COUNT. Not a taste setting: a count on a choropleth is read as
+  // area, so Kutch outweighs Mumbai City by its 291x area ratio whatever the colour
+  // says. It is `null` until a metric is picked, then defaults to symbols for an
+  // eligible metric and choropleth for everything else — the reader gets the honest
+  // form without asking, and can still flip to compare the two.
+  const [symbolOn, setSymbolOn] = useState(false);
+  const [symbolable, setSymbolable] = useState(false);
+  const symbolOnRef = useRef(false);
+  symbolOnRef.current = symbolOn;
+  // null = "no deliberate choice yet, let each metric decide"; set once the reader
+  // flips the control, and then honoured across metric changes so a preference for
+  // seeing the choropleth is not silently undone by picking a different indicator.
+  const symbolForcedRef = useRef<boolean | null>(init.sym);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
@@ -425,7 +445,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (!ref.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: ref.current,
-      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0d0f14" } }] },
+      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0d0f14" /* token: --background */ } }] },
       bounds: INDIA_BOUNDS, fitBoundsOptions: { padding: 24 },
       attributionControl: false, maxZoom: 12, minZoom: 3, dragRotate: false,
       // MapLibre v5 moved this under canvasContextAttributes — the old
@@ -435,6 +455,48 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     } as maplibregl.MapOptions);
     mapRef.current = map;
     (window as any).__mob_map = map;
+
+    // ── symbol-layer feature-state parity (#408 S5) ───────────────────────────
+    // The proportional-symbol layer cannot read the polygon sources: a `circle`
+    // layer over a polygon source draws one circle per VERTEX, so symbols need
+    // their own point source of representative points. That split is the whole
+    // risk in this feature — feature-state is per-source, so every hover, select
+    // and pin would light the polygon and leave its circle untouched.
+    //
+    // There are two dozen setFeatureState call sites and more will be added, so
+    // "remember to write it twice" is a convention that decays into exactly the
+    // half-working mode the build plan calls a demo. Wrapping the setter once
+    // makes parity STRUCTURAL: a call site cannot forget, because it is not
+    // asked to do anything. New state keys (`r` below) ride the same path free.
+    const PT_SOURCE: Record<string, string> = {
+      districts: "districts-pts",
+      states: "states-pts",
+      districts2011: "districts2011-pts",
+      states2011: "states2011-pts",
+    };
+    type SetFS = typeof map.setFeatureState;
+    const rawSetFeatureState: SetFS = map.setFeatureState.bind(map);
+    map.setFeatureState = ((target: Parameters<SetFS>[0], state: Parameters<SetFS>[1]) => {
+      rawSetFeatureState(target, state);
+      const pt = PT_SOURCE[target?.source];
+      // getSource guards the window before the point sources are added, and the
+      // 2011 pair which only exist once the vintage toggle has been used.
+      if (pt && map.getSource(pt)) rawSetFeatureState({ ...target, source: pt }, state);
+    }) as SetFS;
+
+    // removeFeatureState needs the same treatment, and missing it would be worse
+    // than missing a set. recolor() and paintNeutral() both wipe every source
+    // before repainting; if only the polygons were cleared, the point sources would
+    // keep the PREVIOUS metric's radii for any region the new metric has no value
+    // for — circles from the last indicator left sitting on the map, sized by data
+    // that is no longer on screen.
+    type RmFS = typeof map.removeFeatureState;
+    const rawRemoveFeatureState: RmFS = map.removeFeatureState.bind(map);
+    map.removeFeatureState = ((target: Parameters<RmFS>[0], key?: Parameters<RmFS>[1]) => {
+      rawRemoveFeatureState(target, key);
+      const pt = PT_SOURCE[target?.source];
+      if (pt && map.getSource(pt)) rawRemoveFeatureState({ ...target, source: pt }, key);
+    }) as RmFS;
 
     map.on("load", async () => {
       map.resize();
@@ -448,6 +510,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       map.addSource("districts", { type: "geojson", data: districts, promoteId: "rid" });
       map.addSource("states", { type: "geojson", data: states, promoteId: "st_code" });
 
+      // Representative points for the symbol layer, built offline by
+      // pipeline/build_centroids.py and asserted to fall inside their own polygon
+      // (a naive centroid lands OUTSIDE for 7 of 735 districts — Lakshadweep,
+      // Dhubri, the Dadra and Yanam exclaves — which would put a district's
+      // quantity in the sea or on top of its neighbour). promoteId matches the
+      // polygon source so the mirrored feature-state lands on the same ids.
+      const [dPts, sPts] = await Promise.all([
+        fetch("/geo/centroids-districts.geojson").then((r) => r.json()),
+        fetch("/geo/centroids-states.geojson").then((r) => r.json()),
+      ]);
+      map.addSource("districts-pts", { type: "geojson", data: dPts, promoteId: "rid" });
+      map.addSource("states-pts", { type: "geojson", data: sPts, promoteId: "st_code" });
+
       const fillPaint = {
         "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
         "fill-opacity": ["case",
@@ -458,9 +533,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       };
       const linePaint = (hairline: number) => ({
         "line-color": ["case",
-          ["boolean", ["feature-state", "selected"], false], "#d1502f",
-          ["boolean", ["feature-state", "pinned"], false], "#e6b34a",
-          ["boolean", ["feature-state", "hover"], false], "#e9e3d5",
+          ["boolean", ["feature-state", "selected"], false], "#d1502f", // token: --accent
+          ["boolean", ["feature-state", "pinned"], false], "#e6b34a", // token: --gold
+          ["boolean", ["feature-state", "hover"], false], "#e9e3d5", // token: --foreground
           // item 760: per-region seam, falling back to a flat hairline before any
           // metric is picked (no feature-state has been set yet). The fallback is
           // 0.20, not the original 0.10: at state level state-outline used to draw
@@ -491,7 +566,42 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       });
       map.addLayer({ id: "state-line", type: "line", source: "states", layout: { visibility: "none" }, paint: linePaint(0.4) as any });
 
+      // ── the proportional-symbol layer (#408) ────────────────────────────────
+      // Radius comes from feature-state `r`, computed in recolor() by
+      // lib/symbols.ts. Deliberately NOT a MapLibre interpolate expression on a
+      // raw value: the sqrt-area rule is the one piece of this feature that is
+      // easy to get wrong and catastrophic when wrong (radius-proportional
+      // sizing overstates a 4x value as 16x the ink), so it lives in a pure
+      // function a unit test can pin, not in a style expression nothing can.
+      //
+      // One colour, not the ramp. Size already carries the value; colouring it
+      // too would encode one quantity twice and leave the nested-circle legend
+      // explaining a scale the reader does not need.
+      const symbolPaint = {
+        "circle-radius": ["coalesce", ["feature-state", "r"], 0],
+        "circle-color": "#d1502f", // token: --accent
+        "circle-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.95, 0.72],
+        "circle-stroke-color": ["case",
+          ["boolean", ["feature-state", "selected"], false], "#e9e3d5", // token: --foreground
+          ["boolean", ["feature-state", "pinned"], false], "#e6b34a", // token: --gold
+          "rgba(13,15,20,0.85)"],
+        "circle-stroke-width": ["case",
+          ["boolean", ["feature-state", "selected"], false], 2,
+          ["boolean", ["feature-state", "pinned"], false], 2,
+          ["boolean", ["feature-state", "hover"], false], 1.2, 0.5],
+        "circle-radius-transition": { duration: 400 },
+      };
+      map.addLayer({ id: "district-symbol", type: "circle", source: "districts-pts", layout: { visibility: "none" }, paint: symbolPaint } as unknown as maplibregl.AddLayerObject);
+      map.addLayer({ id: "state-symbol", type: "circle", source: "states-pts", layout: { visibility: "none" }, paint: symbolPaint } as unknown as maplibregl.AddLayerObject);
+
+      // `source` is always the POLYGON source, even when `layer` is a symbol layer:
+      // the wrapper above mirrors every write onto the matching point source, so
+      // both light up from one call. The centroid features carry `name` rather than
+      // `district`/`st_nm`, hence the fallback — a symbol hover has to name the same
+      // region the polygon hover would, or the tooltip contradicts the mark.
       const wire = (layer: string, source: "districts" | "states", kind: "district" | "state") => {
+        const nameOf = (p: Record<string, unknown> | undefined) =>
+          String((kind === "state" ? p?.st_nm : p?.district) ?? p?.name ?? "—");
         let hov: string | number | undefined;
         map.on("mousemove", layer, (e: any) => {
           if (!e.features?.length) return;
@@ -502,8 +612,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           map.setFeatureState({ source, id: hov }, { hover: true });
           setHovered({
             code: String(f.id),
-            name: String((kind === "state" ? f.properties?.st_nm : f.properties?.district) ?? "—"),
-            state: kind === "state" ? "" : String(f.properties?.st_nm ?? ""),
+            name: nameOf(f.properties),
+            state: kind === "state" ? "" : String(f.properties?.st_nm ?? statesRef.current[String(Number(String(f.id).split("_")[0]))]?.properties?.st_nm ?? ""),
             kind,
           });
         });
@@ -517,8 +627,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           const f = e.features[0];
           const s: Sel = {
             code: String(f.id),
-            name: String((kind === "state" ? f.properties?.st_nm : f.properties?.district) ?? "—"),
-            state: kind === "state" ? String(f.properties?.st_nm ?? "") : String(f.properties?.st_nm ?? ""),
+            name: nameOf(f.properties),
+            state: String(f.properties?.st_nm ?? statesRef.current[String(Number(String(f.id).split("_")[0]))]?.properties?.st_nm ?? ""),
             kind,
           };
           clickFeature(s, source);
@@ -526,6 +636,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       };
       wire("district-fill", "districts", "district");
       wire("state-fill", "states", "state");
+      // The symbol layers are wired FIRST in event priority terms simply by being
+      // added above the fills: MapLibre delivers a layer event to each listener, and
+      // a circle drawn over a neighbouring polygon must select its OWN region. Without
+      // this a click on a large circle would fall through to whatever polygon happened
+      // to be beneath the pointer and select a different district — the failure that
+      // makes a render mode a demo rather than a feature.
+      wire("district-symbol", "districts", "district");
+      wire("state-symbol", "states", "state");
 
       setReady(true);
 
@@ -588,19 +706,38 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       });
       map.addSource("districts2011", { type: "geojson", data: d2011, promoteId: "rid" });
       map.addSource("states2011", { type: "geojson", data: s2011, promoteId: "st_code" });
+      // Vintage symbol sources, so a count metric stays a count metric across the
+      // as-reported toggle instead of silently reverting to a choropleth — which
+      // would show the same number honestly in one view and with area bias in the
+      // other, the worst of both.
+      const [d2011Pts, s2011Pts] = await Promise.all([
+        fetch("/geo/centroids-districts-2011.geojson").then((r) => r.json()),
+        fetch("/geo/centroids-states-2011.geojson").then((r) => r.json()),
+      ]);
+      map.addSource("districts2011-pts", { type: "geojson", data: d2011Pts, promoteId: "rid" });
+      map.addSource("states2011-pts", { type: "geojson", data: s2011Pts, promoteId: "st_code" });
       const fillPaint = {
         "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
         "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0.9],
         "fill-color-transition": { duration: 400 },
       };
       const linePaint = (w: number) => ({
-        "line-color": ["case", ["boolean", ["feature-state", "hover"], false], "#e9e3d5", "rgba(233,227,213,0.10)"],
+        "line-color": ["case", ["boolean", ["feature-state", "hover"], false], "#e9e3d5", "rgba(233,227,213,0.10)"], // token: --foreground (and its 10% wash)
         "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.1, w],
       });
       map.addLayer({ id: "d2011-fill", type: "fill", source: "districts2011", layout: { visibility: "none" }, paint: fillPaint } as any);
       map.addLayer({ id: "d2011-line", type: "line", source: "districts2011", layout: { visibility: "none" }, paint: linePaint(0.3) as any });
       map.addLayer({ id: "s2011-fill", type: "fill", source: "states2011", layout: { visibility: "none" }, paint: fillPaint } as any);
       map.addLayer({ id: "s2011-line", type: "line", source: "states2011", layout: { visibility: "none" }, paint: linePaint(0.4) as any });
+      const vinSymbolPaint = {
+        "circle-radius": ["coalesce", ["feature-state", "r"], 0],
+        "circle-color": "#d1502f", // token: --accent
+        "circle-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.95, 0.72],
+        "circle-stroke-color": "rgba(13,15,20,0.85)",
+        "circle-stroke-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.2, 0.5],
+      };
+      map.addLayer({ id: "d2011-symbol", type: "circle", source: "districts2011-pts", layout: { visibility: "none" }, paint: vinSymbolPaint } as unknown as maplibregl.AddLayerObject);
+      map.addLayer({ id: "s2011-symbol", type: "circle", source: "states2011-pts", layout: { visibility: "none" }, paint: vinSymbolPaint } as unknown as maplibregl.AddLayerObject);
       const wireHover = (layer: string, source: "districts2011" | "states2011", kind: "district" | "state") => {
         let hov: string | number | undefined;
         map.on("mousemove", layer, (e: any) => {
@@ -612,8 +749,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           map.setFeatureState({ source, id: hov }, { hover: true });
           setHovered({
             code: String(f.id),
-            name: String((kind === "state" ? f.properties?.st_nm : f.properties?.district) ?? "—"),
-            state: kind === "state" ? "" : String(f.properties?.st_nm ?? ""),
+            // `?? name` covers the centroid sources, whose features carry `name`
+            // rather than the polygon property — a symbol hover must name the same
+            // region the polygon hover would.
+            name: String((kind === "state" ? f.properties?.st_nm : f.properties?.district) ?? f.properties?.name ?? "—"),
+            state: kind === "state" ? "" : String(f.properties?.st_nm ?? vintageIdxRef.current.get(String(f.id))?.state ?? ""),
             kind,
           });
         });
@@ -624,6 +764,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       };
       wireHover("d2011-fill", "districts2011", "district");
       wireHover("s2011-fill", "states2011", "state");
+      wireHover("d2011-symbol", "districts2011", "district");
+      wireHover("s2011-symbol", "states2011", "state");
       vintageLoadedRef.current = true;
       setVintageTick((t) => t + 1); // re-run visibility + entries now that layers exist
     })();
@@ -739,6 +881,20 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const ranks: Record<string, number> = {};
       sorted.forEach(([c], i) => (ranks[c] = i + 1));
       rankRef.current = ranks;
+
+      // Route this metric (#408 S4). Eligibility is decided on the UNIT and the
+      // values, per research/531: only 9 of 87 district metrics carry a count unit,
+      // so area bias can only bite those, and a rate that merely looks skewed
+      // (crime_cyber_rate, pop_density) must NOT get circles — normalisation already
+      // solved its area problem and symbols would re-introduce one.
+      const eligible = symbolEligible(m?.unit ?? md.unit, Object.values(md.values));
+      setSymbolable(eligible);
+      // Default to the honest form for this metric, but never override a choice the
+      // reader has already made for this same metric via the URL.
+      const forced = symbolForcedRef.current;
+      const on = forced === null ? eligible : forced && eligible;
+      symbolOnRef.current = on;
+      setSymbolOn(on);
       recolor();
     })();
     return () => { cancelled = true; };
@@ -748,7 +904,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => {
     if (dataRef.current) recolor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets, coverageHidden]);
+  }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets, coverageHidden, symbolOn]);
 
   // The MapLibre host is display:none while the table view is up (the plate around
   // it stays), so MapLibre holds its last canvas size until the host is shown
@@ -803,6 +959,37 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level, ready, vintage, vintageTick]);
 
+  // ── symbol-mode visibility (#408) ────────────────────────────────────────
+  // The polygons STAY, drawn neutral, and the circles sit on top. Two reasons,
+  // and the first is not aesthetic: research/758's boundary-compliance verdict
+  // depends on the basemap being unmodified, so the country must still read as
+  // India with its Survey-of-India boundaries intact. The second is that the
+  // polygons remain the drill and hover surface for regions whose value is null
+  // and therefore have no circle at all.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const showState = level === "state";
+    const vin = vintage === "2011" && vintageLoadedRef.current;
+    const vis = (id: string, show: boolean) => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", show ? "visible" : "none");
+    };
+    vis("district-symbol", symbolOn && !vin && !showState);
+    vis("state-symbol", symbolOn && !vin && showState);
+    vis("d2011-symbol", symbolOn && vin && !showState);
+    vis("s2011-symbol", symbolOn && vin && showState);
+
+    // Drop the data-driven fill while symbols carry the value. Leaving both on
+    // would encode one quantity twice — and the choropleth half of that pair is
+    // the area-biased reading this mode exists to replace, so it would not merely
+    // be redundant, it would keep telling the lie underneath the fix.
+    for (const id of ["district-fill", "state-fill", "d2011-fill", "s2011-fill"]) {
+      if (!map.getLayer(id)) continue;
+      map.setPaintProperty(id, "fill-color",
+        (symbolOn ? NEUTRAL : ["coalesce", ["feature-state", "color"], NEUTRAL]) as unknown as maplibregl.StyleSpecification["layers"][number]);
+    }
+  }, [symbolOn, level, vintage, ready, vintageTick]);
+
   // URL sync (shareable views)
   useEffect(() => {
     if (typeof window === "undefined" || minimal) return;
@@ -815,6 +1002,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (pickedForMetricRef.current) p.set("brk", brkMethod);
     if (palette !== DEFAULT_PALETTE) p.set("pal", palette);
     if (reverse) p.set("rev", "1");
+    // Same rule as `brk` (item 756): only a DELIBERATE flip travels. The default is
+    // derived from the metric, so the recipient computes the same one; pinning it
+    // on every share would make one stray click follow every link.
+    if (symbolForcedRef.current !== null) p.set("sym", symbolOn ? "1" : "0");
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
     if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
     if (vintage === "2011") p.set("vin", "2011");
@@ -824,7 +1015,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (outlineModeRef.current === "fixed") p.set("outline", "fixed");
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
-  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick]);
+  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick, symbolOn]);
 
   // ── colouring ────────────────────────────────────────────────────────────
   type PaintSource = "districts" | "states" | "districts2011" | "states2011";
@@ -886,6 +1077,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (!vals.length) { min = 0; max = 1; }
     const mean = vals.length ? sum / vals.length : 0;
     const scope = new Set(codes);
+
+    // Symbol radii scale to the largest value ACTUALLY DRAWN, which is not the same
+    // set the statistics use: countsInStats() excludes inherited and projected values
+    // from the mean and the breaks, but those regions still get a circle. Scaling to
+    // the statistical max would clamp any estimated outlier to the same radius as the
+    // real maximum and quietly claim two different quantities are equal.
+    let symMax = 0;
+    for (const code of codes) {
+      const v = valuesRef.current[code];
+      if (v != null && Number.isFinite(v) && v > symMax) symMax = v;
+    }
+    const symLevel: SymbolLevel = levelRef.current === "state" ? "state" : "district";
+    const symOn = symbolOnRef.current;
     let lumSum = 0, lumN = 0; // backdrop mean for the state-outline overlay (to-do 348)
     const breaks = modeRef.current === "value"
       ? computeBreaks(vals, brkRef.current, 5, metricRefRef.current) : [];
@@ -906,7 +1110,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const v = valuesRef.current[code];
       const inScope = scope.has(code);
       if (v == null || !inScope) {
-        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA) });
+        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA), r: 0 });
         continue;
       }
       // COVERAGE view (item 830): shade by DATA PROVENANCE, not value. A class
@@ -927,7 +1131,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // `stroke` is the item-760 boundary: derived from this region's own fill so
       // the seam stays legible at both ends of every ramp instead of reading as
       // harsh white over the saturated end.
-      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color) });
+      // `r` rides the same write: the wrapper mirrors it onto the centroid source,
+      // where the circle layer reads it. Zero when symbol mode is off, so switching
+      // back to a choropleth cannot leave stale circles behind.
+      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0 });
       lumSum += fillLuminance(color);
       lumN++;
     }
@@ -1348,7 +1555,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // ── full Atlas chrome ────────────────────────────────────────────────────
   return (
     <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(90% 120% at 50% -10%, #15140f, #0b0c10 60%)" }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(90% 120% at 50% -10%, #15140f, #0b0c10 60%)" /* no-token: a one-off vignette gradient, not a palette role */ }} />
 
       {/* MASTHEAD
           The three fixed tracks (300 + 360 + 300 = 960 minimum) put the search
@@ -1360,7 +1567,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           the slack; the two links keep their glyph and drop their label, in a
           26px square — the size right-rail.tsx:150 already settled on for a
           touch target here, over WCAG 2.2's 24px floor. */}
-      <header className="relative z-10 flex h-16 flex-none items-center gap-3 border-b px-5 max-lg:gap-2 max-lg:px-3" style={{ borderColor: "#2a2619" }}>
+      <header className="relative z-10 flex h-16 flex-none items-center gap-3 border-b px-5 max-lg:gap-2 max-lg:px-3" style={{ borderColor: "var(--border-soft)" }}>
         <div className="flex flex-none items-center gap-3 lg:w-[300px]">
           {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark; next/image adds no value for a 30px inline logo */}
           <img src="/brand/mark.png" alt="" aria-hidden="true" width={30} height={30} className="h-[30px] w-[30px] flex-none object-contain max-lg:h-6 max-lg:w-6" />
@@ -1428,7 +1635,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         <div className="relative min-w-0 flex-1 p-4 max-lg:p-2 max-lg:pb-[54px]">
           <div
             className="relative h-full border border-border"
-            style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" }}
+            style={{ background: "radial-gradient(80% 80% at 50% 42%, #12130f, #0b0c10)" /* no-token: one-off vignette gradient */ }}
             onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY })}
           >
             {/* The MapLibre host stays MOUNTED in table view (display:none) —
@@ -1542,7 +1749,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 vintage={vintage} onVintage={(v) => { trackViz("boundaries", v); setVintage(v); }}
                 vintageAvailable={!!meta?.levels?.some((l) => l === "district2011" || l === "state2011")}
                 view={view} onView={(v) => { trackViz("view", v); setView(v); }}
-              />
+                symbolOn={symbolOn}
+                  />
             </div>
 
             {/* LEGEND — flex-none so it keeps its natural height and the stack
@@ -1573,6 +1781,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   cohortNote={cohortActive ? `${activeCohortDef!.name} · dimming others` : null}
                   scaleOpen={scaleOpen} onToggleScale={() => setScaleOpen((o) => !o)}
                   onReverse={() => { trackViz("reverse", String(!reverse)); setReverse((r) => !r); }}
+                  symbolable={symbolable} symbolOn={symbolOn}
+                  onSymbol={() => {
+                    const next = !symbolOn;
+                    symbolForcedRef.current = next;
+                    trackViz("symbol", String(next));
+                    setSymbolOn(next);
+                  }}
+                  // The legend must key off the SAME domain the circles are drawn
+                  // from, or the reference circles label sizes the map never draws
+                  // — the single-source rule item 759 applied to the ramp.
+                  symbolMax={entries.reduce((mx, e) => (e.value != null && e.value > mx ? e.value : mx), 0)}
+                  symbolLevel={level === "state" ? "state" : "district"}
                 />
               </div>
             )}
@@ -1647,7 +1867,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 // and both docks are one tap from closed.
                 narrow && (railOpen || ctrlOpen) ? "max-lg:hidden" : "max-lg:bottom-[54px]"
               } ${view === "table" ? "hidden" : ""}`}
-              style={{ background: "rgba(16,17,13,.96)", borderColor: compare ? "#6b3020" : "#3b3626", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
+              style={{ background: "rgba(16,17,13,.96)", borderColor: compare ? "var(--accent-border)" : "var(--border)", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}
             >
               <button
                 onClick={() => {
@@ -1661,16 +1881,16 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 aria-pressed={compare} disabled={vintage === "2011"}
                 title={vintage === "2011" ? "Compare works on current-day boundaries — switch BOUNDARIES back to TODAY" : undefined}
                 className="flex items-center gap-2 px-[15px] py-2.5 text-[11.5px] font-semibold tracking-[.05em] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                style={{ background: compare ? "var(--accent)" : "transparent", color: compare ? "var(--accent-ink)" : "#d8ccbe" }}
+                style={{ background: compare ? "var(--accent)" : "transparent", color: compare ? "var(--accent-ink)" : "var(--text-warm)" }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
                   <rect x="3" y="3" width="13" height="13" rx="1.5" /><rect x="8" y="8" width="13" height="13" rx="1.5" />
                 </svg>
                 {compare ? "Comparing" : "Compare"}
               </button>
-              <span className="w-px flex-none" style={{ background: "#2a2619" }} />
+              <span className="w-px flex-none" style={{ background: "var(--border-soft)" }} />
               <ShareMenu disabled={false} onCopyLink={copyLink} onCopyEmbed={copyEmbed} copied={copied} shareCaption={shareCaption} />
-              <span className="w-px flex-none" style={{ background: "#2a2619" }} />
+              <span className="w-px flex-none" style={{ background: "var(--border-soft)" }} />
               <button
                 onClick={() => setSocialOpen(true)} disabled={!data || vintage === "2011"}
                 title={vintage === "2011" ? "Cards render current-day boundaries — switch BOUNDARIES back to TODAY" : undefined}
@@ -1688,7 +1908,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             {view === "map" && compare && pins.length < 2 && (
               <div
                 className="atl-pop absolute left-1/2 top-3.5 z-[6] -translate-x-1/2 rounded-sm border px-3.5 py-2 text-[12px] font-semibold max-lg:top-[60px] max-lg:max-w-[calc(100%-1rem)] max-lg:text-[11.5px]"
-                style={{ background: "rgba(26,23,14,.96)", borderColor: "#6b3020", color: "#eecdb8" }}
+                style={{ background: "rgba(26,23,14,.96)", borderColor: "var(--accent-border)", color: "#eecdb8" /* no-token: warm ink for the pinned-region chip, single use */ }}
               >
                 {!data ? "Pick an indicator, then click two regions" : pins.length === 0 ? "Click the first region to compare" : "Now click a second region"}
               </div>
@@ -1729,7 +1949,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             {view === "map" && hovered && tip && (
               <div
                 className="pointer-events-none fixed z-[60] whitespace-nowrap border px-2.5 py-1.5"
-                style={{ left: tip.x + 14, top: tip.y + 14, background: "rgba(13,15,20,.96)", borderColor: "#4a4433" }}
+                style={{ left: tip.x + 14, top: tip.y + 14, background: "rgba(13,15,20,.96)", borderColor: "var(--border-strong)" }}
               >
                 <span className="text-[12px] font-bold text-bright">{hovered.name}</span>
                 {data && <span className="ml-2 font-mono text-[10.5px] text-muted">{fmtHover(hoverValue)}</span>}
@@ -1825,7 +2045,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             // border-box, so the handle is not clipped by a pixel of its own edge.
             railOpen ? "max-lg:h-[62dvh]" : "max-lg:h-[47px]"
           }`}
-          style={{ borderColor: "#211e14" }}
+          style={{ borderColor: "var(--border-faint)" }}
           aria-label="Rankings and profile"
         >
           {narrow && (
@@ -1853,7 +2073,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               scopeSub={focusActive && focus ? `${focus.name} districts` : level === "district" ? "districts" : "states"}
               slots={[
                 {
-                  label: "SLOT A", accent: "#e6b34a",
+                  label: "SLOT A", accent: "#e6b34a", // token: --gold (a value handed to ComparePanel, not a CSS context here)
                   entry: pins[0] && data ? {
                     name: pins[0].name, sub: pins[0].kind === "district" ? pins[0].state : "state",
                     val: va != null ? fmtFull(va) : "no data",
@@ -1863,7 +2083,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   onClear: () => { const p = pins[0]; if (p) { mapRef.current?.setFeatureState({ source: p.kind === "state" ? "states" : "districts", id: p.code }, { pinned: false }); setPins(pins.slice(1)); } },
                 },
                 {
-                  label: "SLOT B", accent: "#d1502f",
+                  label: "SLOT B", accent: "#d1502f", // token: --accent
                   entry: pins[1] && data ? {
                     name: pins[1].name, sub: pins[1].kind === "district" ? pins[1].state : "state",
                     val: vb != null ? fmtFull(vb) : "no data",
@@ -1970,7 +2190,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       {toast && (
         <div
           className="atl-pop fixed bottom-6 left-1/2 z-[70] max-w-[520px] -translate-x-1/2 border px-4 py-2.5 text-[12px] font-medium"
-          style={{ background: "#1a1712", borderColor: "#4a4433", borderLeft: "2px solid #d1502f", color: "#ccc4b2" }}
+          style={{ background: "var(--elevated)", borderColor: "var(--border-strong)", borderLeft: "2px solid var(--accent)", color: "var(--text-soft)" }}
         >
           {toast}
         </div>

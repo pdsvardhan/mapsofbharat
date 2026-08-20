@@ -91,7 +91,7 @@ export function SearchModal({
       key={`${it.kind}-${it.key}`}
       onClick={() => { it.run(); onClose(); }} onMouseEnter={() => setActive(items.indexOf(it))}
       className="flex w-full items-baseline justify-between border-b border-border-faint px-2 py-2 text-left hover:bg-elevated"
-      style={{ background: items.indexOf(it) === active ? "#1a1712" : undefined }}
+      style={{ background: items.indexOf(it) === active ? "var(--elevated)" : undefined }}
     >
       <span className="text-[14px] font-semibold text-bright">
         {it.label} {it.tag && <span className="text-[10px] font-medium text-faint">{it.tag}</span>}
