@@ -120,4 +120,16 @@ jobs:
       # The full suite against a scratch instance of the STANDALONE build — never
       # the production container. The harness proves the instance writes to a
       # throwaway corrections store before it hands it to the suite (#481).
-      - run: bash scripts/test-isolated.sh --reporter=line
+      # PW_WORKERS=1 in CI, deliberately.
+      #
+      # Two workers cold-launch two Chromium processes at once inside the job
+      # container, and that crashes: SIGSEGV during launch, with dbus absent
+      # ("Failed to connect to socket /run/dbus/system_bus_socket"). It hit 2 of the
+      # first 3 real runs, and on the second it took the retry down with it, so the
+      # job went red on a commit that changed one markdown file.
+      #
+      # This is the same finding to-do 253 already recorded for this box - "VAULT7A
+      # flakes under unbounded parallelism ... cap here so green means green" - and
+      # playwright.config.ts already exposes the override for exactly this. It costs
+      # about 90 seconds and buys a signal that means something.
+      - run: PW_WORKERS=1 bash scripts/test-isolated.sh --reporter=line
