@@ -74,6 +74,15 @@ jobs:
 
       - run: npm ci
 
+      # Install the browser npm actually resolved, rather than trusting the image
+      # tag to match. The image pins Playwright 1.49 browsers; package.json carries
+      # "^1.49.0", which resolves to 1.60 — so every one of the 178 browser tests
+      # failed with "Executable doesn't exist" while 71 API-only tests passed. That
+      # coupling breaks silently on any minor bump, so it is removed rather than
+      # re-pinned: the image supplies the OS, npm supplies the browser, and the two
+      # can no longer disagree. A no-op when they already match.
+      - run: npx playwright install --with-deps chromium
+
       # Stage the gitignored data into the places the app expects. The DB is
       # copied (12MB) so the app's read-only handle owns its own inode; the raw
       # tree is symlinked, because copying 825MB per push to read a few files
