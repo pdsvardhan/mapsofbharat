@@ -20,6 +20,17 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // The Python virtualenv. matplotlib ships browser JS for its web backends,
+      // and linting a third-party package inside a venv is meaningless — we will
+      // never fix it and it is not ours. It was 22 of the 64 problems the lint
+      // baseline recorded, i.e. a third of the backlog was noise.
+      //
+      // It also made the count ENVIRONMENT-DEPENDENT, which is the reason this
+      // exclusion is load-bearing rather than tidy: the venv exists on the server
+      // and not in CI (pipeline/ is gitignored), so the same commit measured 64
+      // problems on the box and 42 in CI. The ratchet caught that on its first
+      // real run by refusing a phantom improvement.
+      "pipeline/**",
     ],
   },
 
