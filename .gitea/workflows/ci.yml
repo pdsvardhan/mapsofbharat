@@ -57,6 +57,12 @@ jobs:
       volumes:
         - /mnt/storage/websites/mapsofbharat/data:/host-data:ro
         - /mnt/storage/websites/mapsofbharat/pipeline/raw-new:/host-raw-new:ro
+        # There are TWO raw trees, not one. pipeline/raw holds the Census source
+        # workbooks — a single file there serves 12 metrics — and mounting only
+        # raw-new produced a build that failed the raw-assets guard with
+        # "1 of 27 hosted raw files are missing". Found by running it, not by
+        # reading the code.
+        - /mnt/storage/websites/mapsofbharat/pipeline/raw:/host-raw:ro
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -77,8 +83,9 @@ jobs:
           mkdir -p data pipeline
           cp /host-data/mapsofbharat.db data/mapsofbharat.db
           ln -sfn /host-raw-new pipeline/raw-new
+          ln -sfn /host-raw pipeline/raw
           ls -la data/mapsofbharat.db
-          echo "raw-new entries: $(find -L pipeline/raw-new -type f | wc -l)"
+          echo "raw-new entries: $(find -L pipeline/raw-new -type f | wc -l), raw entries: $(find -L pipeline/raw -type f | wc -l)"
 
       - run: npm run build
 
