@@ -54,8 +54,14 @@ function fingerprint(path, idProp) {
   let verts = 0, csum = 0;
   let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
   const ids = [];
+  const propRows = [];
   for (const f of feats) {
     ids.push(String(f.properties?.[idProp] ?? ""));
+    // Deterministic regardless of key order in the source file.
+    const props = f.properties ?? {};
+    propRows.push(
+      Object.keys(props).sort().map((k) => k + "=" + String(props[k])).join("")
+    );
     eachCoord(f.geometry, (lon, lat) => {
       verts++;
       csum += Math.round(lon * 1e4) + Math.round(lat * 1e4);
@@ -64,6 +70,7 @@ function fingerprint(path, idProp) {
     });
   }
   const r4 = (n) => Math.round(n * 1e4) / 1e4;
+  const propBlob = propRows.slice().sort().join("");
   return {
     sha256: sha(raw),
     feature_count: feats.length,
@@ -71,6 +78,14 @@ function fingerprint(path, idProp) {
     vertex_count: verts,
     coord_checksum: csum,
     ids_sha256: sha(ids.slice().sort().join(",")),
+    // Every NON-geometry property, hashed. Without this a property rename or blanking
+    // passes as a "reformat": the geometry is untouched, so feature_count, bbox,
+    // vertex_count and coord_checksum all match, and ids_sha256 only covers the ONE
+    // property used as the id. Proven 2026-08-20 by renaming "st_nm" to "st_nm " —
+    // which blanks every state name on the map — and watching the gate print PASS with
+    // the reassuring note that the file had merely been reformatted. Boundary
+    // compliance is about what the map SAYS as much as where its lines fall.
+    props_sha256: sha(propBlob),
     _codes: [...new Set(ids)],
   };
 }
@@ -125,7 +140,7 @@ if (golden) {
   for (const key of Object.keys(FILES)) {
     const g = golden[key], c = current[key];
     if (!g) { fail(`${key}: no golden entry`); continue; }
-    for (const field of ["feature_count", "vertex_count", "coord_checksum", "ids_sha256", "sha256"]) {
+    for (const field of ["feature_count", "vertex_count", "coord_checksum", "ids_sha256", "props_sha256", "sha256"]) {
       if (JSON.stringify(g[field]) !== JSON.stringify(c[field])) {
         // sha256-only drift with structure intact = a reformat: warn, don't fail
         if (field === "sha256") { console.warn(`NOTE ${key}: sha256 changed but geometry is structurally identical (reformat).`); continue; }
