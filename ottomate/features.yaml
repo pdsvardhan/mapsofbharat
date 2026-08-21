@@ -325,12 +325,44 @@ features:
       choropleth misleads (single-district spikes, raw counts). Unblocks roughly
       29 district metrics — about a third of the library.
     type: ui
-    status: planned
+    status: building
     priority: P1
     size: L
-    test_status: not-tested
+    test_status: partial
     notes: "Roadmap #408 (product growth), sequenced FIRST. See ROADMAP.md."
-    acceptance_criteria: []
+    acceptance_criteria:
+      - content: "Symbol AREA is proportional to value, not radius: a district with 4x
+          the count draws a circle of 2x the radius, so twice the ink means
+          twice the quantity. Holds across the domain, the maximum value takes
+          the maximum radius, and a small nonzero value is floored so it cannot
+          vanish while a real zero draws nothing. Each circle sits on a
+          representative point computed offline to lie INSIDE its own polygon,
+          so none is drawn in the sea or over a neighbour."
+        test_status: passing
+        linked_test: tests/symbol-maps.spec.ts
+      - content: Only COUNT metrics are offered symbols. Rates stay choropleths —
+          including count-shaped rates such as pop_density, and rates that
+          merely look skewed, which is the case a HOTSPOT-flag check gets wrong
+          (research/531).
+        test_status: passing
+        linked_test: tests/symbol-maps.spec.ts
+      - content: Signed metrics are refused automatically, because a sqrt-area circle
+          cannot say which direction a change went. forest_change_km2 is
+          excluded by detecting negative values, so the layer fails safe rather
+          than drawing a loss as a gain.
+        test_status: passing
+        linked_test: tests/symbol-maps.spec.ts
+      - content: "Symbol mode keeps full interaction parity with the choropleth: every
+          feature-state write reaches the symbol source, selection from the rail
+          works and opens the region panel, and hover behaves the same. A mode
+          that drops half the interactions is a demo, not a view."
+        test_status: passing
+        linked_test: tests/symbol-maps.spec.ts
+      - content: "SHADE / SIZE is a real, shareable choice: flipping the mode changes
+          the map, only a deliberate flip travels in the URL, and a shared sym=0
+          link opens as a choropleth for the recipient."
+        test_status: passing
+        linked_test: tests/symbol-maps.spec.ts
     dependencies: []
   - id: feat-categorical-maps
     title: Categorical / qualitative maps

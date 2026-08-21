@@ -26,6 +26,7 @@ flows:
       - feat-canonical-store
       - feat-rankings-stats
       - feat-region-detail
+      - feat-symbol-choropleth
     linked_pages: []
   - id: flow-drill-state
     title: Drill into a state to district level
