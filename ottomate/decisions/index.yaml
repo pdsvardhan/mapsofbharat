@@ -400,3 +400,12 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/adr-035-administered-area-denominator.md
+  - id: adr-036-count-marginal-workers
+    project_slug: mapsofbharat
+    title: The four worker categories now count everyone who works
+    status: accepted
+    date: 2026-08-21T00:00:00.000Z
+    tags:
+      - curated
+      - cat:reliability
+    body_path: decisions/adr-036-count-marginal-workers.md

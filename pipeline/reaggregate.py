@@ -18,7 +18,15 @@ OFF_COLS = {"pc11_pca_tot_p": "TOT_P", "pc11_pca_tot_m": "TOT_M", "pc11_pca_tot_
             "pc11_pca_p_sc": "P_SC", "pc11_pca_p_st": "P_ST", "pc11_pca_p_lit": "P_LIT",
             "pc11_pca_f_lit": "F_LIT", "pc11_pca_tot_work_p": "TOT_WORK_P",
             "pc11_pca_main_cl_p": "MAIN_CL_P", "pc11_pca_main_al_p": "MAIN_AL_P",
-            "pc11_pca_main_hh_p": "MAIN_HH_P", "pc11_pca_main_ot_p": "MAIN_OT_P"}
+            "pc11_pca_main_hh_p": "MAIN_HH_P", "pc11_pca_main_ot_p": "MAIN_OT_P",
+            # Marginal workers — under six months of work in the year (#562). Without
+            # them the four category shares are MAIN workers over ALL workers: they
+            # summed to 73.5% and to 100 in none of 733 districts, while describing
+            # themselves as "% of total workers". Marginal work is disproportionately
+            # rural, agricultural and female, so the gap fell hardest on the districts
+            # a reader goes looking for.
+            "pc11_pca_marg_cl_p": "MARG_CL_P", "pc11_pca_marg_al_p": "MARG_AL_P",
+            "pc11_pca_marg_hh_p": "MARG_HH_P", "pc11_pca_marg_ot_p": "MARG_OT_P"}
 RAWCOLS = list(OFF_COLS.keys())
 
 # ISO 3166-2:IN per current state name (post-2023 ISO update: IN-CG, IN-OD, IN-UK)
@@ -39,15 +47,26 @@ def metrics(r):
     g = lambda k: (None if pd.isna(r[k]) else float(r[k]))
     rate = lambda n, d: (None if (n is None or d is None or d == 0) else round(n/d*100, 1))
     ratio = lambda n, d: (None if (n is None or d is None or d == 0) else round(n/d*1000, 0))
+    def both(cat):
+        """Main + marginal workers in one category. None if either side is missing,
+        rather than treating an absent marginal count as zero — that would silently
+        reintroduce the understatement this removes."""
+        m, mg = g(f"pc11_pca_main_{cat}_p"), g(f"pc11_pca_marg_{cat}_p")
+        return None if (m is None or mg is None) else m + mg
     TP, P06, TF, F06, TM, M06, tw = g("pc11_pca_tot_p"), g("pc11_pca_p_06"), g("pc11_pca_tot_f"), g("pc11_pca_f_06"), g("pc11_pca_tot_m"), g("pc11_pca_m_06"), g("pc11_pca_tot_work_p")
     return {"pop_total": TP,
             "literacy_rate": rate(g("pc11_pca_p_lit"), (TP-P06) if (TP and P06 is not None) else None),
             "female_literacy_rate": rate(g("pc11_pca_f_lit"), (TF-F06) if (TF and F06 is not None) else None),
             "sex_ratio": ratio(TF, TM), "child_sex_ratio": ratio(F06, M06),
             "sc_pct": rate(g("pc11_pca_p_sc"), TP), "st_pct": rate(g("pc11_pca_p_st"), TP),
-            "work_participation": rate(tw, TP), "cultivators_pct": rate(g("pc11_pca_main_cl_p"), tw),
-            "agri_labourers_pct": rate(g("pc11_pca_main_al_p"), tw), "household_industry_pct": rate(g("pc11_pca_main_hh_p"), tw),
-            "other_workers_pct": rate(g("pc11_pca_main_ot_p"), tw)}
+            "work_participation": rate(tw, TP),
+            # Main + marginal over all workers, so the four exhaust TOT_WORK_P and a
+            # reader can decompose them. Census's identity, exact in the source:
+            # (MAIN+MARG) CL+AL+HH+OT == TOT_WORK_P.
+            "cultivators_pct": rate(both("cl"), tw),
+            "agri_labourers_pct": rate(both("al"), tw),
+            "household_industry_pct": rate(both("hh"), tw),
+            "other_workers_pct": rate(both("ot"), tw)}
 
 
 # ── official sub-district PCA (complete national coverage; bug #18 fix) ──────

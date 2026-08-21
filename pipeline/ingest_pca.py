@@ -9,7 +9,11 @@ DB  = os.path.join(ROOT, "data", "mapsofbharat.db")
 SRC = "Census of India 2011, Primary Census Abstract (ORGI)"
 SRCURL = "https://censusindia.gov.in/census.website/data/population-finder"; LIC = "GODL-India"
 RAW = ["No_HH","TOT_P","TOT_M","TOT_F","P_06","M_06","F_06","P_SC","P_ST","P_LIT","M_LIT","F_LIT",
-       "TOT_WORK_P","MAIN_CL_P","MAIN_AL_P","MAIN_HH_P","MAIN_OT_P"]
+       "TOT_WORK_P","MAIN_CL_P","MAIN_AL_P","MAIN_HH_P","MAIN_OT_P",
+       # Marginal workers — under six months of work in the year (#562). Without
+       # these the four category shares are MAIN workers over ALL workers and sum
+       # to 73.5%, never 100, while claiming to be "% of total workers".
+       "MARG_CL_P","MARG_AL_P","MARG_HH_P","MARG_OT_P"]
 
 df = pd.read_excel(PCA, sheet_name="Data", dtype=str)
 d = df[(df["Level"] == "DISTRICT") & (df["TRU"] == "Total")].copy()
@@ -54,6 +58,12 @@ def compute(r):
     g = lambda k: (None if (r.get(k) is None or (isinstance(r.get(k), float) and pd.isna(r.get(k)))) else float(r.get(k)))
     def rate(n, dd): return None if (n is None or dd is None or dd == 0) else round(n/dd*100, 1)
     def ratio(n, dd): return None if (n is None or dd is None or dd == 0) else round(n/dd*1000, 0)
+    def both(cat):
+        """Main + marginal workers in one category. None if either side is absent,
+        rather than silently treating a missing marginal count as zero — that would
+        reintroduce the very understatement this exists to remove."""
+        m, g_ = g(f"MAIN_{cat}_P"), g(f"MARG_{cat}_P")
+        return None if (m is None or g_ is None) else m + g_
     TP, P06, TF, F06, TM, M06, tw = g("TOT_P"), g("P_06"), g("TOT_F"), g("F_06"), g("TOT_M"), g("M_06"), g("TOT_WORK_P")
     return {
       "pop_total": TP,
@@ -62,8 +72,11 @@ def compute(r):
       "sex_ratio": ratio(TF, TM), "child_sex_ratio": ratio(F06, M06),
       "sc_pct": rate(g("P_SC"), TP), "st_pct": rate(g("P_ST"), TP),
       "work_participation": rate(tw, TP),
-      "cultivators_pct": rate(g("MAIN_CL_P"), tw), "agri_labourers_pct": rate(g("MAIN_AL_P"), tw),
-      "household_industry_pct": rate(g("MAIN_HH_P"), tw), "other_workers_pct": rate(g("MAIN_OT_P"), tw),
+      # Main + marginal, over all workers, so the four exhaust TOT_WORK_P and a
+      # reader can decompose them (#562). Census's own identity:
+      # (MAIN+MARG) CL+AL+HH+OT == TOT_WORK_P, exact in the source.
+      "cultivators_pct": rate(both("CL"), tw), "agri_labourers_pct": rate(both("AL"),  tw),
+      "household_industry_pct": rate(both("HH"), tw), "other_workers_pct": rate(both("OT"), tw),
     }
 
 d["dt_code"] = d.apply(resolve, axis=1)
@@ -73,6 +86,22 @@ results, estimated, kind_of = {}, set(), {}
 for _, r in d.iterrows():
     code = r["dt_code"]
     if code and code not in results: results[code] = compute(r)
+# #562 guard: the four categories must exhaust the workforce. This is an identity in
+# the source (MAIN+MARG across CL/AL/HH/OT equals TOT_WORK_P), so any drift means the
+# numerator set has been edited without the denominator, which is how the original
+# main-over-all defect survived from the first ingest.
+_bad = [(c, s) for c, s in (
+    (c, sum(v[k] for k in ("cultivators_pct", "agri_labourers_pct",
+                           "household_industry_pct", "other_workers_pct")
+            if v.get(k) is not None))
+    for c, v in results.items()
+    if all(v.get(k) is not None for k in ("cultivators_pct", "agri_labourers_pct",
+                                          "household_industry_pct", "other_workers_pct"))
+) if abs(s - 100) > 0.5]
+assert not _bad, (f"#562: worker shares must sum to 100 +/- 0.5; {len(_bad)} districts do not, "
+                  f"worst {max(_bad, key=lambda t: abs(t[1]-100))}")
+print(f"#562 guard: worker shares sum to 100 +/- 0.5 in all {len(results)} districts")
+
 exact = len(results)
 
 for x in feats:                       # whole-state aggregation (single-polygon states e.g. Delhi)
@@ -110,10 +139,10 @@ METRICS = [
   ("sc_pct","Scheduled Caste share","demographics","%",1,None,"SC population as % of total."),
   ("st_pct","Scheduled Tribe share","demographics","%",1,None,"ST population as % of total."),
   ("work_participation","Work participation rate","demographics","%",1,None,"Workers as % of total population."),
-  ("cultivators_pct","Cultivators (% of workers)","livelihood","%",1,None,"Cultivators as % of total workers."),
-  ("agri_labourers_pct","Agricultural labourers (% of workers)","livelihood","%",1,None,"Agricultural labourers as % of total workers."),
-  ("household_industry_pct","Household industry (% of workers)","livelihood","%",1,1,"Household-industry workers as % of total workers."),
-  ("other_workers_pct","Other / non-farm workers (% of workers)","livelihood","%",1,1,"Non-farm workers as % of total workers."),
+  ("cultivators_pct","Cultivators (% of workers)","livelihood","%",1,None,"Cultivators as % of all workers, main and marginal (Census 2011)."),
+  ("agri_labourers_pct","Agricultural labourers (% of workers)","livelihood","%",1,None,"Agricultural labourers as % of all workers, main and marginal (Census 2011)."),
+  ("household_industry_pct","Household industry (% of workers)","livelihood","%",1,1,"Household-industry workers as % of all workers, main and marginal (Census 2011)."),
+  ("other_workers_pct","Other / non-farm workers (% of workers)","livelihood","%",1,1,"Other / non-farm workers as % of all workers, main and marginal (Census 2011)."),
 ]
 
 os.makedirs(os.path.dirname(DB), exist_ok=True)

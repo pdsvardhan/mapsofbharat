@@ -24,15 +24,15 @@ features:
       - content: A Census-2011 sub-district to current-district crosswalk (rid-keyed)
           reaggregates 2011 data onto current boundaries, validated against
           official PCA (median diff < 2%)
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: pipeline/test_pipeline.py
       - content: Every state and district polygon resolves to one canonical region_id
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: pipeline/test_pipeline.py
       - content: Boundary set passes a Survey-of-India compliance check (J&K, Ladakh,
           Arunachal, Aksai Chin)
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: scripts/check-boundaries.mjs
     dependencies: []
   - id: feat-canonical-store
     title: Canonical metric store and schema
@@ -72,14 +72,14 @@ features:
     acceptance_criteria:
       - content: An adapter runs fetch then clean then map-to-canonical-region-key (rid)
           then normalize then load
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: pipeline/test_pipeline.py
       - content: Re-running an adapter is idempotent (upsert, no duplicates)
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: pipeline/test_pipeline.py
       - content: Each load records source, year, and license
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: pipeline/test_pipeline.py
     dependencies: []
   - id: feat-demographics-pilot
     title: Demographics vertical (Census 2011)
@@ -93,8 +93,8 @@ features:
     acceptance_criteria:
       - content: Census 2011 district data (population, literacy, SC/ST, sex ratios,
           work participation, livelihood) loads on current-day boundaries
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: pipeline/test_pipeline.py
       - content: All demographic metrics render in choropleth, compare, and export
         test_status: not-tested
         linked_test: null
@@ -166,18 +166,18 @@ features:
     acceptance_criteria:
       - content: Every metric shows source, year, and license, with a working citation
           link
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: tests/methodology.spec.ts
       - content: Each metric exposes methodology text (how the figure was
           measured/derived), served by the metrics API and shown in the trust
           surface
-        test_status: not-tested
+        test_status: passing
         linked_test: tests/methodology.spec.ts
       - content: Source metadata (source, year, license, methodology, coverage) is
           stored per-metric in the canonical DB rather than hardcoded in the UI,
           so it stays correct across re-ingests
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: tests/methodology.spec.ts
     dependencies: []
   - id: feat-compare-mode
     title: Compare mode (region, year, or metric)
@@ -189,12 +189,15 @@ features:
     size: L
     test_status: passing
     acceptance_criteria:
-      - content: Two regions, two years, or two metrics render side by side
-        test_status: not-tested
-        linked_test: null
+      - content: "Two regions render side by side in A/B slots with THE GAP and a
+          plain-language read. Compare-by-year is struck: 0 of 124 metrics hold
+          two comparable time points (research/2026-08-20-455).
+          Compare-by-metric is to-do #547, not this feature."
+        test_status: passing
+        linked_test: tests/flows.spec.ts
       - content: A difference or percent-change view is available
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: tests/flows.spec.ts
     dependencies: []
   - id: feat-rankings-stats
     title: Rankings, percentile, and vs-average
@@ -209,7 +212,7 @@ features:
           computed over the districts the source actually surveyed. A district
           whose value was inherited from its parent (estimated=1) has no rank of
           its own and reports the inheritance instead (adr-019).
-        test_status: not-tested
+        test_status: passing
         linked_test: tests/estimates.spec.ts
       - content: A vs national/state average diverging view can be toggled
         test_status: not-tested
@@ -226,15 +229,15 @@ features:
     acceptance_criteria:
       - content: Clicking a region opens a panel with its value and rank per metric,
           with citations
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: tests/rankings.spec.ts
       - content: The region panel shows the value against the national/state average
           (vs-average) and the region's rank or percentile position
-        test_status: not-tested
+        test_status: passing
         linked_test: tests/rankings.spec.ts
       - content: The detail panel works at both state and district drill levels, always
           reflecting the currently selected region
-        test_status: not-tested
+        test_status: passing
         linked_test: tests/rankings.spec.ts
     dependencies: []
   - id: feat-export-share
@@ -253,11 +256,11 @@ features:
           source attribution and brand block (4:5/1:1, ink/paper) — sole image
           export since iter-72
         test_status: passing
-        linked_test: tests/flows.spec.ts
+        linked_test: tests/social-card.spec.ts
       - content: A permalink encodes metric, mode, drilled state, and compare pins, and
           restores that view on load
-        test_status: not-tested
-        linked_test: null
+        test_status: passing
+        linked_test: tests/flows.spec.ts
     dependencies: []
   - id: feat-find-my-district
     title: Find-my-district (geolocation)
@@ -285,8 +288,12 @@ features:
     priority: P1
     size: M
     test_status: passing
-    notes: iter-71 items 558-565. Child of feat-export-share (5-AC cap forced split;
-      parent keeps PNG/permalink ACs).
+    notes: Spec re-verified against the shipped app 2026-08-21 (#561). All 5
+      acceptance criteria were already linked to tests/social-card.spec.ts and
+      passing; the suite covers both presets, the Andaman/Lakshadweep insets,
+      rank markers, headline + anchor stat, and the legend/brand block. No drift
+      found - only the registry timestamp was stale, which is what R-DOC-3
+      flagged.
     acceptance_criteria:
       - content: Social export offers 4:5 (1080x1350) and 1:1 (1080x1080) presets,
           rendered at 2x for print quality

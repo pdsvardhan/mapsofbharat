@@ -172,15 +172,33 @@ export const METRIC_FAMILIES: MetricFamily[] = [
     axisWhy: "5.6x spread and three unrelated concepts (literacy, caste, livelihood) in one cohort.",
     partToWhole: false,
     sharedDistricts: 733,
-    // The four worker-category members take MAIN_*_P numerators over TOT_WORK_P
-    // (pipeline/ingest_pca.py:65-66), so they are MAIN workers as a share of ALL
-    // workers: they sum to 73.6% on average and to 100 in zero of 733 districts.
-    // The missing ~26% is marginal workers, undisclosed in descriptions that say
-    // only "% of total workers". Until that is resolved this family must not ship
-    // as a livelihood decomposition.
-    blockedBy:
-      "worker-category metrics understate by ~26% (main workers over all workers) — " +
-      "see the ingest_pca to-do before shipping this family",
+    // The worker-category understatement (#562) is fixed: marginal workers are now
+    // counted, so those four members sum to 100. This family still does not
+    // decompose anything, because it mixes literacy, caste share and livelihood in
+    // one source cohort — the decomposition is the `livelihood` family below.
+  },
+  {
+    id: "livelihood",
+    label: "How districts earn a living",
+    blurb: "Every worker in the district, split four ways by what they do.",
+    source: "Census of India 2011, Primary Census Abstract (ORGI)",
+    unit: "%",
+    members: ["cultivators_pct", "agri_labourers_pct", "household_industry_pct",
+              "other_workers_pct"],
+    // Shared, deliberately, BECAUSE it is a decomposition: the parts are shares of
+    // one whole, so they have to be read against each other. Household industry
+    // topping out at 19.2 against other work's 98.6 is the finding, not a rendering
+    // problem to scale away.
+    axis: "shared",
+    axisWhy:
+      "5.1x spread, but the members are parts of one whole and must stay comparable. " +
+      "Free axes would make household industry look as large as non-farm work.",
+    // Only the second genuine part-to-whole family in the catalogue, and it only
+    // became one on 2026-08-21: before #562 these took MAIN_*_P numerators over
+    // TOT_WORK_P and summed to 73.6%, never 100. Census's identity is exact —
+    // (MAIN+MARG) CL+AL+HH+OT == TOT_WORK_P — so this sums to 100.0 dead on.
+    partToWhole: { sumsTo: 100.0, within: 733, of: 733 },
+    sharedDistricts: 733,
   },
 ];
 

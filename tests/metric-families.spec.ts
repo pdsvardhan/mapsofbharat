@@ -117,10 +117,33 @@ test.describe("#547 small-multiples families", () => {
     const { SHIPPABLE_FAMILIES } = await import("@/lib/metric-families");
     for (const fam of SHIPPABLE_FAMILIES)
       expect(fam.blockedBy, `${fam.id} is shippable but carries a blocker`).toBeUndefined();
+    for (const fam of METRIC_FAMILIES.filter((f) => f.blockedBy))
+      expect(SHIPPABLE_FAMILIES.map((f) => f.id), `${fam.id} is blocked but shippable`).not.toContain(fam.id);
+  });
 
-    // census-pca is blocked until the main-vs-all workers understatement is resolved.
-    // If someone clears that blocker, they should have fixed the data first.
-    const pca = METRIC_FAMILIES.find((f) => f.id === "census-pca")!;
-    expect(pca.blockedBy, "census-pca must stay blocked while its worker shares understate").toBeTruthy();
+  test("livelihood is a family at all only because the worker shares were fixed", async ({ request }) => {
+    // census-pca used to carry a blockedBy: its four worker members took MAIN_*_P
+    // numerators over TOT_WORK_P, summing to 73.6% and to 100 in zero of 733
+    // districts (adr-036). The blocker is gone because the data was fixed, not
+    // because someone cleared it — so this asserts the fix, which is the thing the
+    // blocker actually stood for.
+    const fam = METRIC_FAMILIES.find((f) => f.id === "livelihood");
+    expect(fam, "the livelihood family should exist once the worker shares are whole").toBeTruthy();
+    expect(fam!.partToWhole, "livelihood must claim part-to-whole").toBeTruthy();
+
+    const sums = new Map<string, { total: number; n: number }>();
+    for (const id of fam!.members) {
+      const { values } = (await (await request.get(`/api/metrics/${id}?level=district`)).json()) as {
+        values: Record<string, number>;
+      };
+      for (const [code, v] of Object.entries(values)) {
+        const cur = sums.get(code) ?? { total: 0, n: 0 };
+        sums.set(code, { total: cur.total + v, n: cur.n + 1 });
+      }
+    }
+    const complete = [...sums.values()].filter((s) => s.n === fam!.members.length);
+    const off = complete.filter((s) => s.total < 99 || s.total > 101);
+    expect(complete.length, "every district should carry all four worker shares").toBe(733);
+    expect(off.length, `${off.length} districts do not sum to ~100 — the #562 understatement is back`).toBe(0);
   });
 });
