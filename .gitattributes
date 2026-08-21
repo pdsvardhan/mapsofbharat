@@ -1,0 +1,29 @@
+# Line endings (#550).
+#
+# app/metric/[slug]/page.tsx and components/india-map.tsx had reached a MIXED state —
+# 344 of 346 lines CRLF in one, 2199 of 2200 in the other — which is worse than either
+# convention on its own: an LF-anchored patch matches the two odd lines and silently
+# misses the rest of the file. It had already caused one half-applied edit.
+#
+# Normalising once fixes the files that exist; this fixes the ones that come next.
+* text=auto eol=lf
+
+# CSV keeps CRLF: RFC 4180 specifies it, and these are data artifacts, not source.
+*.csv -text
+
+# Never let git rewrite bytes in these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.db binary
+*.gpkg binary
+*.xlsx binary
+*.xls binary
+*.zip binary
+*.pdf binary
