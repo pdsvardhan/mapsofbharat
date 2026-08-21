@@ -67,8 +67,10 @@ METH_DISTRICT = (
 METH_AREA = (
     "Area is the official A-01 district figure for every district unchanged since "
     "2011. A district carved out after 2011 has no official area, so its area is the "
-    "sum of the areas of the sub-districts the crosswalk places in it, and is marked "
-    "re-aggregated. Both are ADMINISTERED area: A-01 carries no rows for territory "
+    "sum of the areas of the sub-districts the crosswalk places in it — which counts "
+    "only enumerated village and town land, and so still understates whatever "
+    "unsurveyed terrain that district holds. 222 of 733 districts are on that weaker "
+    "footing. Both are ADMINISTERED area: A-01 carries no rows for territory "
     "across the LoC or LAC, so Leh is 45,110 sq km here while the boundary drawn on "
     "the map - which shows the full claimed extent - encloses roughly 155,000 sq km. "
     "Until 2026 density instead divided by the sum of the sub-district area column, "

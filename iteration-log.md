@@ -785,4 +785,13 @@ only density regressed and the area stayed right. Full suite 255/255, pipeline t
 mgnrega/upi metrics the baseline had never tracked**. No existing expectation value was
 altered, so nothing was laundered.
 
+**A false sentence caught on the live page, after the deploy.** The first METH_AREA
+text said carved-district areas are "marked re-aggregated". They had been, in the cut
+that was reverted an hour earlier — the sentence outlived the behaviour and shipped.
+It was found by checking that the disclosure actually *renders*, rather than that the
+column exists: fetching `/metric/area_km2` from production and reading the paragraph
+back. The methodology is the one surface whose entire job is telling a reader how much
+to trust a number, so a stale claim there is worse than none. Now states the real
+footing: no marker, 222 of 733 districts on the weaker sum, and why.
+
 **Decisions:** adr-035 (administered-area denominator, curated, cat:reliability).
