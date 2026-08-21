@@ -717,3 +717,72 @@ small multiples, now proven buildable), #409, #410.
 backup is now ~1.3 GB so a free tier covers it) and #545 (an external uptime monitor — and
 note it only becomes useful *after* a production deploy, since production still runs the
 old always-ok health endpoint).
+
+## Session 2026-08-21 — Wave 1+2 deployed, and the density denominator (#548, #549)
+
+**Ask:** deploy Wave 1 and Wave 2, then complete #549 and #548.
+
+**Deploy.** Production moved `d9f92ae` -> `3d1b25b`, gated on a full local run of the
+suite against the standalone build (249/249, exit 0) rather than on the previous
+session's claim. Verified after the fact from three independent places, because an
+image label alone cannot prove what is serving: the label
+(`org.opencontainers.image.revision=3d1b25b`), `/api/health` reporting commit
+`3d1b25b` **with the new failable `checks` block** — which only Wave 2's code emits,
+so it is the new build and not a relabelled old one — and a smoke of six public
+routes plus a metric page, sitemap and robots.
+
+*Friction, worth knowing:* the first `docker compose up --build` **hung at `npm ci`
+for 10 hours 23 minutes** with the process tree alive at 0% CPU. Buffered compose
+output made "still working" and "hung" look identical, and I misread other containers'
+CPU as progress. Killed, and relaunched through `scripts/`-style wrapper with
+`--progress=plain` and `timeout 1800`, so the same stall is now loud and bounded.
+Production was never touched by the hung attempt.
+
+**#548 — a wrong number on a live map, and it was narrower and worse than recorded.**
+The to-do said "~100x too high across Ladakh and J&K". Measured: the enumerated-area
+denominator was within 2% of the official area for **483 of the 495 districts that have
+a comparator**, and catastrophically wrong for **twelve** — Leh 339 against a true 3
+(114x), Kargil 750 against 10 (75x), then Doda, Anantnag, Baramulla, Kupwara, Kutch,
+Pulwama, Punch, and three within noise. Kutch is not J&K at all; the Rann is real land
+no village area counts.
+
+The same column fed the crosswalk-derived states, so **Ladakh was publishing a
+geographic area of 582 km²** against a real 59,146, feeding the Atlas area cohort.
+J&K published 23,361 against 39,932. That half of the bug was not in the to-do.
+
+**Geometry was tested as the denominator and rejected on measurement.** Geodesic area
+from the shipped Survey-of-India polygons matches the official district area within 5%
+for only **416 of 495**, against the census sum's 485 — it would have broken 69
+districts to fix 12 — and it fails worst where the census fails, because Leh's polygon
+includes Aksai Chin: it moves Leh from 339 to 0.9, wrong in the other direction.
+Recorded in adr-035.
+
+**Shipped:** official A-01 district area wherever a current district is exactly one
+2011 district (511 districts, all twelve broken ones); the crosswalk sum elsewhere
+(222); `area_km2` at district level and a new `households` metric, 733d + 36s each.
+National households reconciles **exactly** to A-01's INDIA row (249,501,663). Owner
+decision: administered area, disclosed in the methodology rather than reconciled
+against the drawn boundary.
+
+**A dead end worth recording.** The 222 crosswalk-derived areas were first written as
+`estimated=1, estimate_kind='aggregated'`. They vanished: `fill_new_districts.py:131`
+deletes **every** district estimate and refills only the inherited ones, so 222 of 733
+rows disappeared between the adapter and the fill. The label was wrong anyway —
+`aggregated` promises "an exact sum of the underlying rows", true of households, false
+of an area column that omits unsurveyed land. Reverted; `region_match.py` ended the
+session **byte-identical to where it started**. Per-district provenance for
+adapter-written aggregates is a live to-do, not a silent gap.
+
+**Verification.** `tests/density-denominator.spec.ts`, 6 tests, **mutation-proven 6/6**
+against a scratch copy of the store so production was never written to. The guard that
+outlives the hardcoded numbers is the reconciliation invariant — `density × area` must
+return population for every district — and it independently caught the mutation where
+only density regressed and the area stayed right. Full suite 255/255, pipeline tests
+9/9, `validate_drift` OK.
+
+**Drift baseline:** `regen_expectations.py` re-baselined. The diff is one changed line
+(metric_count 124 -> 125) and ten additions — the two new metrics plus **eight
+mgnrega/upi metrics the baseline had never tracked**. No existing expectation value was
+altered, so nothing was laundered.
+
+**Decisions:** adr-035 (administered-area denominator, curated, cat:reliability).

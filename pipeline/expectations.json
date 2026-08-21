@@ -1,11 +1,12 @@
 {
   "district_coverage": 735,
-  "metric_count": 124,
+  "metric_count": 125,
   "per_metric_district_count": {
     "agri_cropped_area": 425,
     "agri_labourers_pct": 733,
     "agri_rice_production": 412,
     "agri_wheat_production": 319,
+    "area_km2": 733,
     "aser_division_std6_8": 622,
     "aser_govt_school": 622,
     "aser_out_of_school": 622,
@@ -31,6 +32,7 @@
     "heatwave_days_40c": 735,
     "hindu_pct": 733,
     "household_industry_pct": 733,
+    "households": 733,
     "jain_pct": 733,
     "language_diversity": 733,
     "language_hindi_pct": 733,
@@ -40,6 +42,12 @@
     "livestock_cattle": 695,
     "livestock_goat": 695,
     "livestock_poultry": 695,
+    "mgnrega_active_workers_per_1000": 683,
+    "mgnrega_avg_days_employment_hh": 678,
+    "mgnrega_avg_wage_day": 678,
+    "mgnrega_pct_hh_100_days": 683,
+    "mgnrega_scst_persondays_share": 683,
+    "mgnrega_women_persondays_share": 683,
     "muslim_pct": 733,
     "nfhs5_alcohol_men": 710,
     "nfhs5_alcohol_women": 710,
@@ -79,6 +87,8 @@
     "st_pct": 733,
     "tap_water_pct": 726,
     "tmax_mean_c": 735,
+    "upi_txn_per_capita": 731,
+    "upi_value_per_capita": 731,
     "urban_pct": 733,
     "work_participation": 733
   }

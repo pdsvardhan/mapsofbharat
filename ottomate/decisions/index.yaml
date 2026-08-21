@@ -391,3 +391,12 @@ decisions:
       - curated
       - cat:system
     body_path: decisions/adr-034-border-cascade-layer.md
+  - id: adr-035-administered-area-denominator
+    project_slug: mapsofbharat
+    title: Population density divides by administered area, and says so
+    status: accepted
+    date: 2026-08-21T00:00:00.000Z
+    tags:
+      - curated
+      - cat:reliability
+    body_path: decisions/adr-035-administered-area-denominator.md

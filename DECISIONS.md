@@ -40,3 +40,4 @@ The canonical index of architecture decisions for Maps of Bharat. Each row links
 | [adr-032](decisions/adr-032-stack-no-orm-no-chart-lib.md) | 2026-08-11 | system | No ORM and no chart library: the stack the code actually has (supersedes adr-007) |
 | [adr-033](decisions/adr-033-one-definition-per-visual-fact.md) | 2026-08-13 | system | One definition per visual fact: colour, motion and the classes that carry them |
 | [adr-034](decisions/adr-034-border-cascade-layer.md) | 2026-08-13 | system | The border hierarchy the code asked for and the cascade threw away |
+| [adr-035](decisions/adr-035-administered-area-denominator.md) | 2026-08-21 | reliability | Population density divides by administered area, and says so |
