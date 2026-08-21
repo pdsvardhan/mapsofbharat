@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "check:css": "node scripts/check-globals-layers.mjs",
-    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs"
+    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs",
+    "postbuild": "node scripts/check-raw-assets.mjs --output"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

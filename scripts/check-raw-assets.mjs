@@ -10,8 +10,20 @@
 // under /app/pipeline/raw-new against production's 27, and only two E2E tests
 // caught it. The failure deserves to be loud and early instead.
 //
-//   node scripts/check-raw-assets.mjs
+//   node scripts/check-raw-assets.mjs             # the SOURCE tree, before the build
+//   node scripts/check-raw-assets.mjs --output    # the BUILD OUTPUT, after it
 //   ALLOW_MISSING_RAW=1 node scripts/check-raw-assets.mjs   # warn, do not fail
+//
+// TWO CHECKS, BECAUSE SOURCE-PRESENT DOES NOT MEAN OUTPUT-PRESENT (to-do #555).
+// Next traces pipeline/raw* into .next/standalone at build time. On 2026-08-20 CI
+// showed the gap: there those paths are SYMLINKS to read-only mounts, the tracer does
+// not follow them, and the standalone tree came out without them. The source check
+// passed — the symlinks resolve — while /metric/<id>/raw served a 307 to
+// censusindia.gov.in with `x-raw-source: fallback-official-link`. That is exactly the
+// #498 failure with the inputs looking fine, which is why the guard has to assert the
+// artefact that actually ships, not only what went into it.
+//
+// `--output` runs as `postbuild`, so `npm run build` is gated at both ends.
 //
 // The escape hatch is for doc-only or UI work on a fresh clone, where fetching a
 // gigabyte of government source data to fix a typo is absurd. It is deliberately
@@ -39,6 +51,14 @@ import { createRequire } from 'node:module';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const declRel = 'lib/metric-raw-source.ts';
 const decl = path.join(repo, declRel);
+
+// Which tree the declared paths are resolved against. The runtime reads
+// `path.join(process.cwd(), raw.path)` and in the container cwd IS the standalone
+// root, so checking `.next/standalone/<path>` asks the same question the running
+// image will.
+const checkOutput = process.argv.includes('--output');
+const root = checkOutput ? path.join(repo, '.next', 'standalone') : repo;
+const rootLabel = checkOutput ? '.next/standalone' : 'the source tree';
 
 const die = (msg) => {
   console.error(`check-raw-assets: ${msg}`);
@@ -116,23 +136,41 @@ if (paths.length < FLOOR) {
   );
 }
 
-const missing = paths.filter((p) => !existsSync(path.join(repo, p)));
+// A --output run against a tree that was never built is not a pass, it is a
+// question nobody asked. Fail loudly rather than reporting OK on an absent artefact.
+if (checkOutput && !existsSync(root)) {
+  die(
+    'no .next/standalone to check. `output: "standalone"` must be set in next.config\n' +
+      '  and the build must have run before this. Refusing to report OK on a tree that\n' +
+      '  does not exist.',
+  );
+}
+
+const missing = paths.filter((p) => !existsSync(path.join(root, p)));
 
 if (missing.length === 0) {
-  console.log(`check-raw-assets: OK — ${paths.length} hosted raw files declared, all present.`);
+  console.log(
+    `check-raw-assets: OK — ${paths.length} hosted raw files declared, all present in ${rootLabel}.`,
+  );
   process.exit(0);
 }
 
 const lenient = process.env.ALLOW_MISSING_RAW === '1';
 
 console[lenient ? 'warn' : 'error'](
-  `check-raw-assets: ${lenient ? 'WARNING' : 'ERROR'} — ${missing.length} of ${paths.length} hosted raw files are missing:\n` +
+  `check-raw-assets: ${lenient ? 'WARNING' : 'ERROR'} — ${missing.length} of ${paths.length} hosted raw files are missing from ${rootLabel}:\n` +
     missing.map((p) => `  - ${p}   (serves: ${byPath.get(p).join(', ')})`).join('\n') +
     '\n\n' +
-    '  These are untracked source data. A build without them yields an image that\n' +
-    '  looks healthy and serves text/html 404 for /metric/<id>/raw.\n' +
-    '  Build from /mnt/storage/websites/mapsofbharat (which has them), not from a\n' +
-    '  bare git worktree or a fresh clone.\n' +
+    (checkOutput
+      ? '  The source tree has these but the BUILT OUTPUT does not, so the shipped app\n' +
+        '  will serve a 307 to the official source (x-raw-source: fallback-official-link)\n' +
+        '  instead of the hosted file. The usual cause is that pipeline/raw* are SYMLINKS:\n' +
+        "  Next's tracer does not follow them into .next/standalone. Stage them as real\n" +
+        '  directories, or link them INTO .next/standalone after the build and re-run this.\n'
+      : '  These are untracked source data. A build without them yields an image that\n' +
+        '  looks healthy and serves text/html 404 for /metric/<id>/raw.\n' +
+        '  Build from /mnt/storage/websites/mapsofbharat (which has them), not from a\n' +
+        '  bare git worktree or a fresh clone.\n') +
     (lenient
       ? '  Continuing anyway because ALLOW_MISSING_RAW=1. Do not ship this image.\n'
       : '  To build anyway for doc-only or UI work: ALLOW_MISSING_RAW=1 npm run build\n'),

@@ -96,7 +96,11 @@ jobs:
           ls -la data/mapsofbharat.db
           echo "raw-new entries: $(find -L pipeline/raw-new -type f | wc -l), raw entries: $(find -L pipeline/raw -type f | wc -l)"
 
-      - run: npm run build
+      # ALLOW_MISSING_RAW downgrades the new postbuild output check to a warning for
+      # THIS step only, because the standalone raw trees are staged in the next step
+      # and cannot exist yet. The strict run happens immediately after that staging,
+      # so nothing is waived — it is sequenced. Do not copy this flag anywhere else.
+      - run: ALLOW_MISSING_RAW=1 npm run build
 
       # Point the STANDALONE output at the mounted raw trees.
       #
@@ -116,6 +120,14 @@ jobs:
           ln -sfn /host-raw-new .next/standalone/pipeline/raw-new
           ln -sfn /host-raw .next/standalone/pipeline/raw
           find -L .next/standalone/pipeline -type f | wc -l
+
+      # The gate that would have caught the above being missing (to-do #555). The
+      # prebuild check validates the SOURCE tree, and passed happily while this
+      # symlinked standalone tree had nothing in it, so /metric/<id>/raw served a 307
+      # to censusindia.gov.in. This asserts the artefact the tests are about to run
+      # against. Strict: no ALLOW_MISSING_RAW here, deliberately.
+      - name: Assert the standalone build can actually serve its raw downloads
+        run: node scripts/check-raw-assets.mjs --output
 
       # The full suite against a scratch instance of the STANDALONE build — never
       # the production container. The harness proves the instance writes to a
