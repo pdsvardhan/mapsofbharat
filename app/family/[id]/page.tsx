@@ -157,7 +157,7 @@ export default async function FamilyPage({
         </div>
       </section>
 
-      {family.missingMembers.length ? (
+      {family.storeAvailable && family.missingMembers.length ? (
         // Declared-but-absent members are surfaced, never quietly dropped: a grid
         // silently one panel short is the failure this whole feature is supposed
         // to make impossible.
@@ -188,23 +188,41 @@ export default async function FamilyPage({
         <h2 className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">
           The indicators
         </h2>
+        {/* With no store there are no names, ranges or vintages — those live in the
+            DB. The declared ids do exist, so the list is rendered from those rather
+            than left empty under a heading that promises it. A heading above
+            nothing is the page contradicting itself one paragraph later. */}
         <ul className="mt-3 divide-y divide-border-soft">
-          {family.members.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
-              <Link
-                href={`/metric/${m.id}`}
-                className="text-[14px] font-semibold text-foreground hover:text-accent-text hover:underline"
-              >
-                {m.name}
-              </Link>
-              <span className="font-mono text-[11px] text-faint">
-                {m.statsCount
-                  ? `${m.min.toLocaleString("en-IN", { maximumFractionDigits: m.decimals })}–${m.max.toLocaleString("en-IN", { maximumFractionDigits: m.decimals })}${m.unit === "%" ? "%" : ""}`
-                  : "—"}
-              </span>
-              <span className="ml-auto text-[11px] text-muted">{m.year}</span>
-            </li>
-          ))}
+          {family.storeAvailable
+            ? family.members.map((m) => (
+                <li key={m.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
+                  <Link
+                    href={`/metric/${m.id}`}
+                    className="text-[14px] font-semibold text-foreground hover:text-accent-text hover:underline"
+                  >
+                    {m.name}
+                  </Link>
+                  <span className="font-mono text-[11px] text-faint">
+                    {m.statsCount
+                      ? `${m.min.toLocaleString("en-IN", { maximumFractionDigits: m.decimals })}–${m.max.toLocaleString("en-IN", { maximumFractionDigits: m.decimals })}${m.unit === "%" ? "%" : ""}`
+                      : "—"}
+                  </span>
+                  <span className="ml-auto text-[11px] text-muted">{m.year}</span>
+                </li>
+              ))
+            : family.memberIds.map((id) => (
+                <li key={id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
+                  <Link
+                    href={`/metric/${id}`}
+                    className="font-mono text-[13px] font-semibold text-foreground hover:text-accent-text hover:underline"
+                  >
+                    {id}
+                  </Link>
+                  <span className="text-[11px] text-faint">
+                    name and range need the data store
+                  </span>
+                </li>
+              ))}
         </ul>
       </section>
 

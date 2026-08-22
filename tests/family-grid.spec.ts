@@ -1,5 +1,8 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
+import { noStoreDetail } from "@/lib/family-data";
+import { FAMILY_BY_ID, SHIPPABLE_FAMILIES } from "@/lib/metric-families";
+
 // The small-multiple grid (#547 phase B, iter-40 items 968-975).
 //
 // Everything load-bearing here is SSR: the panels, their captions and the whole
@@ -261,6 +264,55 @@ test.describe("#547 both entrances exist (item 975)", () => {
     expect(xml).toContain("/family</loc>");
     for (const f of await families(request)) {
       expect(xml, `sitemap ${f.id}`).toContain(`/family/${f.id}</loc>`);
+    }
+  });
+});
+
+test.describe("#547 the store-absent page keeps its own promise (iter-41)", () => {
+  // THE CASE THAT SHIPPED GREEN. The feature verifier drove an instance with
+  // DB_PATH at a missing file and found /family/[id] saying "the family and its 3
+  // indicators are listed below" above an empty <ul> — and, worse, accusing itself
+  // of drift ("3 declared indicators are missing from the store") when nothing had
+  // drifted; the volume simply was not mounted. Nothing in tests/ asserted any of
+  // it, so it passed everything.
+  //
+  // Asserted here on the pure shape rather than by standing up a second server: the
+  // defect lived entirely in what the data layer reports when db() returns null.
+
+  test("with no store, nothing is reported missing", () => {
+    for (const family of SHIPPABLE_FAMILIES) {
+      const d = noStoreDetail(family);
+      expect(d.storeAvailable).toBe(false);
+      // An absent volume is not a retired metric. Conflating them is what produced
+      // a false drift warning on a perfectly healthy family.
+      expect(d.missingMembers, `${family.id} must not claim members are missing`).toEqual([]);
+      expect(d.measuredSharedDistricts).toBe(0);
+      expect(d.members, "no store means no values, names or vintages").toEqual([]);
+    }
+  });
+
+  test("with no store, the declaration is still listable", () => {
+    // This is what lets the page keep its promise. memberIds comes from code, not
+    // from a query, so it survives the volume being gone.
+    const family = FAMILY_BY_ID.get("mgnrega");
+    expect(family).toBeTruthy();
+    const d = noStoreDetail(family!);
+    expect(d.memberIds).toEqual(family!.members);
+    expect(d.memberIds.length).toBeGreaterThan(0);
+    expect(d.declaredMembers).toBe(family!.members.length);
+  });
+
+  test("the live page lists one indicator per resolved member", async ({ request }) => {
+    // The healthy-path half of the same rule: the heading never stands above an
+    // empty list. Counted on <li> inside the indicator list, with the flight
+    // payload stripped so the count is not doubled.
+    for (const f of await families(request)) {
+      const html = markup(await (await request.get(`/family/${f.id}`)).text());
+      const section = html.split("The indicators")[1] ?? "";
+      const list = section.split("</ul>")[0] ?? "";
+      expect((list.match(/<li/g) ?? []).length, `${f.id} indicator rows`).toBe(
+        f.resolvedMembers
+      );
     }
   });
 });

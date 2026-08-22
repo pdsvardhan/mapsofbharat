@@ -85,8 +85,13 @@ export type FamilySummary = {
   /** Declared members actually present in the store right now. */
   resolvedMembers: number;
   /** Declared members absent from the store. Non-empty means the family is
-   *  drifting from its declaration — surfaced, never quietly dropped. */
+   *  drifting from its declaration — surfaced, never quietly dropped. Always empty
+   *  when the store is absent, because then nothing is known to be missing. */
   missingMembers: string[];
+  /** The declared member ids, from lib/metric-families.ts. Available with or
+   *  without a store — it is the declaration, not a query — so a page can still
+   *  list what the family CONTAINS when the volume is not mounted. */
+  memberIds: string[];
 };
 
 export type FamilyDetail = FamilySummary & {
@@ -133,10 +138,15 @@ function placeholders(n: number): string {
   return new Array(n).fill("?").join(",");
 }
 
-/** Which of a family's declared members exist in the store. One query, no values. */
+/** Which of a family's declared members exist in the store. One query, no values.
+ *
+ *  With NO store, `missing` is EMPTY rather than every member. An absent volume and
+ *  a retired metric are different facts, and reporting the first as the second made
+ *  the page accuse itself of drift ("3 declared indicators are missing from the
+ *  store") when nothing had drifted at all — the store simply was not mounted. */
 function resolveMembers(family: MetricFamily): { present: string[]; missing: string[] } {
   const d = db();
-  if (!d) return { present: [], missing: [...family.members] };
+  if (!d) return { present: [], missing: [] };
   const rows = d
     .prepare(`SELECT id FROM metrics WHERE id IN (${placeholders(family.members.length)})`)
     .all(...family.members) as { id: string }[];
@@ -164,6 +174,7 @@ function summarize(family: MetricFamily): FamilySummary {
     declaredMembers: family.members.length,
     resolvedMembers: present.length,
     missingMembers: missing,
+    memberIds: [...family.members],
   };
 }
 
@@ -190,6 +201,28 @@ function paletteFor(members: FamilyMemberMeta[]): PaletteId {
 }
 
 /**
+ * What is knowable about a family with no store: the declaration, and nothing else.
+ *
+ * `members` is empty because a member row carries values, a name and a vintage, and
+ * all three live in the store. `memberIds` is NOT empty, because the family's
+ * contents are declared in code — which is what lets the page keep the promise it
+ * makes ("the family and its N indicators are listed below") instead of printing a
+ * heading above an empty list, as it did before iteration 41.
+ */
+export function noStoreDetail(family: MetricFamily, base = summarize(family)): FamilyDetail {
+  return {
+    ...base,
+    level: FAMILY_LEVEL,
+    storeAvailable: false,
+    sharedCodes: [],
+    measuredSharedDistricts: 0,
+    members: [],
+    palette: DEFAULT_PALETTE,
+    shared: null,
+  };
+}
+
+/**
  * One family, with every resolved member's values on the shared district set.
  *
  * Returns null ONLY for an id no family declares — that is a 404. A known family
@@ -203,18 +236,7 @@ export function getFamilyDetail(id: string): FamilyDetail | null {
 
   const base = summarize(family);
   const d = db();
-  if (!d) {
-    return {
-      ...base,
-      level: FAMILY_LEVEL,
-      storeAvailable: false,
-      sharedCodes: [],
-      measuredSharedDistricts: 0,
-      members: [],
-      palette: DEFAULT_PALETTE,
-      shared: null,
-    };
-  }
+  if (!d) return noStoreDetail(family, base);
 
   const present = family.members.filter((m) => !base.missingMembers.includes(m));
   if (!present.length) {
