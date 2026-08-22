@@ -16,7 +16,13 @@ export default defineConfig({
   // to-do 253). Cap here so green means green; PW_WORKERS overrides.
   workers: Number(process.env.PW_WORKERS || 2),
   retries: process.env.CI ? 1 : 0,
-  reporter: [["list"]],
+  // `list` is for humans to read. Set PW_JSON=<path> to also get a
+  // machine-readable copy, so scripts take counts from stats.unexpected rather
+  // than scraping console text. Three wrong verdicts came from reading a
+  // truncated text summary as a result (#557); text has no place in a gate.
+  reporter: process.env.PW_JSON
+    ? [["list"], ["json", { outputFile: process.env.PW_JSON }]]
+    : [["list"]],
   use: {
     baseURL: BASE_URL,
     headless: true,

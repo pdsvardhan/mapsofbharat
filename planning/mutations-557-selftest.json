@@ -1,0 +1,23 @@
+{
+  "tests": "tests/symbol-maps.spec.ts",
+  "mutations": [
+    {
+      "name": "district max radius 12 -> 21  [MUST be KILLED: spec line 57 pins it]",
+      "file": "lib/symbols.ts",
+      "find": "district: { min: 1.2, max: 12 },",
+      "replace": "district: { min: 1.2, max: 21 },"
+    },
+    {
+      "name": "district floor 1.2 -> 2.4  [MUST be KILLED: spec line 64 pins it]",
+      "file": "lib/symbols.ts",
+      "find": "district: { min: 1.2, max: 12 },",
+      "replace": "district: { min: 2.4, max: 12 },"
+    },
+    {
+      "name": "drop composite-unit guard  [MUST SURVIVE: symbols.ts:34-41 documents that deleting it changes nothing today]",
+      "file": "lib/symbols.ts",
+      "find": "  if (/[/%]|\\bper\\b/i.test(u)) return false;\n",
+      "replace": ""
+    }
+  ]
+}
