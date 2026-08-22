@@ -9,6 +9,7 @@ import {
   PANEL,
   SNAP,
   extentOf,
+  flattenedIn,
   projectCollection,
   rewind,
   round,
@@ -114,6 +115,24 @@ test.describe("#547 the projection is shared across panels", () => {
       }
     }
     expect(empty, "subpaths with zero extent").toEqual([]);
+  });
+
+  test("the build's flatten guard detects what it claims to", () => {
+    // THE GUARD THAT NOTHING ASSERTED. At the shipped 0.5px tolerance no region is
+    // flattened, so the guard never fires, so breaking it changed no output and
+    // every mutation of it read as a survivor — the mutation harness said so in as
+    // many words. Extracting it from build() makes it reachable.
+    const flat = flattenedIn as (p: Record<string, string>) => string[];
+    expect(flat({ ok: "M0,0L5,0L5,5Z" }), "a real triangle is not flattened").toEqual([]);
+    // A line: two points, 0 wide. Draws nothing when filled.
+    expect(flat({ line: "M0,0L0,5Z" }).length, "a zero-width line must be caught").toBe(1);
+    // A single point.
+    expect(flat({ dot: "M3,3Z" }).length, "a single point must be caught").toBe(1);
+    // And the shipped artefact is clean by that same rule, both layers.
+    const layers = artefact().layers as Record<string, Paths>;
+    for (const [name, layer] of Object.entries(layers)) {
+      expect(flat(layer), `${name} ships a flattened region`).toEqual([]);
+    }
   });
 
   test("no district loses all of its geometry", () => {

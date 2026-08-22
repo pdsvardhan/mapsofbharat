@@ -28,10 +28,11 @@
       "replace": "    if (false) continue;"
     },
     {
-      "name": "the build's extent guard is removed, so a tolerance that eats a district is written out",
+      "name": "the flatten guard stops detecting, so a tolerance that eats a region is written out",
       "file": "scripts/build-family-paths.mjs",
-      "find": "    if (flattened.length) {",
-      "replace": "    if (false) {"
+      "find": "    if (points < 3 || w <= 0 || h <= 0) flattened.push(`${id} (${w}x${h}, ${points}pts)`);",
+      "replace": "    if (false) flattened.push(`${id} (${w}x${h}, ${points}pts)`);",
+      "control": "was a SURVIVOR while the guard lived inside build(): at 0.5px nothing is flattened, so breaking it changed nothing observable"
     }
   ]
 }

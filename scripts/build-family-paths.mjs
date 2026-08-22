@@ -189,6 +189,26 @@ export function round(d, step = SNAP) {
   return out.join("");
 }
 
+/**
+ * Regions in a layer that the snap has destroyed (#547, iter-41).
+ *
+ * Extracted from build() so it can be TESTED. Inside build() it was unreachable
+ * by any single mutation: at the shipped 0.5px tolerance nothing is flattened, so
+ * breaking the guard changed no output and every mutation of it read as a
+ * survivor. A guard that only matters at a tolerance nobody runs is a guard
+ * nobody has checked.
+ *
+ * Returns human-readable ids so the build's refusal names what it refused over.
+ */
+export function flattenedIn(paths) {
+  const flattened = [];
+  for (const [id, d] of Object.entries(paths)) {
+    const { w, h, points } = extentOf(d);
+    if (points < 3 || w <= 0 || h <= 0) flattened.push(`${id} (${w}x${h}, ${points}pts)`);
+  }
+  return flattened;
+}
+
 /** Width and height a path actually spans, in panel px. The guard reads this
  *  rather than a vertex count, because a count cannot tell a real district from
  *  one flattened to a line. */
@@ -269,11 +289,7 @@ function build() {
     // still a string, still counted — it just spans nothing. So this measures the
     // EXTENT of every shipped path and refuses a build where any district has
     // been flattened to a line or a point.
-    const flattened = [];
-    for (const [id, d] of Object.entries(paths)) {
-      const { w, h, points } = extentOf(d);
-      if (points < 3 || w <= 0 || h <= 0) flattened.push(`${id} (${w}x${h}, ${points}pts)`);
-    }
+    const flattened = flattenedIn(paths);
     if (flattened.length) {
       console.error(
         `  ${src}: ${flattened.length} district(s) FLATTENED by the ${SNAP}px snap: ${flattened.slice(0, 6).join(", ")}`
