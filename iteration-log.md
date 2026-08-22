@@ -795,3 +795,81 @@ to trust a number, so a stale claim there is worse than none. Now states the rea
 footing: no marker, 222 of 733 districts on the weaker sum, and why.
 
 **Decisions:** adr-035 (administered-area denominator, curated, cat:reliability).
+
+## Session 2026-08-21/22 — deploy, two data-honesty fixes, and a verifier that blocked me
+
+**Ask:** deploy Wave 1+2, then #549 and #548; then the unblocked queue; then 405 E/F/G;
+then the P1 the verifier found.
+
+**Deployed four times:** `d9f92ae` -> `3d1b25b` (Wave 1+2) -> `d39dced` (#548/#549) ->
+`60e002d` -> `cd8fae4` -> `c644d6d` (#562) -> `6077737` (P1). Every deploy gated on a full
+local suite run, not on the previous session's claim, and verified from something only the
+new build can produce — `/api/health`'s `checks` block — rather than from the image label,
+which is only a build arg.
+
+**#548 — narrower and worse than recorded.** The to-do said "~100x too high across Ladakh
+and J&K". Measured: the enumerated-area denominator was within 2% for **483 of the 495**
+districts that have a comparator, and catastrophic for **twelve** — Leh 339 against a true
+3, Kargil 750 against 10, and Kutch, which is not in J&K at all. The half not in the to-do:
+the same column fed the crosswalk-derived states, so **Ladakh published an area of 582 km²**
+against a real 59,146, feeding the Atlas area cohort. Geometry was tested as the denominator
+and **rejected on measurement** — it reproduces the official area for 416 of 495 against the
+census sum's 485, and Leh's polygon contains Aksai Chin so it overshoots to 0.9. adr-035.
+
+**#562 — found by testing a claim, not by looking for a bug.** Checking whether the four
+worker metrics formed a part-to-whole set for #547 showed they sum to 73.6% and to 100 in
+**zero of 733 districts**. They took `MAIN_*_P` numerators over `TOT_WORK_P` — main workers
+over all workers — while describing themselves as "% of total workers". The missing 24.8% is
+marginal workers, disproportionately rural, agricultural and female. Jhabua's agricultural
+labourers read 10.0% against a real 57.5%. adr-036.
+
+**The lesson that cost the most time: a metric with two producers needs both fixed.**
+`ingest_pca.py` computes these, but `reaggregate.py` runs after it and overwrites every
+district. Patching `ingest_pca.py` alone read as correct in review and changed nothing — the
+rebuild still showed 73.61%.
+
+**And a rollback.** `ingest_pca.py` DROPs `metric_values`, so #562 needed a full 34-adapter
+rebuild, done in an isolated tree with the canonical DB chmod 444. The comparison gate proved
+exactly four metrics moved — and I swapped anyway on a gate that only covered `metric_values`
+and `metrics`. It missed that `build_vintage_2011.py` adds 2011-vintage rows to `region_keys`,
+giving the region search two "Kerala" entries so search stopped resolving. The suite caught
+it, production was restored in minutes, the gate was widened to require `region_keys` to match
+exactly, and the re-swap was clean. **A gate is only as good as the tables it reads.**
+
+**Shipped besides:** #550 line endings (`india-map.tsx` was mixed too — 2199 CRLF of 2200 —
+and was the bigger landmine); #555 the raw-assets guard now asserts the BUILD OUTPUT, not just
+the source, with CI sequenced rather than exempted; #561 nineteen acceptance criteria linked to
+tests that actually assert them, and one criterion rewritten because it claimed compare-by-year
+that 0 of 124 metrics can support; #547 phase A, the small-multiples families as typed data with
+a mutation-proven spec; 405-G capacity-watch.
+
+**#547 phase A corrected R1.** Of the three families R1 called part-to-whole, only religion is
+(663/733). Household assets is 63/733, MGNREGA 34/683 — and worker category 0/733, which turned
+out to be the #562 defect rather than a property of the data.
+
+**The verifier blocked my own work, and was right.** I wrote 5 acceptance criteria for symbol
+maps from what the tests assert, promoted the feature to done, and an independent verifier
+returned BLOCK (report 822). Two of the five were overstated and one covered a live defect:
+clicking a circle fired BOTH the fill and symbol delegated handlers with a stale ref, so
+`region_opened` double-fired on every symbol selection and an overlapping circle left two
+regions outlined. **All 17 symbol tests were green throughout** — none of them clicked the map.
+Fixed at `6077737`, mutation-proven. Also found: the centroid containment guard guards nothing
+(its test asserts an India-sized bbox that all 10 known-bad centroids pass, the pipeline writes
+bad points while printing "all inside", and nothing invokes it).
+
+**Decisions:** adr-035 (administered-area denominator), adr-036 (count marginal workers).
+
+**Friction:** *tooling* — a `docker compose up --build` **hung at `npm ci` for 10h23m** with the
+tree alive at 0% CPU; buffered compose output makes "working" and "hung" identical, and I read
+another container's CPU as progress. Deploys now go through a script with `--progress=plain` and
+`timeout 1800`. *tooling* — Ottomate to-do titles cap at **300 chars** and `curl -sf` swallows the
+422. *tooling* — bash heredocs through ssh break on parentheses; commit messages go via a scp'd
+file. *process* — #557 recurred twice more (CPU-as-progress; a grep that dropped Playwright's
+"failed" line), both caught.
+
+**Next session context:** **#547 phase B** is unblocked — the d3-geo vs adr-032 question resolves
+to a build-time devDependency writing a generated paths artifact, so zero runtime bytes ship.
+Then the four remaining report-822 findings (centroid guard, symbol floor, the two smaller
+defects, untested hover). **Owner-blocked and now one credential, not two:** the cloudflared
+tunnel's `AccountTag 496603bdcf153182af21eddb89e1a6b1` IS the R2 account id, so #544 needs a
+token minted, not an account created — and that same token unblocks 405-E and 405-F.
