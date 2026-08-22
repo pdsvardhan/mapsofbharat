@@ -1,4 +1,4 @@
-import { PALETTES, colorFor } from "@/lib/breaks";
+import { METHOD_LABEL, PALETTES, colorFor, fmtBin, methodAnchor } from "@/lib/breaks";
 import type { FamilyDetail, FamilyMemberValues } from "@/lib/family-data";
 import type { PanelBox } from "@/lib/family-paths";
 
@@ -51,12 +51,75 @@ function fillOf(
     : colorFor(value, member.min, member.max, member.breaks, ramp);
 }
 
+/** Number formatting that follows the member's own declared precision. */
+function fmt(v: number, decimals: number, unit: string): string {
+  return v.toLocaleString("en-IN", { maximumFractionDigits: decimals }) + (unit === "%" ? "%" : "");
+}
+
+/**
+ * The scale, said out loud (iter-40 item 971).
+ *
+ * A small multiple is only readable if you know whether the panels share an axis,
+ * and lib/metric-families.ts records both the choice AND the reason for it. That
+ * reason is not developer commentary — it is the caveat a reader needs in order
+ * not to misread the grid, so it is rendered rather than left in the source.
+ *
+ * A shared axis gets a real legend, because one legend is TRUE for every panel.
+ * A free axis deliberately gets none: a single strip of swatches under panels
+ * that each mean something different by the same colour is precisely the lie the
+ * free axis exists to avoid. Each panel states its own range in its caption.
+ */
+function ScaleNote({ family }: { family: FamilyDetail }) {
+  const ramp = PALETTES[family.palette].fn;
+  const shared = family.shared;
+  const decimals = family.members[0]?.decimals ?? 0;
+
+  const bins = shared
+    ? fmtBin(shared.breaks, shared.min, shared.max, decimals, shared.method)
+    : [];
+
+  return (
+    <div className="mb-6 border-y-[3px] border-border py-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-[10px] font-bold uppercase tracking-[.12em] text-faint">
+          {shared ? "One shared scale" : "Each map has its own scale"}
+        </span>
+        {shared ? (
+          <a
+            href={`/methodology#${methodAnchor(shared.method)}`}
+            className="font-mono text-[10px] font-bold tracking-[.08em] text-accent-text hover:underline"
+          >
+            {METHOD_LABEL[shared.method]}
+          </a>
+        ) : null}
+      </div>
+      <p className="mt-2 max-w-3xl text-[12px] leading-relaxed text-muted">{family.axisWhy}</p>
+
+      {shared ? (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+          {bins.map((label, i) => (
+            <span key={label + i} className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block h-3 w-5 flex-none border border-border-soft"
+                style={{ background: ramp(bins.length <= 1 ? 0 : i / (bins.length - 1)) }}
+              />
+              <span className="font-mono text-[11px] text-muted">{label}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function FamilyGrid({ family, paths, panel }: Props) {
   const codes = drawOrder(paths);
   const ramp = PALETTES[family.palette].fn;
 
   return (
     <div>
+      <ScaleNote family={family} />
       {/*
         The sprite. Hidden from layout and from assistive technology: it is the
         geometry library for the panels below, not content. `overflow-hidden` with
@@ -102,6 +165,16 @@ export function FamilyGrid({ family, paths, panel }: Props) {
             </svg>
             <figcaption className="mt-2 text-[12px] font-semibold leading-snug text-foreground">
               {member.name}
+              {/* On a free axis the panel's own range IS the scale, so it belongs
+                  in the caption. On a shared axis the legend above already states
+                  it once for every panel, and repeating it here would imply the
+                  panels were scaled separately. */}
+              {!family.shared && member.statsCount ? (
+                <span className="mt-0.5 block font-mono text-[11px] font-normal text-faint">
+                  {fmt(member.min, member.decimals, member.unit)}–
+                  {fmt(member.max, member.decimals, member.unit)}
+                </span>
+              ) : null}
             </figcaption>
           </figure>
         ))}
