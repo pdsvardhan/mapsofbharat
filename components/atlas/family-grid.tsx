@@ -57,6 +57,25 @@ function fmt(v: number, decimals: number, unit: string): string {
 }
 
 /**
+ * The accessible name for one panel (iter-40 item 973).
+ *
+ * A choropleth communicates entirely through a shape nobody using a screen
+ * reader can see, so the label has to carry the reading: what is mapped, over
+ * what, its range, and — the part that is easy to forget — WHICH SCALE it is on.
+ * Without that last clause a free-axis grid would announce nine maps that sound
+ * directly comparable and are not.
+ */
+function panelLabel(member: FamilyMemberValues, family: FamilyDetail): string {
+  const where = `${member.name}, by district across India`;
+  if (!member.statsCount) return `${where}. No data.`;
+  const range = `${fmt(member.min, member.decimals, member.unit)} to ${fmt(member.max, member.decimals, member.unit)}`;
+  const scale = family.shared
+    ? "on the scale shared by every map in this family"
+    : "on its own scale, not comparable by colour with the other maps here";
+  return `${where}. Ranges ${range} ${scale}.`;
+}
+
+/**
  * The scale, said out loud (iter-40 item 971).
  *
  * A small multiple is only readable if you know whether the panels share an axis,
@@ -185,14 +204,23 @@ export function FamilyGrid({ family, paths, panel }: Props) {
         </defs>
       </svg>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+      <div
+        className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4"
+        role="group"
+        aria-label={`${family.label}: ${family.resolvedMembers} maps of India by district`}
+      >
         {family.members.map((member) => (
           <figure key={member.id} className="m-0">
             <svg
               viewBox={`0 0 ${panel.width} ${panel.height}`}
               className="block h-auto w-full"
               role="img"
-              aria-label={member.name}
+              // The accessible name carries what the panel MEANS, not just what
+              // it is called: a screen-reader user gets no information from the
+              // shape, so the range and the scale rule have to be in the label.
+              // The grid is static — no motion, nothing to gate under
+              // prefers-reduced-motion.
+              aria-label={panelLabel(member, family)}
               // The no-data tone is set ONCE per panel and inherited by every
               // <use> that does not override it. Districts outside the family's
               // shared set therefore cost a bare reference and still get drawn:
