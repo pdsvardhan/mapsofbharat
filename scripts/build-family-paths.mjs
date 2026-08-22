@@ -181,22 +181,20 @@ export function round(d, step = SNAP) {
     // testing could not make it matter: zero or one point measures as zero extent
     // and is rejected below anyway. Two overlapping guards mean one of them is
     // never the reason anything happens, and that is the branch that rots.
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const [x, y] of keep) {
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-    }
-    // DOES THIS SUBPATH ENCLOSE ANYTHING? Asked of the ring itself, not of its
-    // bounding box. Two earlier versions asked the box: `&&` let through a subpath
-    // 0 wide and 0.5 tall (a vertical line - three shipped, districts 23_422 and
-    // 09_169 and state 23), and `||` still let through a 2-point DIAGONAL, whose
-    // box has width and height while the ring encloses nothing. Both draw exactly
-    // nothing when filled, which is the only thing that matters here.
+    // DOES THIS SUBPATH ENCLOSE ANYTHING? Asked of the ring itself. This is the
+    // THIRD version of this guard and the first that asks the right question.
+    // `w <= 0 && h <= 0` let vertical lines through (three shipped). `||` still
+    // let a 2-point diagonal through. Both of those measure the BOUNDING BOX, and
+    // a box says nothing about whether a fill can appear: district 34_634 had a
+    // 0.5x0.5 box and traced out and back along one edge, enclosing zero area and
+    // painting nothing on 61 panels while every box test waved it through.
     //
-    // Shoelace over the kept points: zero area means no fill can appear.
-    if (x1 - x0 <= 0 || y1 - y0 <= 0) continue;
+    // Shoelace over the kept points. Zero area means no fill can appear, whatever
+    // shape produced it — line, diagonal, doubled-back ring or single point — so
+    // this is ONE rule where there were two. A separate bounding-box check sat
+    // here as well and mutation testing could not make it matter: removing it
+    // leaves the layers byte-identical, because anything it rejected has zero
+    // area too.
     let area2 = 0;
     for (let i = 0, j = keep.length - 1; i < keep.length; j = i++) {
       area2 += keep[j][0] * keep[i][1] - keep[i][0] * keep[j][1];

@@ -22,9 +22,9 @@
       "replace": "        if (Math.abs(cross) < 999) continue;"
     },
     {
-      "name": "the zero-area emit guard is disabled, so line subpaths that draw nothing ship",
+      "name": "the zero-area emit guard is disabled, so subpaths that enclose nothing ship",
       "file": "scripts/build-family-paths.mjs",
-      "find": "    if (x1 - x0 <= 0 || y1 - y0 <= 0) continue;",
+      "find": "    if (area2 === 0) continue;",
       "replace": "    if (false) continue;"
     },
     {
