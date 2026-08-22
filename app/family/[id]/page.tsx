@@ -191,9 +191,15 @@ export default async function FamilyPage({
         {/* With no store there are no names, ranges or vintages — those live in the
             DB. The declared ids do exist, so the list is rendered from those rather
             than left empty under a heading that promises it. A heading above
-            nothing is the page contradicting itself one paragraph later. */}
+            nothing is the page contradicting itself one paragraph later.
+            
+            The condition is "are there members to show", NOT "is the store here".
+            Those come apart when the store is mounted but every member of a family
+            has been retired: storeAvailable is true, members is empty, and keying
+            off the store alone put the heading back over an empty list. Same
+            defect, one corner further out. */}
         <ul className="mt-3 divide-y divide-border-soft">
-          {family.storeAvailable
+          {family.members.length
             ? family.members.map((m) => (
                 <li key={m.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
                   <Link
