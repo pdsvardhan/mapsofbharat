@@ -185,6 +185,71 @@ test.describe("interaction parity — a mode that drops half the interactions is
     expect(mirrored!.ptsAfter.selected, "clearing reached the symbol source").toBeUndefined();
   });
 
+  test("one click on a circle is ONE selection, not two (report 822)", async ({ page }) => {
+    // MapLibre delegated listeners do not stop propagation: each queries its own
+    // layers and fires. A circle is drawn on a point INSIDE its own polygon, so every
+    // symbol click matches district-symbol AND district-fill. clickFeature then ran
+    // twice for one click, reading a selectedRef that React had not settled yet —
+    // region_opened double-fired, and over a neighbouring polygon the two runs
+    // disagreed and left two regions outlined at once.
+    const events: { e: string; d?: Record<string, unknown> }[] = [];
+    await page.addInitScript(() => {
+      const rec: unknown[] = [];
+      (window as unknown as { __mobEvents: unknown[] }).__mobEvents = rec;
+      Object.defineProperty(window, "umami", {
+        configurable: false,
+        get: () => ({ track: (e: string, d?: Record<string, unknown>) => { rec.push({ e, d }); } }),
+        set: () => { /* the real tracker must not displace the spy */ },
+      });
+    });
+
+    await page.goto("/?m=pop_total&lvl=district");
+    await waitForMapReady(page);
+    expect(await layerVisible(page, "district-symbol"), "this metric must be in symbol mode").toBe(true);
+
+    const result = await page.evaluate(() => {
+      const m = (window as unknown as { __mob_map?: maplibregl.Map }).__mob_map;
+      if (!m) return null;
+      // A rendered circle, and the screen point at its centre.
+      const circles = m.queryRenderedFeatures(undefined, { layers: ["district-symbol"] });
+      if (!circles.length) return null;
+      const geom = circles[0].geometry as { type: string; coordinates: [number, number] };
+      if (geom.type !== "Point") return null;
+      const lngLat = { lng: geom.coordinates[0], lat: geom.coordinates[1] };
+      const point = m.project(lngLat);
+
+      // ONE browser click, carrying one originalEvent, exactly as a user produces.
+      const originalEvent = new MouseEvent("click", { bubbles: true });
+      m.fire("click", { point, lngLat, originalEvent });
+      return { id: String(circles[0].id) };
+    });
+
+    expect(result, "there must be a rendered circle to click").not.toBeNull();
+    await page.waitForTimeout(400);
+
+    // 1. exactly one region carries selected:true
+    const selectedCount = await page.evaluate(() => {
+      const m = (window as unknown as { __mob_map?: maplibregl.Map }).__mob_map!;
+      const feats = m.querySourceFeatures("districts") as Array<{ id?: string | number }>;
+      const seen = new Set<string>();
+      let n = 0;
+      for (const f of feats) {
+        if (f.id == null || seen.has(String(f.id))) continue;
+        seen.add(String(f.id));
+        if (m.getFeatureState({ source: "districts", id: f.id }).selected) n++;
+      }
+      return n;
+    });
+    expect(selectedCount, "one click must leave exactly one region selected").toBe(1);
+
+    // 2. region_opened fired once, not once per delegated listener
+    const fired = (await page.evaluate(
+      () => (window as unknown as { __mobEvents: { e: string }[] }).__mobEvents,
+    )).filter((x) => x.e === "region_opened");
+    events.push(...fired);
+    expect(fired.length, "region_opened must fire once per click, not once per layer listener").toBe(1);
+  });
+
   test("selection from the rail works in symbol mode and shows the region panel", async ({ page }) => {
     await page.goto("/?m=pop_total&lvl=state");
     await waitForMapReady(page);

@@ -221,6 +221,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const focusRef = useRef<Focus | null>(null);
   const compareRef = useRef(compare);
   const pinsRef = useRef<Sel[]>([]);
+  /** The last browser click already dispatched, so a second delegated layer
+   *  listener for the SAME click is ignored (verifier report 822). */
+  const lastClickRef = useRef<unknown>(null);
   const selectedRef = useRef<Sel | null>(null);
   // the selected METRIC id, for the analytics events fired from map click
   // handlers (item 938) — those are registered once, so reading `sel` directly
@@ -624,6 +627,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         });
         map.on("click", layer, (e: any) => {
           if (!e.features?.length) return;
+          // ONE CLICK, ONE DISPATCH. MapLibre delegated listeners do not stop
+          // propagation — each queries its own layers and fires — and a circle sits
+          // on a point inside its own polygon, so every symbol click matches the
+          // symbol layer AND the fill beneath it. Without this guard clickFeature
+          // ran twice per click: region_opened double-fired, and over a neighbouring
+          // polygon the two runs disagreed and left two regions selected.
+          const oe = e.originalEvent;
+          if (oe && lastClickRef.current === oe) return;
+          lastClickRef.current = oe ?? null;
           const f = e.features[0];
           const s: Sel = {
             code: String(f.id),
@@ -634,16 +646,16 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           clickFeature(s, source);
         });
       };
-      wire("district-fill", "districts", "district");
-      wire("state-fill", "states", "state");
-      // The symbol layers are wired FIRST in event priority terms simply by being
-      // added above the fills: MapLibre delivers a layer event to each listener, and
-      // a circle drawn over a neighbouring polygon must select its OWN region. Without
-      // this a click on a large circle would fall through to whatever polygon happened
-      // to be beneath the pointer and select a different district — the failure that
-      // makes a render mode a demo rather than a feature.
+      // ORDER IS LOAD-BEARING, and not for the reason the old comment gave.
+      // Delegated dispatch ignores layer stacking completely; listeners run in
+      // REGISTRATION order, and the guard in wire() lets only the first one through.
+      // So the symbol layers must be registered BEFORE the fills, or a click on a
+      // circle drawn over a neighbouring polygon would select the neighbour.
+      // Do not reorder these four lines.
       wire("district-symbol", "districts", "district");
       wire("state-symbol", "states", "state");
+      wire("district-fill", "districts", "district");
+      wire("state-fill", "states", "state");
 
       setReady(true);
 
@@ -791,13 +803,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         map.setFeatureState({ source, id: s.code }, { pinned: true });
         next = [...cur, s];
       }
+      pinsRef.current = next;   // same-tick readers must not see the stale pin set
       setPins(next);
       return;
     }
     const prev = selectedRef.current;
     if (prev) map.setFeatureState({ source: prev.kind === "state" ? "states" : "districts", id: prev.code }, { selected: false });
-    if (prev && prev.code === s.code) { setSelected(null); return; }
+    // The ref is written here as well as in its useEffect. React state does not
+    // settle until after this tick, so anything else reading selectedRef in the same
+    // tick would otherwise see the PREVIOUS selection — which is precisely how the
+    // double-dispatch above left two regions outlined.
+    if (prev && prev.code === s.code) { selectedRef.current = null; setSelected(null); return; }
     map.setFeatureState({ source, id: s.code }, { selected: true });
+    selectedRef.current = s;
     setSelected(s);
     setScaleOpen(false);
     // region_opened: a region's profile panel is now on screen (item 938). Fired
