@@ -16,8 +16,16 @@ import { searchableRegions, SEARCHABLE_LEVELS } from "@/lib/region-search";
 // until the day it mattered. So these build a store that HAS the vintage rows —
 // the post-pipeline state — and assert against that.
 
-/** A store in the state the DB is in AFTER build_vintage_2011.py has run. */
-function storeAfterVintageBuild() {
+/** A store in the state the DB is in AFTER build_vintage_2011.py has run.
+ *
+ *  `order` decides which vintage is physically inserted first. That is not a
+ *  detail: a scalar subquery returns the FIRST row it matches, so with the level
+ *  guard removed the answer depends entirely on row order. The first version of
+ *  this fixture only inserted current-first, which handed the correct state name
+ *  back by luck and let a mutation that deletes the guard survive. Row order in a
+ *  real store is not a guarantee anyone controls, so the guard has to hold under
+ *  both. */
+function storeAfterVintageBuild(order: "current-first" | "vintage-first" = "current-first") {
   const d = new Database(":memory:");
   d.exec(`CREATE TABLE region_keys (
     level TEXT, code TEXT, name TEXT, st_code TEXT,
@@ -29,22 +37,33 @@ function storeAfterVintageBuild() {
   );
 
   // current vintage — what the map is actually drawing
-  ins.run("state", "32", "Kerala", null);
-  ins.run("state", "28", "Andhra Pradesh", null);
-  ins.run("state", "36", "Telangana", null);
-  ins.run("district", "32_07", "Ernakulam", "32");
-  // sits under the split state, so the state-name subquery has a vintage row it
-  // could wrongly resolve against
-  ins.run("district", "28_02", "Visakhapatnam", "28");
+  const current = () => {
+    ins.run("state", "32", "Kerala", null);
+    ins.run("state", "28", "Andhra Pradesh", null);
+    ins.run("state", "36", "Telangana", null);
+    ins.run("district", "32_07", "Ernakulam", "32");
+    // sits under the split state, so the state-name subquery has a vintage row
+    // it could wrongly resolve against
+    ins.run("district", "28_02", "Visakhapatnam", "28");
+  };
 
   // 2011 vintage — legitimate rows the vintage data path needs, which must not
   // reach the palette. Code 28 is the real hazard and not a contrived one: in
   // 2011 it meant undivided Andhra Pradesh, and after the 2014 split it means
   // the reduced state, with Telangana now 36. Same code, different region.
-  ins.run("state2011", "32", "Kerala", null);
-  ins.run("state2011", "28", "Andhra Pradesh (undivided)", null);
-  ins.run("district2011", "32_07", "Ernakulam", "32");
+  const vintage = () => {
+    ins.run("state2011", "32", "Kerala", null);
+    ins.run("state2011", "28", "Andhra Pradesh (undivided)", null);
+    ins.run("district2011", "32_07", "Ernakulam", "32");
+  };
 
+  if (order === "current-first") {
+    current();
+    vintage();
+  } else {
+    vintage();
+    current();
+  }
   return d;
 }
 
@@ -95,6 +114,26 @@ test.describe("#563 region palette excludes vintage rows", () => {
     // Andhra Pradesh and the undivided 2011 one, and the district would be
     // labelled with a state that has not existed since 2014.
     expect(vskp[0].state).toBe("Andhra Pradesh");
+  });
+
+  test("the state-name guard holds even when the vintage row is stored first", () => {
+    // Same assertion, opposite row order. This is the one that actually proves
+    // the guard: with current-first the subquery returns the right name whether
+    // or not the guard is there, so only this direction can fail when it is
+    // removed. Verified by mutation - deleting the guard turns this red and
+    // leaves its sibling above green.
+    const rows = searchableRegions(storeAfterVintageBuild("vintage-first"));
+    const vskp = rows.filter((r) => r.name === "Visakhapatnam");
+    expect(vskp).toHaveLength(1);
+    expect(vskp[0].state).toBe("Andhra Pradesh");
+  });
+
+  test("vintage rows are excluded regardless of storage order", () => {
+    for (const order of ["current-first", "vintage-first"] as const) {
+      const rows = searchableRegions(storeAfterVintageBuild(order));
+      expect(rows.filter((r) => r.name === "Kerala"), order).toHaveLength(1);
+      for (const r of rows) expect(r.level, `${order}: ${r.name}`).not.toMatch(/2011$/);
+    }
   });
 
   test("states are listed before districts", () => {
