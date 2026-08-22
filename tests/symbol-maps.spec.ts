@@ -623,15 +623,42 @@ test.describe("#568 the symbol layer has its own listeners wired", () => {
     expect(selected[0], "the circle region must win, not the polygon beneath it").toBe(spot!.circleId);
   });
 
-  test("hovering a circle sets hover on its region, and moving off clears the old one", async ({ page }) => {
-    // mousemove is registered inside the same wire() call as the click handler,
-    // so this fails too if the symbol layers stop being wired.
-    //
-    // Clearing is checked by moving to a SECOND circle rather than by firing
-    // mouseleave: MapLibre derives the delegated leave from its own pointer
-    // tracking, so a synthetic fire never reaches it and the assertion would be
-    // testing the test. Moving on is also the real path — india-map.tsx:613
-    // clears the previous id on every mousemove.
+  test("hovering a circle over a neighbour lights up the CIRCLE region", async ({ page }) => {
+    // The overlap point again, and for the same reason. The first version of this
+    // hovered circle CENTRES and passed with both symbol wire() calls deleted —
+    // a centre sits inside its own polygon, so state-fill's mousemove sets hover
+    // on the same region and the assertion holds either way. Exactly the defect
+    // #568 is about, repeated in the test written to close it.
+    await page.goto("/?m=pop_total&lvl=state");
+    await waitForMapReady(page);
+
+    const spot = await overlapPoint(page);
+    expect(spot, "no circle overlapping a neighbouring polygon was found to hover").not.toBeNull();
+
+    const box = await page.locator("canvas").first().boundingBox();
+    expect(box, "the map canvas must be on screen").not.toBeNull();
+    await page.mouse.move(box!.x + spot!.x, box!.y + spot!.y);
+    await page.waitForTimeout(300);
+
+    const state = await page.evaluate((s) => {
+      const m = (window as unknown as { __mob_map?: maplibregl.Map }).__mob_map!;
+      return {
+        circle: m.getFeatureState({ source: "states", id: s.circleId }).hover,
+        polygon: m.getFeatureState({ source: "states", id: s.polygonId }).hover,
+      };
+    }, spot!);
+
+    // The discriminating fact: with the symbol layer unwired, only the polygon
+    // beneath ever receives hover and this is undefined.
+    expect(state.circle, "the hovered circle region must light up").toBe(true);
+  });
+
+  test("moving between circles clears the previous highlight", async ({ page }) => {
+    // Scope, stated honestly: this covers the hover HANDOVER at india-map.tsx:613,
+    // not the symbol wiring. It passes with both symbol wire() calls deleted,
+    // because state-fill's own handler does the same handover on the polygons
+    // underneath. Kept for the behaviour it does cover; the guard for #568 is the
+    // overlap test above.
     await page.goto("/?m=pop_total&lvl=state");
     await waitForMapReady(page);
 
@@ -670,8 +697,8 @@ test.describe("#568 the symbol layer has its own listeners wired", () => {
     });
 
     expect(result, "two rendered circles are needed to test the handover").not.toBeNull();
-    expect(result!.firstDuring, "hovering a circle must set hover on its region").toBe(true);
-    expect(result!.secondDuring, "the next circle must pick hover up").toBe(true);
-    expect(result!.firstAfter, "the previous circle must be cleared, or highlights pile up").toBe(false);
+    expect(result!.firstDuring, "hovering a region must set hover on it").toBe(true);
+    expect(result!.secondDuring, "the next region must pick hover up").toBe(true);
+    expect(result!.firstAfter, "the previous region must be cleared, or highlights pile up").toBe(false);
   });
 });
