@@ -110,8 +110,18 @@ def build(check_only: bool) -> int:
                 if len(cur["features"]) != len(feats):
                     problems += 1
                     print(f"  {out_name}: STALE — {len(cur['features'])} points vs {len(feats)} regions")
+                elif outside:
+                    print(f"  {out_name}: {len(outside)} point(s) outside their polygon")
                 else:
                     print(f"  {out_name}: ok ({len(feats)} points, all inside their polygon)")
+        elif outside:
+            # Refuse. This branch used to write the file anyway and then print
+            # "all inside their polygon" regardless — the docstring above calls
+            # the containment assertion "the whole value of the file", and it was
+            # being computed, counted, and then ignored at the only moment it
+            # mattered. The non-zero exit came AFTER the bad points were already
+            # on disk, where a later build would happily serve them.
+            print(f"  {out_name}: REFUSING to write — {len(outside)} point(s) outside their polygon")
         else:
             target.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
             print(f"  {out_name}: wrote {len(feats)} points, all inside their polygon")

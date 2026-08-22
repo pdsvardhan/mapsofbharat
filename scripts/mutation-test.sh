@@ -152,18 +152,29 @@ TOTAL=$(wc -l < "$PLAN" | tr -d ' ')
 [ "$TOTAL" -gt 0 ] || die "no mutations to run"
 
 # --------------------------------------------------- which specs run node-side
-# Derived, not hardcoded: a spec that imports from lib/ is executed in the
-# Playwright worker process, so editing that lib file changes the next run.
+# Derived, not hardcoded: whatever a spec imports from this repo is executed in
+# the Playwright worker process, so editing that file changes the next run.
+#
+# Resolves every repo-local import specifier to a repo-relative path. It read
+# only "@/lib/…" at first, which refused a legitimate target imported as
+# "../scripts/check-centroids.mjs" — the alias is not the property that matters,
+# being imported by a spec is.
 node_side_targets() {
-  grep -rlE 'from "(@/)?lib/' tests/*.spec.ts 2>/dev/null | while read -r spec; do
-    grep -ohE 'from "(@/)?lib/[a-zA-Z0-9_-]+"' "$spec" 2>/dev/null \
-      | sed -E 's|.*lib/([a-zA-Z0-9_-]+)".*|lib/\1|'
-  done | sort -u
+  grep -rhoE 'from "(@/|\.\./|\./)[^"]+"' tests/*.spec.ts 2>/dev/null \
+    | sed -E 's/^from "//; s/"$//' \
+    | while read -r spec; do
+        case "$spec" in
+          @/*)  echo "${spec#@/}" ;;      # tsconfig alias -> repo root
+          ../*) echo "${spec#../}" ;;     # specs live in tests/, so ../ is root
+          ./*)  echo "tests/${spec#./}" ;;
+        esac
+      done | sed -E 's/\.(ts|tsx|mjs|cjs|js|jsx)$//' | sort -u
 }
 NODE_SIDE="$(node_side_targets)"
 
 is_node_side() {
-  local f="${1%.ts}"; f="${f%.tsx}"
+  local f="$1"
+  f="$(echo "$f" | sed -E 's/\.(ts|tsx|mjs|cjs|js|jsx)$//')"
   echo "$NODE_SIDE" | grep -qx "$f"
 }
 

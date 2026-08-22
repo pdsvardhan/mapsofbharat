@@ -11,7 +11,8 @@
     "test:e2e": "playwright test",
     "test:mutation": "./scripts/mutation-test.sh",
     "check:css": "node scripts/check-globals-layers.mjs",
-    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs",
+    "check:centroids": "node scripts/check-centroids.mjs",
+    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs",
     "postbuild": "node scripts/check-raw-assets.mjs --output"
   },
   "dependencies": {

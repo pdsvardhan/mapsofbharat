@@ -321,10 +321,20 @@ test.describe("the mode is a real, shareable choice", () => {
 
 test.describe("centroids are inside their own polygons (built offline)", () => {
   test("every region has a representative point", async ({ request }) => {
-    // The containment proof lives in pipeline/build_centroids.py, which refuses to
-    // write a point outside its polygon. This asserts the OUTPUT is present and
-    // complete, so a missing rebuild shows up as a red test rather than as circles
-    // silently absent from the map.
+    // Scope, stated precisely (#565): this asserts the output is SERVED, complete,
+    // and not grossly corrupt. It does not prove containment and never did — the
+    // bounding box below is India's, so a point in the Arabian Sea or on top of a
+    // neighbouring district passes it. That was the whole finding.
+    //
+    // Real containment is proven in tests/centroid-containment.spec.ts, which runs
+    // point-in-polygon against every shipped point, and enforced at build time by
+    // scripts/check-centroids.mjs in prebuild. pipeline/build_centroids.py now
+    // genuinely refuses to write a point outside its polygon; until this commit it
+    // wrote it and printed "all inside their polygon" anyway.
+    //
+    // Keeping the box is still worth it: it is a cheap tripwire for coordinates
+    // that have gone to 0,0 or been swapped lat/lon, which containment against a
+    // missing polygon would report less clearly.
     for (const [file, expected] of [
       ["/geo/centroids-districts.geojson", 735],
       ["/geo/centroids-states.geojson", 36],
@@ -335,7 +345,7 @@ test.describe("centroids are inside their own polygons (built offline)", () => {
       expect(res.status(), file).toBe(200);
       const fc = await res.json();
       expect(fc.features.length, file).toBe(expected);
-      // every point is a real coordinate pair inside India's bounding box
+      // a real coordinate pair somewhere in India — a tripwire, not a proof
       for (const f of fc.features) {
         const [lon, lat] = f.geometry.coordinates;
         expect(lon).toBeGreaterThan(66);
