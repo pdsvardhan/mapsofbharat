@@ -137,13 +137,21 @@ The tolerance was measured, not chosen:
 
 | step | artefact | gzip | districts flattened |
 |---|---|---|---|
-| 0.1 | 344 KiB | 95 KiB | 0 |
-| 0.25 | 313 KiB | 74 KiB | 0 |
+| 0.1 | 327 KiB | 92 KiB | 0 |
+| 0.25 | 283 KiB | 68 KiB | 0 |
 | **0.5** | **182 KiB** | **47 KiB** | **0** |
-| 1.0 | 130 KiB | 36 KiB | **21** |
+| 1.0 | 98 KiB | 28 KiB | **2 districts + 1 state** |
 
-1px is the tempting number and it is wrong: it flattens 21 districts, including
-`26_494` and `04_55`, to zero extent. A district that spans nothing still counts
+1px is the tempting number and it is wrong: it flattens districts `04_55` and
+`26_494`, and state `04`, to zero extent.
+
+> **Correction, same day.** This paragraph first said *21 districts*. That number
+> was never measured — it came from misreading the guard's own output, where a
+> shell pipeline split `2 district(s)` across two lines and `2` was read together
+> with the `1` of the following line. The real figure is two districts and one
+> state, and the build refuses all three. Recorded rather than quietly edited,
+> because a fabricated number in a decision record is worse than the decision
+> being wrong: the next reader has no way to tell which figures were measured. A district that spans nothing still counts
 as a path — it is present, it is a string, it renders nothing — so the build now
 **refuses** any tolerance that produces one, by measuring each path's extent
 rather than counting paths.
@@ -163,7 +171,11 @@ The `<use>` elements are untouched by any of this and dominate the large grids �
 nfhs5-health's 22 panels carry 16,170 of them — which is why its gzip falls 21%
 where a three-panel family falls 41%.
 
-`/family/[id]` still ships **0 B** of client JavaScript.
+`/family/[id]` still adds **0 B** of route JavaScript — the grid is a server
+component with no state and no hydration. The page is not JavaScript-free: it
+still loads the app's shared ~121 kB first-load bundle, as every route does.
+Earlier wording here said the page "ships 0 B of client JavaScript", which
+overstated it.
 
 ### A correction recorded on purpose
 

@@ -104,8 +104,12 @@ test.describe("#547 the projection is shared across panels", () => {
     for (const [name, layer] of Object.entries(layers)) {
       for (const [id, d] of Object.entries(layer)) {
         for (const m of d.matchAll(/M([^MZ]*)(Z?)/g)) {
+          // ZERO AREA, matching the rule the script states rather than the
+          // condition it happened to use. The spec previously mirrored the
+          // implementation (`w <= 0 && h <= 0`), so it structurally could not see
+          // the three 0-by-0.5 line subpaths that were shipping.
           const { w, h } = extentOf(m[1]) as { w: number; h: number };
-          if (w <= 0 && h <= 0) empty.push(`${name}/${id}`);
+          if (w <= 0 || h <= 0) empty.push(`${name}/${id} ${w}x${h}`);
         }
       }
     }
@@ -121,12 +125,27 @@ test.describe("#547 the projection is shared across panels", () => {
     expect(Object.keys(layer).length).toBe(735);
   });
 
-  test("every coordinate lands on the snap grid", () => {
-    const d = round("M1.23456,2.98765L3.1,4.04L7.77,9.99Z");
-    for (const n of d.match(/-?[\d.]+/g) ?? []) {
-      const onGrid = Math.abs(Number(n) / SNAP - Math.round(Number(n) / SNAP)) < 1e-9;
-      expect(onGrid, `${n} is off the ${SNAP}px grid`).toBe(true);
+  test("every coordinate in the SHIPPED artefact lands on the snap grid", () => {
+    // Rewritten (iter-41). The old version ran round() on a fixture and then
+    // divided by SNAP — so it passed at ANY tolerance and said nothing about the
+    // file that ships. It asserted that a function is consistent with itself.
+    //
+    // The grid is written as a literal 0.5 on purpose: deriving it from SNAP is
+    // what made the old assertion vacuous. If the tolerance is deliberately
+    // changed, this number changes with it, and that edit is the point.
+    const GRID = 0.5;
+    const layers = artefact().layers as Record<string, Paths>;
+    const offGrid: string[] = [];
+    for (const [name, layer] of Object.entries(layers)) {
+      for (const [id, d] of Object.entries(layer)) {
+        for (const n of d.match(/-?[\d.]+/g) ?? []) {
+          const v = Number(n) / GRID;
+          if (Math.abs(v - Math.round(v)) > 1e-9) offGrid.push(`${name}/${id}:${n}`);
+        }
+      }
     }
+    expect(offGrid.slice(0, 5), "coordinates off the 0.5px grid").toEqual([]);
+    expect(SNAP, "SNAP moved without this assertion being updated").toBe(GRID);
   });
 
   test("neighbours that snap onto the same point collapse to one", () => {
@@ -134,13 +153,12 @@ test.describe("#547 the projection is shared across panels", () => {
     // not carry a lineto that goes nowhere.
     expect(round("M0,0L5.1,5.1L5.2,5.2L10,0Z")).toBe("M0,0L5,5L10,0Z");
 
-    // AND THE CASE THAT ACTUALLY PINS THE DEDUPE BRANCH. An exact duplicate is
-    // always collinear with its neighbours (b - a is the zero vector, so the
-    // cross product is 0), which means the collinear rule below absorbs every
-    // duplicate that has a point after it — deleting the dedupe entirely still
-    // passed the assertion above. A duplicate at the END of a subpath has no
-    // following point, so nothing else can remove it, and this is the assertion
-    // that fails when the dedupe goes.
+    // A duplicate at the END of a subpath, which is the position no rule reaches
+    // by looking forward. NOTE (iter-41): there is no longer a separate dedupe
+    // pass to pin — removing it left the artefact byte-identical, so it went, and
+    // BOTH of these assertions are now killed by disabling the COLLINEAR rule.
+    // The old comment here claimed this line pinned a branch that no longer
+    // exists.
     expect(round("M0,0L5,5L5,5Z")).toBe("M0,0L5,5Z");
   });
 
@@ -210,12 +228,17 @@ test.describe("#547 the shipped artefact is complete", () => {
 
   test("coordinates carry at most one decimal", () => {
     // The size measure. A regression here quietly doubles the page.
-    const a = artefact();
-    const sample = Object.values(a.layers.district as Paths).slice(0, 40);
-    for (const d of sample) {
-      const overlong = [...d.matchAll(/\d+\.(\d{2,})/g)];
-      expect(overlong.map((m) => m[0]).slice(0, 3), "more than one decimal place").toEqual([]);
+    // EVERY path, both layers. This sampled the first 40 of 735 and a regression
+    // in insertion-order district #226 survived it while #0 killed it — a check
+    // that covered 5% of what its name claims.
+    const layers = artefact().layers as Record<string, Paths>;
+    const overlong: string[] = [];
+    for (const [name, layer] of Object.entries(layers)) {
+      for (const [id, d] of Object.entries(layer)) {
+        for (const m of d.matchAll(/\d+\.(\d{2,})/g)) overlong.push(`${name}/${id}:${m[0]}`);
+      }
     }
+    expect(overlong.slice(0, 5), "more than one decimal place").toEqual([]);
   });
 });
 

@@ -87,11 +87,11 @@ export function rewind(geometry) {
  *
  *  0.5px on a 220x240 panel. Chosen by measuring, not by taste:
  *
- *    step   artefact   gzip   districts lost   degenerate
- *    0.1     344 KiB  95 KiB        0              0
- *    0.25    313 KiB  74 KiB        0              0
- *    0.5     221 KiB  54 KiB        0              0
- *    1.0     130 KiB  36 KiB        0              1  <- 26_494 collapses
+ *    step   district layer   gzip   flattened
+ *    0.1     327 KiB          92 KiB      0
+ *    0.25    283 KiB          68 KiB      0
+ *    0.5     182 KiB          47 KiB      0
+ *    1.0      98 KiB          28 KiB      2 districts + 1 state
  *
  *  1px is the tempting number and it is wrong: district 26_494 measures 0.5x0.3px
  *  at full resolution and snapping at 1px flattens it to nothing. A district that
@@ -178,7 +178,12 @@ export function round(d, step = SNAP) {
       if (y < y0) y0 = y;
       if (y > y1) y1 = y;
     }
-    if (x1 - x0 <= 0 && y1 - y0 <= 0) continue;
+    // ZERO AREA, not zero extent in BOTH directions. The guard used to be `&&`,
+    // which let a subpath 0 wide and 0.5 tall through - a line, which draws nothing
+    // when it is filled, and three of them shipped (districts 23_422 and 09_169,
+    // state 23). A filled shape needs width AND height, so either being zero is
+    // disqualifying.
+    if (x1 - x0 <= 0 || y1 - y0 <= 0) continue;
     out.push("M" + keep.map((p) => `${p[0]},${p[1]}`).join("L") + m[2]);
   }
   return out.join("");
@@ -216,8 +221,8 @@ export function projectCollection(fc, key, panel = PANEL) {
     features: fc.features.map((f) => ({ ...f, geometry: rewind(f.geometry) })),
   };
   const projection = geoMercator().fitSize([panel.width, panel.height], wound);
-  // One decimal place. The panel is 220x240 CSS px, so 0.1px is an order of
-  // magnitude below anything a screen can show — and full float precision is not
+  // Snapped to the SNAP grid. The panel is 220x240 CSS px, so half a pixel is well
+  // below anything a screen resolves — and full float precision is not
   // free here: eight panels of 735 districts is the payload of the page. Measured
   // on the real boundaries, rounding cuts the artefact by more than half with no
   // visible change to a thumbnail.
@@ -308,11 +313,26 @@ function main() {
       process.exit(1);
     }
     const cur = JSON.parse(readFileSync(OUT, "utf-8"));
+    // CONTENT, not cardinality. Counting paths per layer cannot see a path that is
+    // still present and has been FLATTENED on disk: the count matches, --check
+    // prints OK, and the build ships a region that draws nothing. Proved by
+    // flattening one district in the artefact by hand and watching the old check
+    // pass it with exit 0.
     for (const name of Object.keys(out.layers)) {
-      const a = Object.keys(out.layers[name]).length;
-      const b = Object.keys(cur.layers?.[name] ?? {}).length;
+      const fresh = out.layers[name];
+      const disk = cur.layers?.[name] ?? {};
+      const a = Object.keys(fresh).length;
+      const b = Object.keys(disk).length;
       if (a !== b) {
         console.error(`\nbuild-family-paths: ${name} STALE — ${b} on disk vs ${a} from source`);
+        process.exit(1);
+      }
+      const differing = Object.keys(fresh).filter((id) => fresh[id] !== disk[id]);
+      if (differing.length) {
+        console.error(
+          `
+build-family-paths: ${name} STALE — ${differing.length} path(s) differ from source: ${differing.slice(0, 6).join(", ")}`
+        );
         process.exit(1);
       }
     }
