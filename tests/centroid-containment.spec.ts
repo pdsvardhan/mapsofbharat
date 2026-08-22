@@ -1,11 +1,13 @@
 import { test, expect } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   pointInRing,
   pointInPolygon,
   pointInGeometry,
+  checkLayer,
   checkAll,
   LAYERS,
 } from "../scripts/check-centroids.mjs";
@@ -83,6 +85,23 @@ test.describe("#565 the containment predicate can actually fail", () => {
     expect(pointInGeometry(100, 100, MULTI)).toBe(false);
   });
 
+  test("a point to the LEFT, with an even number of crossings, is outside", () => {
+    // The one direction that can catch a broken parity toggle, and the first
+    // version of this file did not have a single case in it. The ray casts to
+    // +x, so every outside point chosen to the RIGHT of its shape has zero
+    // crossings and comes back false whatever the toggle does. Mutating
+    // `inside = !inside` to `inside = true` survived the whole suite.
+    //
+    // From here the ray crosses the crescent twice (x=0 and x=3): even, so
+    // outside. A stuck-true toggle answers "inside" and this goes red.
+    expect(pointInGeometry(-1, 5, CRESCENT)).toBe(false);
+    expect(pointInRing(-1, 2, [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]])).toBe(false);
+    // four crossings through the holed square, still even
+    expect(pointInGeometry(-1, 5, WITH_HOLE)).toBe(false);
+    // and two through the mainland part of the MultiPolygon
+    expect(pointInGeometry(-1, 5, MULTI)).toBe(false);
+  });
+
   test("an unsupported geometry type is not silently 'inside'", () => {
     expect(pointInGeometry(0, 0, { type: "Point", coordinates: [0, 0] })).toBe(false);
     expect(pointInGeometry(0, 0, null)).toBe(false);
@@ -121,6 +140,75 @@ test.describe("#565 the predicate fails on REAL geometry when a point is moved",
       checkedAtLeastOne = true;
     }
     expect(checkedAtLeastOne, "no districts were actually checked").toBe(true);
+  });
+});
+
+test.describe("#565 checkLayer reports a bad layer, not just a good one", () => {
+  // checkAll() over real data cannot prove this. Every shipped point IS inside
+  // its polygon, so the branch that records a failure never executes and
+  // deleting it changes nothing — mutating the containment call out of
+  // checkLayer entirely left the whole suite green. A checker is only proven by
+  // giving it something that must fail.
+
+  /** Writes a source + centroid pair to a scratch dir and checks it. */
+  function checkPair(polys: unknown[], points: unknown[]) {
+    const dir = mkdtempSync(join(tmpdir(), "mob-centroids-"));
+    writeFileSync(
+      join(dir, "src.geojson"),
+      JSON.stringify({ type: "FeatureCollection", features: polys })
+    );
+    writeFileSync(
+      join(dir, "pts.geojson"),
+      JSON.stringify({ type: "FeatureCollection", features: points })
+    );
+    return checkLayer(join(dir, "src.geojson"), join(dir, "pts.geojson"), "rid");
+  }
+
+  const SQUARE = {
+    type: "Feature",
+    properties: { rid: "X1" },
+    geometry: { type: "Polygon", coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] },
+  };
+  const pointAt = (rid: string, lon: number, lat: number, name = rid) => ({
+    type: "Feature",
+    properties: { rid, name },
+    geometry: { type: "Point", coordinates: [lon, lat] },
+  });
+
+  test("a point outside its polygon is reported", () => {
+    const r = checkPair([SQUARE], [pointAt("X1", 50, 50, "Wandering")]);
+    expect(r.absent).toBe(false);
+    expect(r.checked).toBe(1);
+    expect(r.outside.map((o: { name: string }) => o.name)).toEqual(["Wandering"]);
+  });
+
+  test("a point inside its polygon is not reported", () => {
+    const r = checkPair([SQUARE], [pointAt("X1", 5, 5)]);
+    expect(r.outside).toEqual([]);
+    expect(r.missing).toEqual([]);
+  });
+
+  test("a point naming a region the source lacks is reported as missing", () => {
+    const r = checkPair([SQUARE], [pointAt("GHOST", 5, 5)]);
+    expect(r.missing).toEqual(["GHOST"]);
+    expect(r.outside).toEqual([]);
+  });
+
+  test("outside and missing are counted together, not one masking the other", () => {
+    const r = checkPair(
+      [SQUARE],
+      [pointAt("X1", 50, 50, "Wandering"), pointAt("GHOST", 5, 5)]
+    );
+    expect(r.outside).toHaveLength(1);
+    expect(r.missing).toHaveLength(1);
+    expect(r.checked).toBe(2);
+  });
+
+  test("an absent file is flagged rather than silently passing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mob-centroids-"));
+    const r = checkLayer(join(dir, "nope.geojson"), join(dir, "alsonope.geojson"), "rid");
+    expect(r.absent).toBe(true);
+    expect(r.checked).toBe(0);
   });
 });
 
