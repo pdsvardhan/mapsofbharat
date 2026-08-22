@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { FamilyGrid } from "@/components/atlas/family-grid";
 import { SiteFooter } from "@/components/site-footer";
 import { getFamilyDetail, type FamilyDetail } from "@/lib/family-data";
+import { districtPaths } from "@/lib/family-paths";
 import { FAMILY_BY_ID } from "@/lib/metric-families";
 import { SITE_OG_IMAGE, SITE_TWITTER_IMAGE, SITE_URL } from "@/lib/site";
 
@@ -92,6 +94,7 @@ export default async function FamilyPage({
   if (!family) notFound();
 
   const axisLabel = family.axis === "shared" ? "One shared scale" : "Its own scale per map";
+  const geo = family.members.length ? districtPaths() : null;
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
@@ -163,6 +166,22 @@ export default async function FamilyPage({
           {family.missingMembers.length === 1 ? " is" : "s are"} missing from the store and
           not drawn: <span className="font-mono text-faint">{family.missingMembers.join(", ")}</span>.
         </p>
+      ) : null}
+
+      {family.members.length ? (
+        <section className="mt-10">
+          {geo ? (
+            <FamilyGrid family={family} paths={geo.paths} panel={geo.panel} />
+          ) : (
+            // The prebuild guard fails the build when the artefact is missing, so
+            // reaching this means something got past it. Said out loud rather than
+            // rendered as an empty grid.
+            <p className="border-y-[3px] border-border py-4 text-[13px] text-muted">
+              The projected boundaries are unavailable on this instance, so the maps
+              cannot be drawn. The indicators and their ranges are listed below.
+            </p>
+          )}
+        </section>
       ) : null}
 
       <section className="mt-10">
