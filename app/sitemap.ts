@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { getAllMetrics } from "@/lib/metric-page-data";
+import { SHIPPABLE_FAMILIES } from "@/lib/metric-families";
 import { CANONICAL_URL } from "@/lib/site";
 
 // Sitemap (iter-b item 881): the static public pages plus every canonical
@@ -32,6 +33,9 @@ type StaticEntry = {
 const STATIC_PATHS: readonly StaticEntry[] = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
   { path: "/metric", changeFrequency: "weekly", priority: 0.9 },
+  // The families index (iter-40 item 975) is a browse surface of the same kind
+  // as /metric, one level down in importance: it hangs off the same catalogue.
+  { path: "/family", changeFrequency: "weekly", priority: 0.8 },
   { path: "/coverage", changeFrequency: "weekly", priority: 0.7 },
   { path: "/methodology", changeFrequency: "monthly", priority: 0.6 },
   { path: "/corrections", changeFrequency: "monthly", priority: 0.5 },
@@ -71,5 +75,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     metricPages = [];
   }
 
-  return [...staticPages, ...metricPages];
+  // Families are DECLARED in code, not read from the store, so they are listed
+  // unconditionally — unlike the metric pages, an unmounted volume cannot make
+  // these disappear from the sitemap.
+  const familyPages: MetadataRoute.Sitemap = SHIPPABLE_FAMILIES.map((f) => ({
+    url: `${CANONICAL_URL}/family/${f.id}`,
+    lastModified: now,
+    changeFrequency: "yearly",
+    priority: 0.6,
+  }));
+
+  return [...staticPages, ...familyPages, ...metricPages];
 }

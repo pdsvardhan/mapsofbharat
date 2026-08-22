@@ -206,3 +206,13 @@ export const FAMILY_BY_ID = new Map(METRIC_FAMILIES.map((f) => [f.id, f]));
 
 /** Families a grid may render today — everything without a recorded blocker. */
 export const SHIPPABLE_FAMILIES = METRIC_FAMILIES.filter((f) => !f.blockedBy);
+
+/** Which shippable families a metric belongs to (#547 phase B, iter-40 item 975).
+ *
+ *  Derived from METRIC_FAMILIES itself rather than a second list. A metric can be
+ *  in more than one: the four livelihood shares are also members of census-pca,
+ *  which is why this returns an array and the metric page says "families" when it
+ *  has to. */
+export function familiesOfMetric(metricId: string): MetricFamily[] {
+  return SHIPPABLE_FAMILIES.filter((f) => f.members.includes(metricId));
+}
