@@ -1,0 +1,198 @@
+#!/usr/bin/env node
+// Precompute SVG path data for the small-multiple grid (#547 phase B, adr-d3geo).
+//
+// WHY THIS EXISTS AS A BUILD STEP. A family grid is eight or nine panels of the
+// same India differing only in fill, so the geometry is projected ONCE and the
+// paths reused. d3-geo does that projection — and adr-d3geo admits d3-geo only
+// as a devDependency, which is only honest if nothing at runtime imports it.
+//
+// The route cannot be statically generated: .dockerignore excludes `data`, so the
+// store is absent at build and the page must render per request (the same reason
+// app/metric/[slug]/page.tsx:49 is force-dynamic). Anything that route imports is
+// therefore a RUNTIME dependency. So the projection moves here instead, where it
+// reads only public/geo — which IS in the build context — and emits a static
+// artifact the route can read without importing d3-geo at all.
+//
+// Values are the other half and need no projection: the route reads them from the
+// DB per request and applies fills to paths it did not compute.
+//
+//   node scripts/build-family-paths.mjs          # write
+//   node scripts/build-family-paths.mjs --check  # verify only, exit 1 if stale
+//
+// Runs in prebuild alongside the other check-*.mjs guards.
+
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { geoMercator, geoPath } from "d3-geo";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const GEO = join(ROOT, "public", "geo");
+const OUT = join(GEO, "district-paths.json");
+
+/** Panel viewport. Small — these are thumbnails, not the atlas map — but big
+ *  enough that a district is still a distinguishable shape rather than a speck. */
+export const PANEL = { width: 220, height: 240 };
+
+/** Sources to project, and the property each one's id comes from. Mirrors the
+ *  promoteId the live map uses so a panel and the map speak the same ids. */
+export const LAYERS = [
+  { src: "districts.geojson", key: "rid", out: "district" },
+  { src: "states.geojson", key: "st_code", out: "state" },
+];
+
+/** Signed area of a lon/lat ring (shoelace). Positive = counter-clockwise. */
+function ringArea(ring) {
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    a += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+  }
+  return a / 2;
+}
+
+/**
+ * Rewind rings to the orientation d3-geo expects (#547 phase B).
+ *
+ * THIS IS NOT COSMETIC. RFC 7946 says a GeoJSON exterior ring is
+ * COUNTER-clockwise; d3-geo's spherical geoPath takes the opposite convention,
+ * and a ring wound "backwards" does not draw a small polygon — it draws the
+ * ENTIRE REST OF THE SPHERE, because on a sphere the complement of a shape is
+ * also a shape.
+ *
+ * Caught by measuring the artefact rather than the log: the first run reported
+ * "735 paths" and exited 0, and all 735 of them spanned the full 220x240 panel.
+ * Every family panel would have rendered as one solid filled rectangle, with the
+ * build perfectly green.
+ *
+ * Exterior ring is forced clockwise (negative area) and holes counter-clockwise,
+ * which is d3's convention rather than GeoJSON's.
+ */
+export function rewind(geometry) {
+  const fixRings = (rings) =>
+    rings.map((ring, i) => {
+      const a = ringArea(ring);
+      const wantPositive = i > 0; // holes wind opposite the exterior
+      return (a > 0) === wantPositive ? ring : [...ring].reverse();
+    });
+  if (geometry.type === "Polygon") {
+    return { ...geometry, coordinates: fixRings(geometry.coordinates) };
+  }
+  if (geometry.type === "MultiPolygon") {
+    return { ...geometry, coordinates: geometry.coordinates.map(fixRings) };
+  }
+  return geometry;
+}
+
+/** Trim path coordinates to one decimal. Purely a size measure — see the note at
+ *  the projection below. Returns null unchanged so the caller's own check still
+ *  distinguishes "no drawable geometry" from "empty string". */
+export function round(d) {
+  return d == null ? d : d.replace(/-?\d+\.\d+/g, (n) => String(Math.round(Number(n) * 10) / 10));
+}
+
+/**
+ * Project one FeatureCollection to SVG path strings.
+ *
+ * fitSize on the WHOLE collection, not per feature: every panel must share one
+ * projection or the panels stop being comparable, which is the entire point of a
+ * small multiple. A per-feature fit would zoom each district to fill the box and
+ * produce a grid of unrelated blobs.
+ */
+export function projectCollection(fc, key, panel = PANEL) {
+  // Rewound BEFORE fitSize as well as before pathing: fitSize measures the
+  // projected bounds, and a backwards ring measures as the whole world, so the
+  // fit itself would be wrong even if the paths were later corrected.
+  const wound = {
+    ...fc,
+    features: fc.features.map((f) => ({ ...f, geometry: rewind(f.geometry) })),
+  };
+  const projection = geoMercator().fitSize([panel.width, panel.height], wound);
+  // One decimal place. The panel is 220x240 CSS px, so 0.1px is an order of
+  // magnitude below anything a screen can show — and full float precision is not
+  // free here: eight panels of 735 districts is the payload of the page. Measured
+  // on the real boundaries, rounding cuts the artefact by more than half with no
+  // visible change to a thumbnail.
+  const path = geoPath(projection.precision(0.2));
+  const paths = {};
+  const skipped = [];
+  for (const f of wound.features) {
+    const id = f.properties?.[key];
+    if (id == null) {
+      skipped.push("(no id)");
+      continue;
+    }
+    const d = round(path(f));
+    // A null path means the geometry produced nothing drawable. Recorded rather
+    // than written as an empty string, which would render an invisible region
+    // that looks exactly like a region with no data.
+    if (!d) {
+      skipped.push(String(id));
+      continue;
+    }
+    paths[String(id)] = d;
+  }
+  return { paths, skipped, panel };
+}
+
+function build() {
+  const out = { generated: new Date().toISOString(), panel: PANEL, layers: {} };
+  let problems = 0;
+
+  for (const { src, key, out: name } of LAYERS) {
+    const p = join(GEO, src);
+    if (!existsSync(p)) {
+      console.error(`  ${src}: MISSING`);
+      problems++;
+      continue;
+    }
+    const fc = JSON.parse(readFileSync(p, "utf-8"));
+    const { paths, skipped } = projectCollection(fc, key);
+    const n = Object.keys(paths).length;
+    if (skipped.length) {
+      console.error(`  ${src}: ${skipped.length} feature(s) produced no path: ${skipped.slice(0, 6).join(", ")}`);
+      problems += skipped.length;
+    }
+    if (n === 0) {
+      console.error(`  ${src}: projected NOTHING`);
+      problems++;
+      continue;
+    }
+    out.layers[name] = paths;
+    console.log(`  ${src}: ${n} paths`);
+  }
+  return { out, problems };
+}
+
+function main() {
+  const check = process.argv.includes("--check");
+  console.log(`build-family-paths: ${check ? "checking" : "writing"} projected paths`);
+  const { out, problems } = build();
+
+  if (problems) {
+    console.error(`\nbuild-family-paths: ${problems} problem(s)`);
+    process.exit(1);
+  }
+
+  if (check) {
+    if (!existsSync(OUT)) {
+      console.error(`\nbuild-family-paths: ${OUT} MISSING — run without --check`);
+      process.exit(1);
+    }
+    const cur = JSON.parse(readFileSync(OUT, "utf-8"));
+    for (const name of Object.keys(out.layers)) {
+      const a = Object.keys(out.layers[name]).length;
+      const b = Object.keys(cur.layers?.[name] ?? {}).length;
+      if (a !== b) {
+        console.error(`\nbuild-family-paths: ${name} STALE — ${b} on disk vs ${a} from source`);
+        process.exit(1);
+      }
+    }
+    console.log("build-family-paths: OK (current)");
+    return;
+  }
+
+  writeFileSync(OUT, JSON.stringify(out));
+  console.log(`build-family-paths: wrote ${OUT}`);
+}
+
+if (process.argv[1] && process.argv[1].endsWith("build-family-paths.mjs")) main();

@@ -1,0 +1,184 @@
+import { test, expect } from "@playwright/test";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+// The script is plain .mjs (it runs in prebuild, before any TS step), so its
+// exports arrive untyped and are narrowed here at the boundary.
+import {
+  LAYERS,
+  PANEL,
+  projectCollection,
+  rewind,
+  round,
+} from "../scripts/build-family-paths.mjs";
+
+type Paths = Record<string, string>;
+type Layer = { src: string; key: string; out: string };
+const project = (fc: unknown, key: string) =>
+  projectCollection(fc, key) as unknown as { paths: Paths; skipped: string[] };
+
+// #547 phase B — the projected-path artefact (adr-d3geo).
+//
+// d3-geo is a devDependency and must stay one, so the projection happens here at
+// build time and the route reads a static artefact instead of importing it. These
+// assert the artefact is real, complete and shares ONE projection — the property
+// that makes a small multiple a small multiple rather than a grid of unrelated
+// blobs.
+
+const GEO = join(process.cwd(), "public", "geo");
+const artefact = () => JSON.parse(readFileSync(join(GEO, "district-paths.json"), "utf-8"));
+
+/** Two squares far apart, so a shared fit and a per-feature fit give visibly
+ *  different answers. */
+const TWO_SQUARES = {
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { rid: "A" },
+      geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] },
+    },
+    {
+      type: "Feature",
+      properties: { rid: "B" },
+      geometry: { type: "Polygon", coordinates: [[[10, 10], [11, 10], [11, 11], [10, 11], [10, 10]]] },
+    },
+  ],
+};
+
+test.describe("#547 the projection is shared across panels", () => {
+  test("one projection fits the WHOLE collection, not each feature", () => {
+    const { paths } = project(TWO_SQUARES, "rid");
+    expect(Object.keys(paths).sort()).toEqual(["A", "B"]);
+
+    const xs = (d: string) =>
+      [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map(Number).filter((_, i) => i % 2 === 0);
+    const a = xs(paths.A);
+    const b = xs(paths.B);
+    // Fitted together, the two squares land in different parts of the box. Fitted
+    // individually each would fill it, and every panel would show the same shape
+    // in the same place — which is exactly the failure this guards.
+    expect(Math.max(...a)).toBeLessThan(Math.min(...b));
+  });
+
+  test("a feature with no id is skipped and reported, not written blank", () => {
+    const fc = {
+      type: "FeatureCollection",
+      features: [
+        ...TWO_SQUARES.features,
+        { type: "Feature", properties: {}, geometry: TWO_SQUARES.features[0].geometry },
+      ],
+    };
+    const { paths, skipped } = project(fc, "rid");
+    expect(Object.keys(paths)).toHaveLength(2);
+    expect(skipped).toContain("(no id)");
+  });
+
+  test("rounding trims precision without mangling the path", () => {
+    expect(round("M1.23456,2.98765L3.1,4.0")).toBe("M1.2,3L3.1,4");
+    expect(round(null)).toBeNull();
+    // command letters survive
+    expect(round("M0.55,0.55Z")).toMatch(/^M[\d.]+,[\d.]+Z$/);
+  });
+});
+
+test.describe("#547 the shipped artefact is complete", () => {
+  test("it exists and covers every layer the script declares", () => {
+    expect(existsSync(join(GEO, "district-paths.json")), "run scripts/build-family-paths.mjs").toBe(true);
+    const a = artefact();
+    for (const { out } of LAYERS as Layer[]) {
+      expect(a.layers[out], `${out} layer missing`).toBeTruthy();
+      expect(Object.keys(a.layers[out]).length, `${out} is empty`).toBeGreaterThan(0);
+    }
+    expect(a.panel).toEqual(PANEL);
+  });
+
+  test("every source region has a path, none silently dropped", () => {
+    const a = artefact();
+    for (const { src, key, out } of LAYERS as Layer[]) {
+      const fc = JSON.parse(readFileSync(join(GEO, src), "utf-8"));
+      const ids = new Set<string>(
+        (fc.features as { properties: Record<string, unknown> }[]).map((f) =>
+          String(f.properties[key])
+        )
+      );
+      const got = new Set(Object.keys(a.layers[out]));
+      const missing = [...ids].filter((id) => !got.has(id));
+      expect(missing, `${out}: regions with no path`).toEqual([]);
+    }
+  });
+
+  test("every path is drawable, not an empty string", () => {
+    const a = artefact();
+    for (const { out } of LAYERS as Layer[]) {
+      for (const [id, d] of Object.entries(a.layers[out] as Paths)) {
+        const path = d as string;
+        expect(path.length, `${out}/${id} is empty`).toBeGreaterThan(10);
+        expect(path.startsWith("M"), `${out}/${id} is not a path`).toBe(true);
+      }
+    }
+  });
+
+  test("coordinates carry at most one decimal", () => {
+    // The size measure. A regression here quietly doubles the page.
+    const a = artefact();
+    const sample = Object.values(a.layers.district as Paths).slice(0, 40);
+    for (const d of sample) {
+      const overlong = [...d.matchAll(/\d+\.(\d{2,})/g)];
+      expect(overlong.map((m) => m[0]).slice(0, 3), "more than one decimal place").toEqual([]);
+    }
+  });
+});
+
+test.describe("#547 rings are wound the way d3-geo expects", () => {
+  // The bug this exists for: RFC 7946 winds an exterior ring counter-clockwise,
+  // d3-geo's spherical geoPath takes the opposite convention, and a backwards
+  // ring does not draw a small polygon — it draws the ENTIRE REST OF THE SPHERE.
+  //
+  // The first run of this script reported "735 paths", exited 0, and every one of
+  // those 735 spanned the full panel. Each family panel would have rendered as a
+  // solid filled rectangle with a perfectly green build. Counting outputs proved
+  // nothing about them; only measuring their extent did.
+
+  test("no shipped path covers the whole panel", () => {
+    const a = artefact();
+    for (const { out } of LAYERS as Layer[]) {
+      const covering: string[] = [];
+      for (const [id, d] of Object.entries(a.layers[out] as Paths)) {
+        const n = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map(Number);
+        const xs = n.filter((_, i) => i % 2 === 0);
+        const ys = n.filter((_, i) => i % 2 === 1);
+        const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+        // A region spanning most of the viewport is the complement, not a region.
+        if (area > 0.9 * PANEL.width * PANEL.height) covering.push(id);
+      }
+      expect(covering.slice(0, 5), `${out}: paths spanning the whole panel`).toEqual([]);
+    }
+  });
+
+  test("regions are small relative to the panel, as 735 pieces of India must be", () => {
+    const a = artefact();
+    const areas = Object.values(a.layers.district as Paths).map((d) => {
+      const n = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map(Number);
+      const xs = n.filter((_, i) => i % 2 === 0);
+      const ys = n.filter((_, i) => i % 2 === 1);
+      return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+    });
+    areas.sort((x, y) => x - y);
+    const median = areas[Math.floor(areas.length / 2)];
+    expect(median, "median district should be a small share of the panel").toBeLessThan(
+      0.05 * PANEL.width * PANEL.height
+    );
+    expect(median, "but not degenerate").toBeGreaterThan(0);
+  });
+
+  test("rewind flips a backwards ring and leaves a correct one alone", () => {
+    const ccw = { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] };
+    const flipped = rewind(ccw) as { coordinates: number[][][] };
+    expect(flipped.coordinates[0]).not.toEqual(ccw.coordinates[0]);
+    // idempotent: rewinding the corrected ring changes nothing further
+    expect((rewind(flipped) as { coordinates: number[][][] }).coordinates[0]).toEqual(
+      flipped.coordinates[0]
+    );
+  });
+});

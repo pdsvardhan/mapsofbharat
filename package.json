@@ -12,7 +12,8 @@
     "test:mutation": "./scripts/mutation-test.sh",
     "check:css": "node scripts/check-globals-layers.mjs",
     "check:centroids": "node scripts/check-centroids.mjs",
-    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs",
+    "geo:paths": "node scripts/build-family-paths.mjs",
+    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs && node scripts/build-family-paths.mjs --check",
     "postbuild": "node scripts/check-raw-assets.mjs --output"
   },
   "dependencies": {
@@ -28,10 +29,12 @@
     "@playwright/test": "^1.49.0",
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/d3-geo": "^3.1.1",
     "@types/d3-scale-chromatic": "^3.1.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "d3-geo": "^3.1.1",
     "eslint": "^9",
     "eslint-config-next": "15.5.19",
     "tailwindcss": "^4",
