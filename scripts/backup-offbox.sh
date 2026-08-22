@@ -210,6 +210,26 @@ if [ "$LOCAL_ONLY" -eq 1 ]; then
 else
   command -v rclone >/dev/null 2>&1 || fail "rclone not installed"
   log "backup-offbox: pushing to $REMOTE"
+  # EXPECT "501 NotImplemented" LINES IN THIS LOG ON R2, AND DO NOT CHASE THEM.
+  #
+  # Measured 2026-08-22 on rclone 1.60.1 (the newest Ubuntu 24.04 ships): every
+  # NEW object fails its first PUT with 501 and succeeds on rclone's own retry.
+  # Unchanged files skip cleanly. It is not --backup-dir, which was the first
+  # guess and was wrong - the `daily` sync below carries no --backup-dir and 501s
+  # just the same.
+  #
+  # --s3-no-head silences it, and is REJECTED on purpose: that flag works by
+  # skipping the post-upload HEAD check, so it would buy a clean log by giving up
+  # the verification that the bytes landed. On a backup that is exactly backwards.
+  # --s3-disable-checksum and --s3-chunk-size make no difference; only the HEAD
+  # skip does.
+  #
+  # So the noise stays, and the authority moves: the file-count comparison below
+  # and the post-sync verify are what say whether tonight worked. rclone exiting 0
+  # says the transfer ran, not that the bytes are there - and now, equally, ERROR
+  # lines in this log do not by themselves mean it failed. Read the counts.
+  #
+  # The real fix is a current rclone (#574); 1.60.1 predates R2 support maturing.
   if [ "$WITH_RAW" -eq 1 ] && [ "${#RAW_DIRS[@]}" -gt 0 ]; then
     for d in "${RAW_DIRS[@]}"; do
       log "  mirroring $d (incremental - only changed files move)"
