@@ -123,8 +123,9 @@ test.describe("#565 the predicate fails on REAL geometry when a point is moved",
     const src = JSON.parse(readFileSync(join(geo, "districts.geojson"), "utf-8"));
     const pts = JSON.parse(readFileSync(join(geo, "centroids-districts.geojson"), "utf-8"));
 
+    type Feat = { properties: { rid: string | number }; geometry: unknown };
     const byId = new Map(
-      src.features.map((f: any) => [String(f.properties.rid), f.geometry])
+      (src.features as Feat[]).map((f) => [String(f.properties.rid), f.geometry])
     );
 
     let checkedAtLeastOne = false;

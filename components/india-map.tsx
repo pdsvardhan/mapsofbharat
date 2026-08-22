@@ -224,6 +224,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   /** The last browser click already dispatched, so a second delegated layer
    *  listener for the SAME click is ignored (verifier report 822). */
   const lastClickRef = useRef<unknown>(null);
+  /** The same, for hover (#571). The click got this guard from report 822 and
+   *  mousemove — twenty lines above it, with the identical double-dispatch —
+   *  did not. Each wire() closure keeps its own `hov`, so where a circle
+   *  overlaps a neighbouring polygon BOTH handlers ran: two regions lit at once
+   *  and setHovered fired twice, leaving the tooltip naming whichever listener
+   *  happened to run last. Measured before the fix: hovering the Bihar circle
+   *  over Jharkhand left [10, 20] both highlighted. */
+  const lastHoverRef = useRef<unknown>(null);
   const selectedRef = useRef<Sel | null>(null);
   // the selected METRIC id, for the analytics events fired from map click
   // handlers (item 938) — those are registered once, so reading `sel` directly
@@ -608,6 +616,21 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         let hov: string | number | undefined;
         map.on("mousemove", layer, (e: any) => {
           if (!e.features?.length) return;
+          // ONE POINTER, ONE HOVER (#571) — the click guard's twin, and it must
+          // still CLEAR on the way out. Registration order puts the symbol layer
+          // first, so it claims the pointer and the fill beneath yields. A bare
+          // "return" would not be enough: the fill's own `hov` may still hold the
+          // region highlighted a moment ago, and leaving it set is the same two-
+          // regions-lit bug arriving one mousemove later.
+          const oe = e.originalEvent;
+          if (oe && lastHoverRef.current === oe) {
+            if (hov !== undefined) {
+              map.setFeatureState({ source, id: hov }, { hover: false });
+              hov = undefined;
+            }
+            return;
+          }
+          lastHoverRef.current = oe ?? null;
           map.getCanvas().style.cursor = "pointer";
           const f = e.features[0];
           if (hov !== undefined) map.setFeatureState({ source, id: hov }, { hover: false });
