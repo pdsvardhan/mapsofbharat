@@ -1,6 +1,7 @@
 import { test, expect, Page } from "@playwright/test";
 
 import {
+  EXTENSIVE_NOT_SYMBOLISED,
   floorShare,
   floorThreshold,
   isCountUnit,
@@ -458,5 +459,55 @@ test.describe("#566 the floor's reach is measured, not assumed", () => {
     // Phase 1 ships 9 count metrics; if this ever reads 0 the loop stopped
     // measuring and every assertion above became vacuous.
     expect(checked, "no symbol-eligible metrics were checked").toBeGreaterThanOrEqual(8);
+  });
+});
+
+test.describe("#567 the excluded extensive metrics are a named gap, not a claim of safety", () => {
+  // The docstring used to conclude "only 9 of 87 district metrics carry one of
+  // these units — so area bias can only ever bite those 9". The inference is
+  // invalid: bias follows from a quantity being extensive, not from its unit
+  // string being in a Set. These four add up across regions, are drawn as
+  // choropleths, and carry the full 291x Kutch-over-Mumbai distortion.
+
+  test("every named metric exists and really is excluded from symbols", async ({ request }) => {
+    const { metrics } = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { id: string; unit: string | null }[];
+    };
+    const byId = new Map(metrics.map((m) => [m.id, m]));
+
+    for (const { id, unit } of EXTENSIVE_NOT_SYMBOLISED) {
+      const m = byId.get(id);
+      expect(m, `${id} is named as an excluded extensive metric but is not in the store`).toBeTruthy();
+      expect(m!.unit, `${id} unit drifted`).toBe(unit);
+      // The point of the list: they are extensive, and they still get no circles.
+      expect(isCountUnit(m!.unit), `${id} would now be symbolised`).toBe(false);
+    }
+  });
+
+  test("the already-normalised money metrics are NOT on the list", () => {
+    // Both are "₹". One is per-day, one is per-capita — intensive, unbiased, and
+    // correctly choropleths. Sharing a unit string with an extensive total is
+    // exactly why units alone cannot decide this, so listing them would be wrong.
+    const ids = EXTENSIVE_NOT_SYMBOLISED.map((x) => x.id);
+    expect(ids).not.toContain("mgnrega_avg_wage_day");
+    expect(ids).not.toContain("econ_percapita_nsdp_rbi");
+  });
+
+  test("no metric is both symbolised and listed as excluded", async ({ request }) => {
+    const { metrics } = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { id: string; unit: string | null }[];
+    };
+    const excluded = new Set(EXTENSIVE_NOT_SYMBOLISED.map((x) => x.id));
+    for (const m of metrics) {
+      if (isCountUnit(m.unit)) {
+        expect(excluded.has(m.id), `${m.id} is both a count unit and listed as excluded`).toBe(false);
+      }
+    }
+  });
+
+  test("the list is non-empty, so the gap stays visible", () => {
+    // If someone empties this rather than symbolising the metrics, the gap goes
+    // back to being invisible and the old false claim is effectively restored.
+    expect(EXTENSIVE_NOT_SYMBOLISED.length).toBeGreaterThanOrEqual(4);
   });
 });

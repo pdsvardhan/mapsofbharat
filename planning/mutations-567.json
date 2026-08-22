@@ -1,0 +1,29 @@
+{
+  "tests": "tests/symbol-maps.spec.ts",
+  "mutations": [
+    {
+      "name": "quietly shrink the gap list",
+      "file": "lib/symbols.ts",
+      "find": "  { id: \"gst_total\", unit: \"₹ crore\" },\n",
+      "replace": ""
+    },
+    {
+      "name": "list an already-normalised per-capita metric as extensive",
+      "file": "lib/symbols.ts",
+      "find": "  { id: \"households\", unit: \"households\" },",
+      "replace": "  { id: \"econ_percapita_nsdp_rbi\", unit: \"₹\" },"
+    },
+    {
+      "name": "let a listed unit drift from the store",
+      "file": "lib/symbols.ts",
+      "find": "  { id: \"tourist_visits_domestic\", unit: \"visits\" },",
+      "replace": "  { id: \"tourist_visits_domestic\", unit: \"people\" },"
+    },
+    {
+      "name": "name a metric that does not exist",
+      "file": "lib/symbols.ts",
+      "find": "  { id: \"tourist_visits_foreign\", unit: \"visits\" },",
+      "replace": "  { id: \"tourist_visits_martian\", unit: \"visits\" },"
+    }
+  ]
+}
