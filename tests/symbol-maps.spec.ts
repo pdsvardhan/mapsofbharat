@@ -511,3 +511,167 @@ test.describe("#567 the excluded extensive metrics are a named gap, not a claim 
     expect(EXTENSIVE_NOT_SYMBOLISED.length).toBeGreaterThanOrEqual(4);
   });
 });
+
+test.describe("#568 the symbol layer has its own listeners wired", () => {
+  // Deleting wire("state-symbol", …) and wire("state-symbol", …) left all 17
+  // symbol tests green. The click test above cannot catch it: a circle is drawn
+  // on a representative point INSIDE its own polygon, so district-fill answers
+  // with the same region and the assertion holds either way.
+  //
+  // The wiring only decides anything where a circle covers a NEIGHBOURING
+  // polygon — exactly what the "ORDER IS LOAD-BEARING" comment at
+  // india-map.tsx:648 is about. So that is the click that goes here.
+
+  /** A screen point inside a circle that sits over some OTHER state polygon.
+   *
+   *  STATE level on purpose. District circles cap at 12px and stay inside their own
+   *  polygon at default zoom, so no overlap exists to click and the search returns
+   *  nothing. States cap at 40px across 36 marks, where a large circle genuinely
+   *  covers its neighbours — which is the situation the registration order exists
+   *  to resolve.
+   *
+   *  Steps outward from each centre by that circle own radius. The district-level
+   *  version of this swept all 735 marks and blew the 30s timeout on ~35k
+   *  queryRenderedFeatures calls; 36 states is a different proposition. */
+  async function overlapPoint(page: Page) {
+    return page.evaluate(() => {
+      const m = (window as unknown as { __mob_map?: maplibregl.Map }).__mob_map;
+      if (!m) return null;
+      const sized: { id: string; r: number }[] = [];
+      const seen = new Set<string>();
+      for (const f of m.querySourceFeatures("states-pts") as Array<{ id?: string | number }>) {
+        if (f.id == null || seen.has(String(f.id))) continue;
+        seen.add(String(f.id));
+        const r = m.getFeatureState({ source: "states-pts", id: f.id }).r;
+        if (typeof r === "number" && r > 3) sized.push({ id: String(f.id), r });
+      }
+      sized.sort((a, b) => b.r - a.r);
+
+      const rendered = m.queryRenderedFeatures(undefined, { layers: ["state-symbol"] });
+      // Every mark, not just the biggest. The largest circles belong to the
+      // largest STATES (Uttar Pradesh, Maharashtra), whose polygons swallow a
+      // 34px offset whole — searching only the top 20 by radius found nothing.
+      // Overflow happens on the COMPACT high-population states, which rank
+      // lower by radius. 36 marks is cheap to scan in full.
+      for (const { id, r } of sized) {
+        const hit = rendered.find((f) => String(f.id) === id);
+        if (!hit) continue;
+        const g = hit.geometry as { type: string; coordinates: [number, number] };
+        if (g.type !== "Point") continue;
+        const p = m.project({ lng: g.coordinates[0], lat: g.coordinates[1] });
+        for (const frac of [0.85, 0.7, 0.55]) {
+          const d = Math.round(r * frac);
+          if (d < 2) continue;
+          for (const [ox, oy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
+            // An [x, y] ARRAY, not a {x, y} object. queryRenderedFeatures runs the
+            // argument through Point.convert, and the object form does not survive
+            // it — the probe silently returns nothing and the search reports no
+            // overlap anywhere on the map.
+            const pt: [number, number] = [p.x + ox, p.y + oy];
+            const syms = m.queryRenderedFeatures(pt, { layers: ["state-symbol"] });
+            const fills = m.queryRenderedFeatures(pt, { layers: ["state-fill"] });
+            if (
+              syms.some((s) => String(s.id) === id) &&
+              fills.length > 0 &&
+              fills.every((f) => String(f.id) !== id)
+            ) {
+              return { x: pt[0], y: pt[1], circleId: id, polygonId: String(fills[0].id) };
+            }
+          }
+        }
+      }
+      return null;
+    });
+  }
+
+  test("a click on a circle overlapping a neighbour selects the CIRCLE region", async ({ page }) => {
+    await page.goto("/?m=pop_total&lvl=state");
+    await waitForMapReady(page);
+    expect(await layerVisible(page, "state-symbol")).toBe(true);
+
+    const spot = await overlapPoint(page);
+    // Fail rather than skip if none is found: a guard that quietly measures
+    // nothing is how this gap survived in the first place.
+    expect(spot, "no circle overlapping a neighbouring polygon was found to click").not.toBeNull();
+    expect(spot!.circleId).not.toBe(spot!.polygonId);
+
+    // A REAL browser click, not m.fire(). The synthetic path is what the sibling
+    // test above uses and it is fine there, but this assertion turns on the order
+    // delegated listeners run in, and that is exactly the thing a hand-fired event
+    // could get wrong on its own. Driving the mouse settles whether the guarantee
+    // holds for a user.
+    const box = await page.locator("canvas").first().boundingBox();
+    expect(box, "the map canvas must be on screen to click it").not.toBeNull();
+    await page.mouse.click(box!.x + spot!.x, box!.y + spot!.y);
+    await page.waitForTimeout(500);
+
+    const selected = await page.evaluate(() => {
+      const m = (window as unknown as { __mob_map?: maplibregl.Map }).__mob_map!;
+      const out: string[] = [];
+      const seen = new Set<string>();
+      for (const f of m.querySourceFeatures("states") as Array<{ id?: string | number }>) {
+        if (f.id == null || seen.has(String(f.id))) continue;
+        seen.add(String(f.id));
+        if (m.getFeatureState({ source: "states", id: f.id }).selected) out.push(String(f.id));
+      }
+      return out;
+    });
+
+    expect(selected, "exactly one region selected").toHaveLength(1);
+    // Without the symbol layer wired FIRST, district-fill wins this click and the
+    // neighbour under the circle is selected instead.
+    expect(selected[0], "the circle region must win, not the polygon beneath it").toBe(spot!.circleId);
+  });
+
+  test("hovering a circle sets hover on its region, and moving off clears the old one", async ({ page }) => {
+    // mousemove is registered inside the same wire() call as the click handler,
+    // so this fails too if the symbol layers stop being wired.
+    //
+    // Clearing is checked by moving to a SECOND circle rather than by firing
+    // mouseleave: MapLibre derives the delegated leave from its own pointer
+    // tracking, so a synthetic fire never reaches it and the assertion would be
+    // testing the test. Moving on is also the real path — india-map.tsx:613
+    // clears the previous id on every mousemove.
+    await page.goto("/?m=pop_total&lvl=state");
+    await waitForMapReady(page);
+
+    const result = await page.evaluate(() => {
+      const m = (window as unknown as { __mob_map?: maplibregl.Map }).__mob_map;
+      if (!m) return null;
+      const circles = m
+        .queryRenderedFeatures(undefined, { layers: ["state-symbol"] })
+        .filter((f) => f.id != null);
+      const uniq: typeof circles = [];
+      const seen = new Set<string>();
+      for (const c of circles) {
+        if (seen.has(String(c.id))) continue;
+        seen.add(String(c.id));
+        uniq.push(c);
+        if (uniq.length === 2) break;
+      }
+      if (uniq.length < 2) return null;
+
+      const hoverAt = (f: (typeof circles)[number]) => {
+        const g = f.geometry as { type: string; coordinates: [number, number] };
+        const lngLat = { lng: g.coordinates[0], lat: g.coordinates[1] };
+        m.fire("mousemove", {
+          point: m.project(lngLat),
+          lngLat,
+          originalEvent: new MouseEvent("mousemove"),
+        });
+      };
+
+      hoverAt(uniq[0]);
+      const firstDuring = m.getFeatureState({ source: "states", id: uniq[0].id! }).hover;
+      hoverAt(uniq[1]);
+      const firstAfter = m.getFeatureState({ source: "states", id: uniq[0].id! }).hover;
+      const secondDuring = m.getFeatureState({ source: "states", id: uniq[1].id! }).hover;
+      return { firstDuring, firstAfter, secondDuring };
+    });
+
+    expect(result, "two rendered circles are needed to test the handover").not.toBeNull();
+    expect(result!.firstDuring, "hovering a circle must set hover on its region").toBe(true);
+    expect(result!.secondDuring, "the next circle must pick hover up").toBe(true);
+    expect(result!.firstAfter, "the previous circle must be cleared, or highlights pile up").toBe(false);
+  });
+});
