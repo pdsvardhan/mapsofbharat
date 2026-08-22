@@ -3,11 +3,11 @@
   "note": "#547 phase B, NODE-SIDE half. tests/family-paths.spec.ts imports scripts/build-family-paths.mjs directly, so a source edit takes effect on the next run with no rebuild and this manifest runs unattended: scripts/mutation-test.sh --manifest planning/mutations-547b.json. The browser-side mutations live in mutations-547b-browser.json because the harness cannot rebuild between them and would report every one as a false survivor.",
   "mutations": [
     {
-      "name": "the snap tolerance is loosened to 1px, which flattens 2 districts and 1 state to nothing",
+      "name": "the snap tolerance is loosened to 1px, which leaves 3 regions drawing nothing",
       "file": "scripts/build-family-paths.mjs",
-      "find": "export const SNAP = 0.5;",
+      "find": "export const SNAP = 0.25;",
       "replace": "export const SNAP = 1;",
-      "control": "the build must REFUSE this: exit 1 naming 04_55, 26_494 and state 04"
+      "control": "the build must REFUSE this: exit 1 over 04_55, 26_494 and state 04"
     },
     {
       "name": "the collinear reduction is disabled",

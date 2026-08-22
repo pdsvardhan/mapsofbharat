@@ -1,5 +1,7 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
+import { db } from "@/lib/db";
+import { countsInStats } from "@/lib/estimate-kind";
 import { noStoreDetail } from "@/lib/family-data";
 import { FAMILY_BY_ID, SHIPPABLE_FAMILIES } from "@/lib/metric-families";
 
@@ -52,6 +54,7 @@ type Member = {
   max: number;
   values: Record<string, number>;
   estimated: Record<string, 1>;
+  estimateKind?: Record<string, string>;
 };
 
 type Detail = Family & {
@@ -218,28 +221,54 @@ test.describe("#547 survivors the code verifier found (iter-41)", () => {
           byCode.get(m[1])!.add(m[2]);
         }
       }
-      // And the axis is genuinely SHARED: pick the member values back out and
-      // confirm two panels give the same colour to the same number.
-      const first = d.members[0];
-      const second = d.members[1];
-      if (!first || !second) continue;
-      const fillFor = (name: string, code: string) => {
-        const p = panels(html).find((x) => x.name.startsWith(name));
-        const m = p?.body.match(new RegExp(`<use href="#fp-${code}" fill="(rgb\([^"]*\))"`));
-        return m?.[1];
+      // AND THE AXIS IS GENUINELY SHARED — asserted as a MAPPING, not by hunting
+      // for incidental ties. The first version of this looked for two members
+      // holding the same value on the same district and compared their colours;
+      // measured across the catalogue that finds 0 ties on livelihood, 0 on
+      // livestock, 0 on mgnrega and 1 each on household-assets and aser-learning,
+      // so it made at most two assertions in the whole suite and none at all on
+      // the family its own comment cites. Skewing the edges per panel kept every
+      // panel at 5 classes and sailed through 19/19 green while bins 1-4 were each
+      // painted two different colours across panels.
+      //
+      // One shared axis means one colour per class, full stop. So: compute each
+      // district's class from the member's OWN value against the family's shared
+      // edges, and require that every panel paints that class the same colour.
+      const binOf = (v: number, breaks: number[]) => {
+        let b = 0;
+        while (b < breaks.length && v >= breaks[b]) b++;
+        return b;
       };
-      let compared = 0;
-      for (const code of d.sharedCodes.slice(0, 400)) {
-        const a = first.values[code];
-        const b = second.values[code];
-        if (a == null || b == null || Math.abs(a - b) > 1e-9) continue;
-        const fa = fillFor(first.name, code);
-        const fb = fillFor(second.name, code);
-        if (!fa || !fb) continue;
-        expect(fb, `${f.id}: equal values ${a} painted differently across panels`).toBe(fa);
-        compared++;
-        if (compared >= 3) break;
+      const colourOfBin = new Map<number, Set<string>>();
+      let mapped = 0;
+      for (const member of d.members) {
+        const p = panels(html).find((x) => x.name.startsWith(member.name));
+        if (!p) continue;
+        const fills = new Map(
+          [...p.body.matchAll(/<use href="#fp-([^"]+)" fill="(rgb\([^"]*\))"/g)].map(
+            (m) => [m[1], m[2]] as const
+          )
+        );
+        for (const [code, v] of Object.entries(member.values)) {
+          const fill = fills.get(code);
+          if (!fill) continue;
+          const bin = binOf(v, d.shared.breaks);
+          if (!colourOfBin.has(bin)) colourOfBin.set(bin, new Set());
+          colourOfBin.get(bin)!.add(fill);
+          mapped++;
+        }
       }
+      for (const [bin, colours] of colourOfBin) {
+        expect(
+          [...colours],
+          `${f.id}: class ${bin} is painted ${colours.size} different colours across panels`
+        ).toHaveLength(1);
+      }
+      // A shared-axis family must actually have exercised the mapping; otherwise
+      // this test would pass by asserting nothing, which is how the version it
+      // replaces behaved.
+      expect(mapped, `${f.id}: no fills mapped — this assertion proved nothing`).toBeGreaterThan(100);
+      expect(colourOfBin.size, `${f.id}: fewer classes drawn than expected`).toBeGreaterThan(1);
     }
   });
 
@@ -267,8 +296,12 @@ test.describe("#547 survivors the code verifier found (iter-41)", () => {
       const estimatedCodes = Object.keys(m.estimated);
       if (!estimatedCodes.length) continue;
       const all = Object.values(m.values);
+      // Uses the RULE, not a second copy of it. Excluding everything flagged
+      // `estimated` is stricter than adr-022, which keeps projections and drops
+      // only copies; they agree today only because crime's 56 estimates are all
+      // inherited, so a projected row would have failed this against correct code.
       const stats = Object.entries(m.values)
-        .filter(([code]) => !m.estimated[code])
+        .filter(([code]) => countsInStats(m.estimated[code] ? 1 : 0, m.estimateKind?.[code] ?? null))
         .map(([, v]) => v);
       expect(m.statsCount, `${m.id} statsCount`).toBe(stats.length);
       expect(m.statsCount, `${m.id} must exclude ${estimatedCodes.length} estimated rows`).toBeLessThan(all.length);
@@ -376,6 +409,12 @@ test.describe("#547 the store-absent page keeps its own promise (iter-41)", () =
   // defect lived entirely in what the data layer reports when db() returns null.
 
   test("with no store, nothing is reported missing", () => {
+    // PRECONDITION, asserted rather than assumed. noStoreDetail() defaults its
+    // `base` to summarize(), which calls db() — so these assertions only exercise
+    // the no-store path while this process genuinely has no store. On a runner
+    // where DB_PATH resolves, the real-store branch would run and the mutation
+    // these tests exist to kill would stop being killed, silently.
+    expect(db(), "this spec must run without a store to mean anything").toBeNull();
     for (const family of SHIPPABLE_FAMILIES) {
       const d = noStoreDetail(family);
       expect(d.storeAvailable).toBe(false);

@@ -85,19 +85,29 @@ export function rewind(geometry) {
 
 /** Grid the artefact snaps to, in panel px (#547, iter-41 item 976).
  *
- *  0.5px on a 220x240 panel. Chosen by measuring, not by taste:
+ *  0.25px on a 220x240 panel. Measured, and revised DOWN from 0.5 once the emit
+ *  guard started asking whether a subpath encloses anything rather than whether
+ *  its bounding box has width:
  *
- *    step   district layer   gzip   flattened
- *    0.1     327 KiB          92 KiB      0
- *    0.25    283 KiB          68 KiB      0
- *    0.5     182 KiB          47 KiB      0
- *    1.0      98 KiB          28 KiB      2 districts + 1 state
+ *    step   district layer   gzip   regions that draw NOTHING
+ *    0.1     327 KiB          92 KiB   0
+ *    0.25    282 KiB          68 KiB   0
+ *    0.5     182 KiB          47 KiB   1  (district 34_634)
+ *    1.0      98 KiB          28 KiB   3  (04_55, 26_494, state 04)
  *
- *  1px is the tempting number and it is wrong: district 26_494 measures 0.5x0.3px
- *  at full resolution and snapping at 1px flattens it to nothing. A district that
- *  renders as nothing is a district silently missing from the map, which is the
- *  same class of failure as the backwards rings — invisible, and green. */
-export const SNAP = 0.5;
+ *  0.5 was shipped first and is wrong. District 34_634 measures 0.9x0.4px at full
+ *  resolution, and at 0.5 its ring snapped to
+ *  "M107,166L107,166.5L106,166.5L106,166L106,166.5L107,166.5L107,166Z" - seven
+ *  points, tracing out and back along the same edge, enclosing zero area. It was
+ *  present in the artefact, counted as a path, passed every guard that measured a
+ *  bounding box, and painted nothing on all 61 panels. Invisible and green, which
+ *  is the same failure as the backwards rings and the flattened districts, and it
+ *  survived two rounds of review because every check asked about the box rather
+ *  than the shape.
+ *
+ *  The 100 KiB between 0.25 and 0.5 buys a district that can actually be seen.
+ *  Both are far below the 394 KiB this started at. */
+export const SNAP = 0.25;
 
 /**
  * Snap path coordinates to the SNAP grid and drop the vertices that collapse.
@@ -178,12 +188,20 @@ export function round(d, step = SNAP) {
       if (y < y0) y0 = y;
       if (y > y1) y1 = y;
     }
-    // ZERO AREA, not zero extent in BOTH directions. The guard used to be `&&`,
-    // which let a subpath 0 wide and 0.5 tall through - a line, which draws nothing
-    // when it is filled, and three of them shipped (districts 23_422 and 09_169,
-    // state 23). A filled shape needs width AND height, so either being zero is
-    // disqualifying.
+    // DOES THIS SUBPATH ENCLOSE ANYTHING? Asked of the ring itself, not of its
+    // bounding box. Two earlier versions asked the box: `&&` let through a subpath
+    // 0 wide and 0.5 tall (a vertical line - three shipped, districts 23_422 and
+    // 09_169 and state 23), and `||` still let through a 2-point DIAGONAL, whose
+    // box has width and height while the ring encloses nothing. Both draw exactly
+    // nothing when filled, which is the only thing that matters here.
+    //
+    // Shoelace over the kept points: zero area means no fill can appear.
     if (x1 - x0 <= 0 || y1 - y0 <= 0) continue;
+    let area2 = 0;
+    for (let i = 0, j = keep.length - 1; i < keep.length; j = i++) {
+      area2 += keep[j][0] * keep[i][1] - keep[i][0] * keep[j][1];
+    }
+    if (area2 === 0) continue;
     out.push("M" + keep.map((p) => `${p[0]},${p[1]}`).join("L") + m[2]);
   }
   return out.join("");

@@ -81,7 +81,10 @@ test.describe("#547 the projection is shared across panels", () => {
   // point-level reductions. The old assertion here encoded the old contract
   // ("M1.2,3L3.1,4") and is updated, not deleted.
   test("snapping trims precision without mangling the path", () => {
-    expect(round("M1.23456,2.98765L3.1,4.0")).toBe("M1,3L3,4");
+    expect(round("M1.23456,2.98765L3.1,4.04L1.1,5.9Z")).toBe("M1.25,3L3,4L1,6Z");
+    // Two points enclose nothing, so nothing is emitted — the same rule that
+    // rejects a line, applied to the smallest possible case.
+    expect(round("M1.23456,2.98765L3.1,4.0")).toBe("");
     expect(round(null)).toBeNull();
     // command letters survive on a shape that has any
     expect(round("M0.55,0.55L9,0.55L9,9Z")).toMatch(/^M[\d.]+,[\d.]+(?:L[\d.]+,[\d.]+)+Z$/);
@@ -95,7 +98,17 @@ test.describe("#547 the projection is shared across panels", () => {
     // three are distinct so the dedupe left them alone; the middle one is exactly
     // collinear so it went; and the survivors were written out as a zero-extent
     // "M78,99L78,99Z". Three district subpaths and two state paths did this.
-    expect(round("M78.2,99.1L78.6,99.4L78.1,99.0Z")).toBe("");
+    // Three points that snap exactly collinear: the middle goes, two are left,
+    // and two points enclose nothing.
+    expect(round("M0,0L2.5,2.5L5,5Z")).toBe("");
+
+    // LINE-SHAPED subpaths, the two the bounding-box tests kept missing. Without
+    // these the emit guard could be reverted to `&&` and all 37 tests stayed green
+    // — only --check caught it, because the committed artefact is already clean
+    // and no fixture exercised the shape.
+    expect(round("M0,0L0,5Z"), "a vertical line encloses nothing").toBe("");
+    expect(round("M0,0L5,0Z"), "a horizontal line encloses nothing").toBe("");
+    expect(round("M0,0L5,5Z"), "a diagonal encloses nothing either").toBe("");
 
     // THE INVARIANT, asserted on the shipped artefact rather than on a fixture:
     // no subpath anywhere spans nothing. A count would not catch this — the bad
@@ -152,7 +165,7 @@ test.describe("#547 the projection is shared across panels", () => {
     // The grid is written as a literal 0.5 on purpose: deriving it from SNAP is
     // what made the old assertion vacuous. If the tolerance is deliberately
     // changed, this number changes with it, and that edit is the point.
-    const GRID = 0.5;
+    const GRID = 0.25;
     const layers = artefact().layers as Record<string, Paths>;
     const offGrid: string[] = [];
     for (const [name, layer] of Object.entries(layers)) {
@@ -163,22 +176,22 @@ test.describe("#547 the projection is shared across panels", () => {
         }
       }
     }
-    expect(offGrid.slice(0, 5), "coordinates off the 0.5px grid").toEqual([]);
+    expect(offGrid.slice(0, 5), "coordinates off the 0.25px grid").toEqual([]);
     expect(SNAP, "SNAP moved without this assertion being updated").toBe(GRID);
   });
 
   test("neighbours that snap onto the same point collapse to one", () => {
     // 5.1 and 5.2 both snap to 5.0 — two points become one, and the path must
     // not carry a lineto that goes nowhere.
-    expect(round("M0,0L5.1,5.1L5.2,5.2L10,0Z")).toBe("M0,0L5,5L10,0Z");
+    expect(round("M0,0L5.05,5.05L5.1,5.1L10,0Z")).toBe("M0,0L5,5L10,0Z");
 
     // A duplicate at the END of a subpath, which is the position no rule reaches
     // by looking forward. NOTE (iter-41): there is no longer a separate dedupe
     // pass to pin — removing it left the artefact byte-identical, so it went, and
     // BOTH of these assertions are now killed by disabling the COLLINEAR rule.
-    // The old comment here claimed this line pinned a branch that no longer
-    // exists.
-    expect(round("M0,0L5,5L5,5Z")).toBe("M0,0L5,5Z");
+    // What is left after the duplicate goes is two points, which enclose nothing,
+    // so the whole subpath is dropped rather than emitted as a line.
+    expect(round("M0,0L5,5L5,5Z")).toBe("");
   });
 
   test("a vertex exactly on the line between its neighbours is dropped", () => {
@@ -245,7 +258,7 @@ test.describe("#547 the shipped artefact is complete", () => {
     }
   });
 
-  test("coordinates carry at most one decimal", () => {
+  test("coordinates carry at most two decimals", () => {
     // The size measure. A regression here quietly doubles the page.
     // EVERY path, both layers. This sampled the first 40 of 735 and a regression
     // in insertion-order district #226 survived it while #0 killed it — a check
@@ -254,10 +267,13 @@ test.describe("#547 the shipped artefact is complete", () => {
     const overlong: string[] = [];
     for (const [name, layer] of Object.entries(layers)) {
       for (const [id, d] of Object.entries(layer)) {
-        for (const m of d.matchAll(/\d+\.(\d{2,})/g)) overlong.push(`${name}/${id}:${m[0]}`);
+        // Two, not one: the grid is 0.25px, so 106.75 is exact and expected. The
+        // point of the check is that nothing carries FULL float precision, which
+        // is what quietly doubles the page.
+        for (const m of d.matchAll(/\d+\.(\d{3,})/g)) overlong.push(`${name}/${id}:${m[0]}`);
       }
     }
-    expect(overlong.slice(0, 5), "more than one decimal place").toEqual([]);
+    expect(overlong.slice(0, 5), "more than two decimal places").toEqual([]);
   });
 });
 

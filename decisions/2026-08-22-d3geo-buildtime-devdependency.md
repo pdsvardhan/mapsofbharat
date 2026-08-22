@@ -177,6 +177,47 @@ still loads the app's shared ~121 kB first-load bundle, as every route does.
 Earlier wording here said the page "ships 0 B of client JavaScript", which
 overstated it.
 
+### Second correction: 0.5px was still wrong, and 0.25 is the tolerance
+
+The table above was measured with an emit guard that asked whether a subpath's
+BOUNDING BOX had width and height. Replacing that question with "does this ring
+enclose anything" — the thing that actually decides whether a fill appears —
+changed the answer for one district.
+
+At 0.5px, district `34_634` snapped to
+
+```
+M107,166L107,166.5L106,166.5L106,166L106,166.5L107,166.5L107,166Z
+```
+
+Seven points, tracing out and back along the same edge. Its bounding box is
+0.5 × 0.5, so every guard that measured a box waved it through; its shoelace area
+is **zero**, so it painted nothing on all 61 panels. It shipped in the artefact,
+was counted among the 735, and was invisible — the same failure as the backwards
+rings, and it survived two rounds of review because every check asked about the
+box rather than the shape.
+
+**The tolerance is therefore 0.25px, not 0.5.**
+
+| step | district layer | gzip | regions that draw nothing |
+|---|---|---|---|
+| 0.1 | 327 KiB | 92 KiB | 0 |
+| **0.25** | **282 KiB** | **68 KiB** | **0** |
+| 0.5 | 182 KiB | 47 KiB | 1 — district 34_634 |
+| 1.0 | 98 KiB | 28 KiB | 3 — 04_55, 26_494, state 04 |
+
+Resulting pages, production build at 0.25px:
+
+| family | panels | raw | gzip |
+|---|---|---|---|
+| mgnrega | 3 | 982 KiB | 190 KiB |
+| religion | 6 | 1,310 KiB | 225 KiB |
+| census-pca | 9 | 1,644 KiB | 261 KiB |
+| nfhs5-health | 22 | 2,871 KiB | 404 KiB |
+
+Against the 249–456 KiB gzipped this started at, 0.25 keeps most of the win and
+costs about 100 KiB of artefact over 0.5 — for a district that can be seen.
+
 ### A correction recorded on purpose
 
 The first implementation of this item shipped a duplicate-point pass whose
