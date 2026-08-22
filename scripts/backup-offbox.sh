@@ -148,6 +148,17 @@ snapshot_db "$REPO/data-rw/corrections.db" "$OUT/corrections.db"   "reader corre
 RAW_DIRS=()
 [ -d "$REPO/pipeline/raw-new" ] && RAW_DIRS+=("pipeline/raw-new")
 [ -d "$REPO/pipeline/raw" ] && RAW_DIRS+=("pipeline/raw")
+# shrug was missing from this list until 2026-08-22 — an omission, not a decision:
+# nothing anywhere recorded it as deliberately skipped, and the first real off-box
+# run put 903 of 905 untracked input files in R2 while silently leaving 161MB out.
+#
+# It is nominally re-downloadable, being a public Development Data Lab release, and
+# that is presumably why it was overlooked. But shrid2_spatial_stats.dta is the
+# sub-district crosswalk reaggregate.py uses to overwrite EVERY district, so losing
+# it does not cost a download, it costs the ability to rebuild the store until the
+# exact release is found again. 161MB against a 10GB free tier is not a trade worth
+# making.
+[ -d "$REPO/pipeline/shrug" ] && RAW_DIRS+=("pipeline/shrug")
 
 raw_file_count=0
 if [ "${#RAW_DIRS[@]}" -gt 0 ]; then
