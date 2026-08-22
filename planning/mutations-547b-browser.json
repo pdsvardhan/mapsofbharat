@@ -1,0 +1,81 @@
+{
+  "tests": "tests/family-grid.spec.ts",
+  "requires_rebuild": true,
+  "note": "#547 phase B, BROWSER-SIDE half. Every mutation here only changes what the page serves AFTER `npm run build` and a server restart, which scripts/mutation-test.sh deliberately refuses to guess at. Run each one as: apply -> npm run build -> restart the instance -> confirm the CONTROL below actually changed in the served HTML -> then run the spec. Skipping the control check is how a stale server produced a false all-clear during this iteration. The three marked SURVIVOR passed the suite as first written and were found by the Ottomate code verifier.",
+  "mutations": [
+    {
+      "name": "SURVIVOR F3: the shared axis is ignored and every panel classes on its own spread",
+      "file": "components/atlas/family-grid.tsx",
+      "find": "  return scale\n    ? colorFor(value, scale.min, scale.max, scale.breaks, ramp)\n    : colorFor(value, member.min, member.max, member.breaks, ramp);",
+      "replace": "  return colorFor(value, member.min, member.max, member.breaks, ramp);",
+      "control": "livelihood panel 0 goes from 5 distinct fills to 267 - a continuous ramp under a legend still showing 5 pooled swatches"
+    },
+    {
+      "name": "SURVIVOR F4: the sprite carries its own fill, which beats the <use> and flattens every panel to one colour",
+      "file": "components/atlas/family-grid.tsx",
+      "find": "<path key={code} id={`fp-${code}`} d={paths[code]} />",
+      "replace": "<path key={code} id={`fp-${code}`} d={paths[code]} fill=\"rgb(255,0,0)\" />"
+    },
+    {
+      "name": "SURVIVOR F5: estimated rows re-enter the statistics, against adr-022",
+      "file": "lib/family-data.ts",
+      "find": "      if (countsInStats(r.estimated, r.estimate_kind)) statsValues.push(r.value);",
+      "replace": "      statsValues.push(r.value);",
+      "control": "changes fills on 3 of 4 crime panels and 3 of 3 mgnrega panels; no effect on religion or livelihood, which carry no estimated district rows"
+    },
+    {
+      "name": "no-data districts are omitted instead of drawn, silently redrawing the outline of the country",
+      "file": "components/atlas/family-grid.tsx",
+      "find": "                return v == null ? (",
+      "replace": "                if (v == null) return null;\n                return false ? ("
+    },
+    {
+      "name": "geometry repeated per panel instead of referenced - the 4,587 KiB rendering adr-d3geo rejected",
+      "file": "components/atlas/family-grid.tsx",
+      "find": "<use key={code} href={`#fp-${code}`} fill={fillOf(v, member, family, ramp)} />",
+      "replace": "<path key={code} d={paths[code]} fill={fillOf(v, member, family, ramp)} />"
+    },
+    {
+      "name": "every family claims to be a part-to-whole decomposition",
+      "file": "components/atlas/family-grid.tsx",
+      "find": "  const ptw = family.partToWhole;",
+      "replace": "  const ptw = family.partToWhole || { sumsTo: 100, within: 733, of: 733 };"
+    },
+    {
+      "name": "the measured sum figure is rounded away (97.6 becomes 98)",
+      "file": "components/atlas/family-grid.tsx",
+      "find": "const avg = ptw.sumsTo.toLocaleString(\"en-IN\", { maximumFractionDigits: 1 });",
+      "replace": "const avg = ptw.sumsTo.toLocaleString(\"en-IN\", { maximumFractionDigits: 0 });"
+    },
+    {
+      "name": "the accessible name loses its range and its scale clause",
+      "file": "components/atlas/family-grid.tsx",
+      "find": "  return `${where}. Ranges ${range} ${scale}.`;",
+      "replace": "  return `${where}.`;"
+    },
+    {
+      "name": "values are not restricted to the family's shared district set",
+      "file": "lib/family-data.ts",
+      "find": "      if (!shared.has(r.region_code)) continue;",
+      "replace": "      // mutated"
+    },
+    {
+      "name": "no store is reported as every member having been retired - the R1 defect",
+      "file": "lib/family-data.ts",
+      "find": "  if (!d) return { present: [], missing: [] };",
+      "replace": "  if (!d) return { present: [], missing: [...family.members] };"
+    },
+    {
+      "name": "the declaration is emptied, so a store-absent page cannot list what the family holds",
+      "file": "lib/family-data.ts",
+      "find": "    memberIds: [...family.members],",
+      "replace": "    memberIds: [],"
+    },
+    {
+      "name": "a metric links to only the first family it belongs to, hiding dual membership",
+      "file": "lib/metric-families.ts",
+      "find": "  return SHIPPABLE_FAMILIES.filter((f) => f.members.includes(metricId));",
+      "replace": "  return SHIPPABLE_FAMILIES.filter((f) => f.members.includes(metricId)).slice(0, 1);"
+    }
+  ]
+}

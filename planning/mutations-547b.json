@@ -1,0 +1,37 @@
+{
+  "tests": "tests/family-paths.spec.ts",
+  "note": "#547 phase B, NODE-SIDE half. tests/family-paths.spec.ts imports scripts/build-family-paths.mjs directly, so a source edit takes effect on the next run with no rebuild and this manifest runs unattended: scripts/mutation-test.sh --manifest planning/mutations-547b.json. The browser-side mutations live in mutations-547b-browser.json because the harness cannot rebuild between them and would report every one as a false survivor.",
+  "mutations": [
+    {
+      "name": "the snap tolerance is loosened to 1px, which flattens 2 districts and 1 state to nothing",
+      "file": "scripts/build-family-paths.mjs",
+      "find": "export const SNAP = 0.5;",
+      "replace": "export const SNAP = 1;",
+      "control": "the build must REFUSE this: exit 1 naming 04_55, 26_494 and state 04"
+    },
+    {
+      "name": "the collinear reduction is disabled",
+      "file": "scripts/build-family-paths.mjs",
+      "find": "        if (cross === 0) continue;",
+      "replace": "        if (false) continue;"
+    },
+    {
+      "name": "the collinear reduction is too eager and drops real bends",
+      "file": "scripts/build-family-paths.mjs",
+      "find": "        if (cross === 0) continue;",
+      "replace": "        if (Math.abs(cross) < 999) continue;"
+    },
+    {
+      "name": "the zero-area emit guard is disabled, so line subpaths that draw nothing ship",
+      "file": "scripts/build-family-paths.mjs",
+      "find": "    if (x1 - x0 <= 0 || y1 - y0 <= 0) continue;",
+      "replace": "    if (false) continue;"
+    },
+    {
+      "name": "the build's extent guard is removed, so a tolerance that eats a district is written out",
+      "file": "scripts/build-family-paths.mjs",
+      "find": "    if (flattened.length) {",
+      "replace": "    if (false) {"
+    }
+  ]
+}

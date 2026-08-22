@@ -6,8 +6,10 @@ import { FAMILY_BY_ID, SHIPPABLE_FAMILIES } from "@/lib/metric-families";
 // The small-multiple grid (#547 phase B, iter-40 items 968-975).
 //
 // Everything load-bearing here is SSR: the panels, their captions and the whole
-// citation apparatus must be in the INITIAL HTML, because the route ships 0 B of
-// client JavaScript and there is no second chance to fill anything in. So these
+// citation apparatus must be in the INITIAL HTML, because the route ADDS 0 B of
+// JavaScript of its own and there is no second chance to fill anything in. (The
+// page still loads the app's shared bundle, as every route does - "0 B" is this
+// route's own contribution, not the page total.) So these
 // read the raw server response through the `request` fixture.
 //
 // TWO MEASUREMENT TRAPS, both of which produced a wrong verdict during the build
@@ -49,6 +51,7 @@ type Member = {
   min: number;
   max: number;
   values: Record<string, number>;
+  estimated: Record<string, 1>;
 };
 
 type Detail = Family & {
@@ -183,6 +186,99 @@ test.describe("#547 the grid renders as maps, not as markup (items 970, 971)", (
       const d = await detail(request, f.id);
       expect(html, `${f.id} axisWhy`).toContain(d.axisWhy.slice(0, 40));
     }
+  });
+});
+
+test.describe("#547 survivors the code verifier found (iter-41)", () => {
+  // Three mutations passed the suite as first written. Each is a failure a reader
+  // would see instantly and no assertion could: the tests measured the markup
+  // around the panels rather than the colour actually on them.
+
+  test("a shared axis paints from the family's edges, not each panel's own", async ({
+    request,
+  }) => {
+    // SURVIVOR F3. Replacing `const scale = family.shared` with null left 13/13
+    // green while livelihood's panel 0 went from 5 distinct colours to 267 — a
+    // continuous ramp under a legend still showing 5 pooled swatches. A legend
+    // contradicting its own picture is exactly what a shared axis exists to prevent.
+    for (const f of await families(request)) {
+      const d = await detail(request, f.id);
+      if (!d.shared) continue;
+      const html = await (await request.get(`/family/${f.id}`)).text();
+      const classes = d.shared.breaks.length + 1;
+
+      const byCode = new Map<string, Set<string>>();
+      for (const p of panels(html)) {
+        const fills = [...p.body.matchAll(/<use href="#fp-([^"]+)" fill="(rgb\([^"]*\))"/g)];
+        const distinct = new Set(fills.map((m) => m[2]));
+        // Classed, not continuous: a shared axis can only produce k colours.
+        expect(distinct.size, `${f.id}/${p.name} distinct fills`).toBeLessThanOrEqual(classes);
+        for (const m of fills) {
+          if (!byCode.has(m[1])) byCode.set(m[1], new Set());
+          byCode.get(m[1])!.add(m[2]);
+        }
+      }
+      // And the axis is genuinely SHARED: pick the member values back out and
+      // confirm two panels give the same colour to the same number.
+      const first = d.members[0];
+      const second = d.members[1];
+      if (!first || !second) continue;
+      const fillFor = (name: string, code: string) => {
+        const p = panels(html).find((x) => x.name.startsWith(name));
+        const m = p?.body.match(new RegExp(`<use href="#fp-${code}" fill="(rgb\([^"]*\))"`));
+        return m?.[1];
+      };
+      let compared = 0;
+      for (const code of d.sharedCodes.slice(0, 400)) {
+        const a = first.values[code];
+        const b = second.values[code];
+        if (a == null || b == null || Math.abs(a - b) > 1e-9) continue;
+        const fa = fillFor(first.name, code);
+        const fb = fillFor(second.name, code);
+        if (!fa || !fb) continue;
+        expect(fb, `${f.id}: equal values ${a} painted differently across panels`).toBe(fa);
+        compared++;
+        if (compared >= 3) break;
+      }
+    }
+  });
+
+  test("the sprite carries no fill of its own", async ({ request }) => {
+    // SURVIVOR F4. Adding fill="rgb(255,0,0)" to the <defs> paths left 13/13 green,
+    // and a referenced path's fill BEATS the <use>'s — so every district on every
+    // panel would render one flat colour. The old assertion counted fill=
+    // attributes in the markup, which that mutation does not touch.
+    for (const id of ["religion", "livelihood"]) {
+      const html = markup(await (await request.get(`/family/${id}`)).text());
+      const sprite = [...html.matchAll(/<path id="fp-[^"]*"[^>]*>/g)].map((m) => m[0]);
+      expect(sprite.length, `${id} sprite paths`).toBeGreaterThan(700);
+      const coloured = sprite.filter((t) => /\sfill=/.test(t));
+      expect(coloured.slice(0, 3), "sprite paths must not set fill").toEqual([]);
+    }
+  });
+
+  test("estimated rows stay out of the statistics (adr-022)", async ({ request }) => {
+    // SURVIVOR F5. Dropping the countsInStats guard left the suite green while
+    // changing fills on 3 of 4 crime panels. The adr-022 rule the whole
+    // classification rests on was asserted nowhere.
+    const d = await detail(request, "crime");
+    let checked = 0;
+    for (const m of d.members) {
+      const estimatedCodes = Object.keys(m.estimated);
+      if (!estimatedCodes.length) continue;
+      const all = Object.values(m.values);
+      const stats = Object.entries(m.values)
+        .filter(([code]) => !m.estimated[code])
+        .map(([, v]) => v);
+      expect(m.statsCount, `${m.id} statsCount`).toBe(stats.length);
+      expect(m.statsCount, `${m.id} must exclude ${estimatedCodes.length} estimated rows`).toBeLessThan(all.length);
+      expect(m.min, `${m.id} min is over the stats set`).toBe(Math.min(...stats));
+      expect(m.max, `${m.id} max is over the stats set`).toBe(Math.max(...stats));
+      checked++;
+    }
+    // If crime ever loses its estimated rows this test would silently assert
+    // nothing, so make that visible rather than green.
+    expect(checked, "no member with estimated rows — this test proved nothing").toBeGreaterThan(0);
   });
 });
 
