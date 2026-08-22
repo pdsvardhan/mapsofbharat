@@ -89,9 +89,20 @@ CURRENT_FILE=""
 cleanup() {
   # Always restore. A harness that can leave the tree mutated is a hazard, and
   # an interrupted run is exactly when you would forget.
+  #
+  # This shouts when it fails rather than swallowing the error. First run against
+  # a real target, the mutation was left applied on disk: the file was UNTRACKED,
+  # `git checkout --` cannot restore an untracked file, and the failure went to
+  # /dev/null. Broken source sat in the tree looking clean. A cleanup path that
+  # can fail quietly is worse than none, because it is trusted.
   if [ -n "$CURRENT_FILE" ] && [ "$KEEP" -eq 0 ]; then
-    git checkout -- "$CURRENT_FILE" 2>/dev/null && \
+    if git checkout -- "$CURRENT_FILE" 2>/dev/null && git diff --quiet -- "$CURRENT_FILE"; then
       echo "mutation-test: restored $CURRENT_FILE" >&2
+    else
+      echo "mutation-test: *** COULD NOT RESTORE $CURRENT_FILE ***" >&2
+      echo "    It may still hold a deliberately broken mutation. Restore it" >&2
+      echo "    before doing anything else: git checkout -- $CURRENT_FILE" >&2
+    fi
   fi
   rm -f "$PLAN" 2>/dev/null
 }
@@ -235,6 +246,12 @@ while IFS=$'\t' read -r NAME FILE FIND_B64 REPL_B64 TESTS; do
     note "browser-side target; trusting --rebuilt"
   fi
 
+  # Tracked FIRST. Every safety property below leans on git: the clean check is
+  # `git diff`, which reports nothing for an untracked file, and the revert is
+  # `git checkout --`, which cannot restore one. Run against an untracked target
+  # and the harness sails through both blind and leaves the mutation on disk.
+  git ls-files --error-unmatch "$FILE" >/dev/null 2>&1 \
+    || die "$FILE is not tracked by git. Commit it first — revert depends on git, and an untracked target would be left mutated."
   git diff --quiet -- "$FILE" || die "$FILE has uncommitted changes; refusing (revert would destroy them)"
 
   # Apply. Literal replace, and the match must be unique — an ambiguous

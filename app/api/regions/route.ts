@@ -1,22 +1,19 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { searchableRegions } from "@/lib/region-search";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Region name index for search/fly-to (command palette). Small + cacheable.
+//
+// The query lives in lib/region-search.ts so the vintage exclusion it depends on
+// can be tested against a store that actually contains vintage rows (#563).
 export async function GET() {
   const d = db();
   if (!d) return NextResponse.json({ regions: [] });
-  const regions = d
-    .prepare(
-      `SELECT rk.level, rk.code, rk.name, rk.st_code,
-              (SELECT s.name FROM region_keys s WHERE s.level='state' AND s.code = rk.st_code) AS state
-       FROM region_keys rk ORDER BY rk.level DESC, rk.name`
-    )
-    .all();
   return NextResponse.json(
-    { regions },
+    { regions: searchableRegions(d) },
     { headers: { "Cache-Control": "public, max-age=3600" } }
   );
 }

@@ -1,0 +1,29 @@
+{
+  "tests": "tests/region-search.spec.ts",
+  "mutations": [
+    {
+      "name": "let vintage levels into SEARCHABLE_LEVELS — the bug itself",
+      "file": "lib/region-search.ts",
+      "find": "export const SEARCHABLE_LEVELS = [\"state\", \"district\"] as const;",
+      "replace": "export const SEARCHABLE_LEVELS = [\"state\", \"district\", \"state2011\", \"district2011\"] as const;"
+    },
+    {
+      "name": "drop the level filter from the WHERE clause",
+      "file": "lib/region-search.ts",
+      "find": "       WHERE rk.level IN (${placeholders})\n",
+      "replace": "       WHERE rk.level IN (${placeholders}) OR rk.level LIKE '%2011'\n"
+    },
+    {
+      "name": "drop the level guard inside the state-name subquery",
+      "file": "lib/region-search.ts",
+      "find": "WHERE s.level='state' AND s.code = rk.st_code",
+      "replace": "WHERE s.code = rk.st_code"
+    },
+    {
+      "name": "flip the state-before-district ordering",
+      "file": "lib/region-search.ts",
+      "find": "ORDER BY rk.level DESC, rk.name",
+      "replace": "ORDER BY rk.level ASC, rk.name"
+    }
+  ]
+}
