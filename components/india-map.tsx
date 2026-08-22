@@ -28,7 +28,7 @@ import { SocialExportDialog } from "@/components/atlas/social-export-dialog";
 import type { SocialFeature } from "@/lib/social-export";
 import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
-import { symbolRadius, type SymbolLevel } from "@/lib/symbols";
+import { floorShare, symbolRadius, type SymbolLevel } from "@/lib/symbols";
 // The single resolver for which forms a metric may honestly take (#575).
 import { canRender, preferredViz } from "@/lib/metric-capabilities";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
@@ -1856,6 +1856,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   // — the single-source rule item 759 applied to the ramp.
                   symbolMax={entries.reduce((mx, e) => (e.value != null && e.value > mx ? e.value : mx), 0)}
                   symbolLevel={level === "state" ? "state" : "district"}
+                  // How much of this metric the minimum radius flattens (#566).
+                  // Computed here because this is where the values are; the legend
+                  // only has the maximum, and a share cannot be derived from that.
+                  symbolFloor={floorShare(
+                    entries.map((e) => e.value),
+                    level === "state" ? "state" : "district"
+                  )}
                 />
               </div>
             )}

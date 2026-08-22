@@ -907,3 +907,46 @@ test.describe("#567 the four extensive metrics really draw as circles now", () =
     expect(await layerVisible(page, "district-symbol")).toBe(false);
   });
 });
+
+test.describe("#566 the map says where the scale stops resolving", () => {
+  // 53.5% of poultry districts draw at an identical 1.2px while differing among
+  // themselves by more than 100x. The collapse is structural — a 10x radius range
+  // cannot render six orders of magnitude — so the fix was never a better scale,
+  // it was telling the reader the scale has run out.
+
+  test("a heavily floored metric says so, with the real numbers", async ({ page }) => {
+    await page.goto("/?m=livestock_poultry&lvl=district");
+    await waitForMapReady(page);
+    expect(await layerVisible(page, "district-symbol")).toBe(true);
+
+    const note = page.locator("[data-symbol-floor-note]");
+    await expect(note).toBeVisible();
+    // The measured figure, not a vague hedge: 372 of 695.
+    await expect(note).toHaveText(/\b372\b[\s\S]*\b695\b/);
+    await expect(note).toHaveText(/smallest size/i);
+  });
+
+  test("a metric the floor barely touches stays quiet", async ({ page }) => {
+    // area_km2 floors 2.7% of districts. A line on every map would be noise, and
+    // noise is how a real warning stops being read.
+    await page.goto("/?m=area_km2&lvl=district");
+    await waitForMapReady(page);
+    expect(await layerVisible(page, "district-symbol")).toBe(true);
+    await expect(page.locator("[data-symbol-floor-note]")).toHaveCount(0);
+  });
+
+  test("the note is absent when the map is shaded rather than sized", async ({ page }) => {
+    // The floor is a property of circle sizing. On a choropleth it means nothing.
+    await page.goto("/?m=livestock_poultry&lvl=district");
+    await waitForMapReady(page);
+    await page.locator('[data-symbol-mode="shade"]').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator("[data-symbol-floor-note]")).toHaveCount(0);
+  });
+
+  test("a rate never shows it at all", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    await expect(page.locator("[data-symbol-floor-note]")).toHaveCount(0);
+  });
+});

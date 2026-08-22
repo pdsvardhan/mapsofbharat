@@ -243,7 +243,7 @@ export function LegendCard({
   mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
-  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel,
+  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -272,6 +272,8 @@ export function LegendCard({
    *  encoding, so a colour scale would explain something the map is not saying. */
   symbolable: boolean; symbolOn: boolean; onSymbol: () => void;
   symbolMax: number; symbolLevel: SymbolLevel;
+  /** How many marks the floor flattens, from lib/symbols floorShare (#566). */
+  symbolFloor?: { drawn: number; atFloor: number; share: number; threshold: number };
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
@@ -359,7 +361,23 @@ export function LegendCard({
           const rmax = symbolRadius(symbolMax, symbolMax, symbolLevel);
           const W = 2 * rmax + 8;
           const H = 2 * rmax + 10;
+          // WHERE THE SCALE RUNS OUT (#566). Below 1% of the maximum every mark is
+          // drawn at the same minimum radius, and on the heavy-tailed metrics here
+          // that is not a rare edge: 53.5% of districts on poultry, 41.5% on wheat.
+          // Half a map can be one repeated dot while those dots differ among
+          // themselves by over 100x, and nothing on screen said so.
+          //
+          // The radius range is 10x, 100x by area, against data spanning up to SIX
+          // orders of magnitude — the collapse is structural and no choice of floor
+          // removes it. Lowering the floor only trades identical dots for invisible
+          // ones. What was missing was not a better scale but telling the reader
+          // where this one stops resolving.
+          //
+          // From 10%: below that it is genuinely a tail and the line would be noise
+          // on every map.
+          const floored = symbolFloor && symbolFloor.share >= 0.1 ? symbolFloor : null;
           return (
+            <>
             <div className="mt-2 flex items-end gap-3" data-symbol-legend>
               <svg width={W} height={H} className="flex-none overflow-visible" aria-hidden>
                 {stops.map((v) => {
@@ -381,6 +399,17 @@ export function LegendCard({
                 ))}
               </div>
             </div>
+            {floored ? (
+              <div
+                data-symbol-floor-note
+                className="mt-1.5 font-mono text-[9px] leading-snug text-faint"
+                title={`Anything below ${fmt(floored.threshold)} draws at the smallest size, so those circles cannot be compared with one another.`}
+              >
+                {floored.atFloor} of {floored.drawn} at the smallest size — below{" "}
+                {fmt(floored.threshold)}, sizes stop separating
+              </div>
+            ) : null}
+            </>
           );
         })()
       ) : mode === "coverage" ? (
