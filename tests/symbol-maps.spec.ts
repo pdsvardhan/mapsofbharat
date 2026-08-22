@@ -462,67 +462,92 @@ test.describe("#566 the floor's reach is measured, not assumed", () => {
   });
 });
 
-test.describe("#567 the excluded extensive metrics are a named gap, not a claim of safety", () => {
-  // The docstring used to conclude "only 9 of 87 district metrics carry one of
-  // these units — so area bias can only ever bite those 9". The inference is
-  // invalid: bias follows from a quantity being extensive, not from its unit
-  // string being in a Set. These four add up across regions, are drawn as
-  // choropleths, and carry the full 291x Kutch-over-Mumbai distortion.
+test.describe("#567 the four extensive metrics now get circles, and the gap list stays honest", () => {
+  // These four add up across regions and were drawn as choropleths, carrying the
+  // full 291x Kutch-over-Mumbai distortion, for no better reason than their unit
+  // strings not being in COUNT_UNITS. Turned on 2026-08-22 on the ruling that the
+  // form follows the data.
+  const TURNED_ON = [
+    ["households", "households"],
+    ["tourist_visits_domestic", "visits"],
+    ["tourist_visits_foreign", "visits"],
+    ["gst_total", "₹ crore"],
+  ] as const;
 
-  test("every named metric exists and really is excluded from symbols", async ({ request }) => {
+  test("each one is a count unit and is offered circles", async ({ request }) => {
     const { metrics } = (await (await request.get("/api/metrics")).json()) as {
       metrics: { id: string; unit: string | null }[];
     };
     const byId = new Map(metrics.map((m) => [m.id, m]));
 
-    for (const { id, unit } of EXTENSIVE_NOT_SYMBOLISED) {
+    for (const [id, unit] of TURNED_ON) {
       const m = byId.get(id);
-      expect(m, `${id} is named as an excluded extensive metric but is not in the store`).toBeTruthy();
+      expect(m, `${id} is missing from the store`).toBeTruthy();
       expect(m!.unit, `${id} unit drifted`).toBe(unit);
-      // The point of the list: they are extensive, and they still get no circles.
-      expect(isCountUnit(m!.unit), `${id} would now be symbolised`).toBe(false);
+      expect(isCountUnit(m!.unit), `${id} should now be a count unit`).toBe(true);
     }
   });
 
-  test("the already-normalised money metrics are NOT on the list", () => {
-    // Both are "₹". One is per-day, one is per-capita — intensive, unbiased, and
-    // correctly choropleths. Sharing a unit string with an extensive total is
-    // exactly why units alone cannot decide this, so listing them would be wrong.
-    const ids = EXTENSIVE_NOT_SYMBOLISED.map((x) => x.id);
-    expect(ids).not.toContain("mgnrega_avg_wage_day");
-    expect(ids).not.toContain("econ_percapita_nsdp_rbi");
-  });
-
-  test("no metric is both symbolised and listed as excluded", async ({ request }) => {
+  test("the already-normalised rupee metrics are still refused", async ({ request }) => {
+    // The reason "₹ crore" is listed and bare "₹" is not. Both of these are money,
+    // both are per-something, and shading is right for them. If adding the
+    // denominated unit had let the currency in, this is where it shows.
     const { metrics } = (await (await request.get("/api/metrics")).json()) as {
       metrics: { id: string; unit: string | null }[];
     };
-    const excluded = new Set(EXTENSIVE_NOT_SYMBOLISED.map((x) => x.id));
-    for (const m of metrics) {
-      if (isCountUnit(m.unit)) {
-        expect(excluded.has(m.id), `${m.id} is both a count unit and listed as excluded`).toBe(false);
-      }
+    const byId = new Map(metrics.map((m) => [m.id, m]));
+    for (const id of ["mgnrega_avg_wage_day", "econ_percapita_nsdp_rbi"]) {
+      const m = byId.get(id);
+      expect(m, `${id} missing`).toBeTruthy();
+      expect(isCountUnit(m!.unit), `${id} must stay a choropleth`).toBe(false);
     }
   });
 
-  test("the list is non-empty, so the gap stays visible", () => {
-    // If someone empties this rather than symbolising the metrics, the gap goes
-    // back to being invisible and the old false claim is effectively restored.
-    expect(EXTENSIVE_NOT_SYMBOLISED.length).toBeGreaterThanOrEqual(4);
+  test("no rate anywhere in the catalogue became eligible", async ({ request }) => {
+    // The blast radius check for adding three units. Anything measured per
+    // something, or a share, must still be refused across the whole store.
+    const { metrics } = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { id: string; unit: string | null }[];
+    };
+    let rates = 0;
+    for (const m of metrics) {
+      const u = (m.unit ?? "").trim();
+      if (!u) continue;
+      if (!/[/%]|\bper\b/i.test(u)) continue;
+      rates++;
+      expect(isCountUnit(u), `${m.id} (${u}) is a rate and must not be a count`).toBe(false);
+    }
+    expect(rates, "no rate-shaped units were checked").toBeGreaterThan(10);
+  });
+
+  test("the gap list is empty, and any future entry must be a real exclusion", () => {
+    // Empty today because the four were turned on. Kept, not deleted: the failure
+    // mode is permanent, since eligibility is decided from a unit string and the
+    // next extensive metric with an unlisted unit gets shaded in silence.
+    expect(EXTENSIVE_NOT_SYMBOLISED).toEqual([]);
+  });
+
+  test("a listed gap can never be something the map already symbolises", async ({ request }) => {
+    // Guards the list's meaning for whenever it is next used: an entry claims
+    // "extensive, but we do not draw it". If the map already draws it, the entry
+    // is a lie and a browse page would print it.
+    if (EXTENSIVE_NOT_SYMBOLISED.length === 0) {
+      expect(EXTENSIVE_NOT_SYMBOLISED).toEqual([]);
+      return;
+    }
+    const { metrics } = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { id: string; unit: string | null }[];
+    };
+    const byId = new Map(metrics.map((m) => [m.id, m]));
+    for (const { id, unit } of EXTENSIVE_NOT_SYMBOLISED) {
+      const m = byId.get(id);
+      expect(m, `${id} is listed as a gap but is not in the store`).toBeTruthy();
+      expect(m!.unit, `${id} unit drifted`).toBe(unit);
+      expect(isCountUnit(m!.unit), `${id} is listed as a gap but IS symbolised`).toBe(false);
+    }
   });
 });
 
-/** A screen point inside a circle that sits over some OTHER state polygon.
- *
- *  STATE level on purpose. District circles cap at 12px and stay inside their own
- *  polygon at default zoom, so no overlap exists to click and the search returns
- *  nothing. States cap at 40px across 36 marks, where a large circle genuinely
- *  covers its neighbours — which is the situation the registration order exists
- *  to resolve.
- *
- *  Steps outward from each centre by that circle own radius. The district-level
- *  version of this swept all 735 marks and blew the 30s timeout on ~35k
- *  queryRenderedFeatures calls; 36 states is a different proposition. */
 async function overlapPoint(page: Page) {
   return page.evaluate(() => {
     const m = (window as unknown as { __mob_map?: maplibregl.Map }).__mob_map;
@@ -771,5 +796,114 @@ test.describe("#571 one pointer lights exactly one region", () => {
     await page.mouse.move(box!.x + spot!.x, box!.y + spot!.y);
     await page.waitForTimeout(300);
     expect(await countLit(), "at most one region may be lit at a time").toBeLessThanOrEqual(1);
+  });
+});
+
+test.describe("#567 a form choice belongs to the metric it was made on", () => {
+  // Owner ruling 2026-08-22. The flip used to persist across every indicator, and
+  // two comments in india-map.tsx disagreed about whether that was intended. It is
+  // not: which forms are honest is decided per metric, so carrying a judgement made
+  // about Population onto Rice Production is carrying it onto different data.
+  //
+  // The asymmetry made it worse. Forcing circles ON was already capped by
+  // eligibility, so only forcing them OFF ever persisted — meaning one click
+  // quietly turned every later count map back into the area-biased choropleth this
+  // layer exists to replace.
+  //
+  // These must change the indicator IN PAGE, through the chooser. A URL navigation
+  // remounts the component and clears the ref, so it would pass no matter what the
+  // code did.
+
+  // The chooser is topic-first: hover a topic, then pick a statistic. Both metrics
+  // used here live in Demographics, which is the topic shown on open, so no hover
+  // is needed and the helper stays a click. Both are also COUNTS — Households
+  // became one on 2026-08-22 — which is what makes the assertion meaningful: if
+  // the flip travelled, the second one would open shaded.
+  async function pickIndicator(page: Page, name: RegExp) {
+    await page.getByRole("button", { name: /CHANGE INDICATOR|BROWSE INDICATORS/i }).click();
+    const chooser = page.getByRole("dialog", { name: /Choose an indicator/i });
+    await expect(chooser).toBeVisible();
+    await chooser.getByRole("button").filter({ hasText: name }).first().click();
+    await expect(chooser).toBeHidden();
+    await page.waitForTimeout(900);
+  }
+
+  const mode = (page: Page, m: "size" | "shade") =>
+    page.locator(`[data-symbol-mode="${m}"]`);
+
+  test("a flip on one count metric does not follow to the next", async ({ page }) => {
+    await page.goto("/?m=pop_total&lvl=district");
+    await waitForMapReady(page);
+    await expect(mode(page, "size"), "a count opens as circles").toHaveAttribute("aria-pressed", "true");
+
+    await mode(page, "shade").click();
+    await page.waitForTimeout(400);
+    await expect(mode(page, "shade")).toHaveAttribute("aria-pressed", "true");
+    expect(await layerVisible(page, "district-symbol")).toBe(false);
+
+    await pickIndicator(page, /Households/i);
+
+    // The assertion the old behaviour fails: Rice Production is a count and must
+    // open as circles, regardless of what was chosen for Population.
+    await expect(mode(page, "size"), "the next count metric opens on its own honest form")
+      .toHaveAttribute("aria-pressed", "true");
+    expect(await layerVisible(page, "district-symbol")).toBe(true);
+  });
+
+  test("returning to the metric it was made on restores the flip", async ({ page }) => {
+    // Scoped, not forgotten. Within one session the choice still belongs to the
+    // metric it was made on, so coming back to it honours it.
+    await page.goto("/?m=pop_total&lvl=district");
+    await waitForMapReady(page);
+    await mode(page, "shade").click();
+    await page.waitForTimeout(400);
+
+    await pickIndicator(page, /Households/i);
+    await expect(mode(page, "size")).toHaveAttribute("aria-pressed", "true");
+
+    await pickIndicator(page, /Total population/i);
+    await expect(mode(page, "shade"), "the flip made on Population is still its own")
+      .toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("a shared ?sym=0 link applies to the metric it was shared with, and no further", async ({ page }) => {
+    await page.goto("/?m=pop_total&lvl=district&sym=0");
+    await waitForMapReady(page);
+    await expect(mode(page, "shade"), "the shared link opens shaded").toHaveAttribute("aria-pressed", "true");
+
+    await pickIndicator(page, /Households/i);
+    await expect(mode(page, "size"), "the shared choice does not travel to another indicator")
+      .toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("only a flip made on the CURRENT metric travels in the share URL", async ({ page }) => {
+    await page.goto("/?m=pop_total&lvl=district");
+    await waitForMapReady(page);
+    await mode(page, "shade").click();
+    await page.waitForTimeout(500);
+    expect(page.url(), "the deliberate flip is pinned").toContain("sym=0");
+
+    await pickIndicator(page, /Households/i);
+    // Rice Production is showing its derived default, so there is nothing
+    // deliberate to pin — and pinning Population's choice would ship a judgement
+    // about other data to whoever opens the link.
+    expect(page.url(), "a flip from another metric must not be pinned").not.toContain("sym=");
+  });
+});
+
+test.describe("#567 the four extensive metrics really draw as circles now", () => {
+  // The unit-set change is only half the claim; this is the half a reader sees.
+  test("households opens as circles in the running app", async ({ page }) => {
+    await page.goto("/?m=households&lvl=district");
+    await waitForMapReady(page);
+    expect(await layerVisible(page, "district-symbol"), "households is a total").toBe(true);
+    await expect(page.locator("[data-symbol-legend]")).toBeVisible();
+  });
+
+  test("a rate is still refused the toggle entirely", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&lvl=district");
+    await waitForMapReady(page);
+    await expect(page.locator("[data-symbol-toggle]")).toHaveCount(0);
+    expect(await layerVisible(page, "district-symbol")).toBe(false);
   });
 });

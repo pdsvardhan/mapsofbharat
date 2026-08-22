@@ -28,7 +28,9 @@ import { SocialExportDialog } from "@/components/atlas/social-export-dialog";
 import type { SocialFeature } from "@/lib/social-export";
 import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
-import { symbolEligible, symbolRadius, type SymbolLevel } from "@/lib/symbols";
+import { symbolRadius, type SymbolLevel } from "@/lib/symbols";
+// The single resolver for which forms a metric may honestly take (#575).
+import { canRender, preferredViz } from "@/lib/metric-capabilities";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
 import { DataTable } from "@/components/atlas/data-table";
 
@@ -173,10 +175,23 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [symbolable, setSymbolable] = useState(false);
   const symbolOnRef = useRef(false);
   symbolOnRef.current = symbolOn;
-  // null = "no deliberate choice yet, let each metric decide"; set once the reader
-  // flips the control, and then honoured across metric changes so a preference for
-  // seeing the choropleth is not silently undone by picking a different indicator.
+  // null = "no deliberate choice yet, let this metric decide".
+  //
+  // SCOPED TO ONE METRIC (#567, owner ruling 2026-08-22). It used to persist across
+  // metric changes, and the comment here argued that was deliberate — while the
+  // comment at the read site said the opposite, "a choice the reader has already
+  // made for this same metric". Two comments, two behaviours, one of them wrong.
+  //
+  // Per-metric is the right one, because which forms are honest is decided per
+  // metric: carrying a judgement made about Population onto Rice Production is
+  // carrying it onto different data. The asymmetry made it worse — forcing symbols
+  // ON was already capped by eligibility, so only forcing them OFF ever persisted,
+  // and one click quietly turned every subsequent count map back into the
+  // area-biased choropleth this layer exists to replace.
   const symbolForcedRef = useRef<boolean | null>(init.sym);
+  /** Which metric the flip above applies to. A shared ?sym= link applies to the
+   *  metric it was shared with, hence seeding from the restored metric id. */
+  const symbolForcedForRef = useRef<string | null>(init.sym === null ? null : init.m);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
@@ -923,17 +938,20 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       sorted.forEach(([c], i) => (ranks[c] = i + 1));
       rankRef.current = ranks;
 
-      // Route this metric (#408 S4). Eligibility is decided on the UNIT and the
-      // values, per research/531: only 9 of 87 district metrics carry a count unit,
-      // so area bias can only bite those, and a rate that merely looks skewed
-      // (crime_cyber_rate, pop_density) must NOT get circles — normalisation already
+      // Route this metric (#408 S4), through the single resolver (#575). The forms
+      // a metric may honestly take are a property of the DATA — decided on the unit
+      // AND the values, per research/531. A rate that merely looks skewed
+      // (crime_cyber_rate, pop_density) must NOT get circles: normalisation already
       // solved its area problem and symbols would re-introduce one.
-      const eligible = symbolEligible(m?.unit ?? md.unit, Object.values(md.values));
+      const unit = m?.unit ?? md.unit;
+      const vals = Object.values(md.values);
+      const eligible = canRender(sel, unit, vals, "symbol");
       setSymbolable(eligible);
-      // Default to the honest form for this metric, but never override a choice the
-      // reader has already made for this same metric via the URL.
-      const forced = symbolForcedRef.current;
-      const on = forced === null ? eligible : forced && eligible;
+      // Default to the form this metric should open in, and honour a deliberate
+      // flip only if it was made ON THIS METRIC (#567). A flip made elsewhere is a
+      // judgement about different data and does not travel.
+      const forced = symbolForcedForRef.current === sel ? symbolForcedRef.current : null;
+      const on = forced === null ? preferredViz(sel, unit, vals) === "symbol" : forced && eligible;
       symbolOnRef.current = on;
       setSymbolOn(on);
       recolor();
@@ -1046,7 +1064,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // Same rule as `brk` (item 756): only a DELIBERATE flip travels. The default is
     // derived from the metric, so the recipient computes the same one; pinning it
     // on every share would make one stray click follow every link.
-    if (symbolForcedRef.current !== null) p.set("sym", symbolOn ? "1" : "0");
+    // Only a deliberate flip MADE ON THIS METRIC travels (#567). Pinning one made
+    // on a different indicator would ship a judgement about other data.
+    if (symbolForcedRef.current !== null && symbolForcedForRef.current === sel)
+      p.set("sym", symbolOn ? "1" : "0");
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
     if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
     if (vintage === "2011") p.set("vin", "2011");
@@ -1826,6 +1847,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   onSymbol={() => {
                     const next = !symbolOn;
                     symbolForcedRef.current = next;
+                    symbolForcedForRef.current = sel;
                     trackViz("symbol", String(next));
                     setSymbolOn(next);
                   }}

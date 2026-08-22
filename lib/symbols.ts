@@ -18,17 +18,36 @@
  *  Shipping goats as circles and cattle as colour would be incoherent to a reader who
  *  cannot see the threshold. Unit semantics is the property that actually matters.
  *
- *  WHAT THIS SET DOES NOT COVER (#567). It used to end "only 9 of 87 district metrics
+ *  WHAT THIS SET IS, AND IS NOT (#567). It used to end "only 9 of 87 district metrics
  *  carry one of these units — so area bias can only ever bite those 9". Both halves were
  *  wrong. There are 89 district metrics, not 87. And the inference does not hold at all:
  *  area bias is a property of a quantity being EXTENSIVE, not of it appearing in this
- *  Set. Four more are extensive and still drawn as choropleths, so they inherit exactly
- *  the bias this layer exists to remove — see EXTENSIVE_NOT_SYMBOLISED below.
+ *  Set. Four extensive metrics were being shaded purely because their unit strings were
+ *  missing here; those units were added on 2026-08-22 and the gap is closed.
+ *
+ *  So membership here is a claim that a unit denotes a count — and the failure mode is
+ *  permanent: the next extensive metric to arrive with an unlisted unit gets shaded, in
+ *  silence, exactly as those four were. EXTENSIVE_NOT_SYMBOLISED below exists to record
+ *  that when it happens rather than leave it to be rediscovered by measurement.
  *
  *  Anything containing "/" or "per" or "%" is an INTENSIVE quantity — a rate, share or
  *  density. Those are exactly what normalisation is for, they do not inherit area bias,
  *  and drawing them as circles would be a new lie in place of the old one. */
-const COUNT_UNITS = new Set(["people", "head", "birds", "tonnes", "hectares", "km²", "km2"]);
+const COUNT_UNITS = new Set([
+  "people", "head", "birds", "tonnes", "hectares", "km²", "km2",
+  // Added 2026-08-22 on the owner ruling that the form follows the DATA. These
+  // three were the gap #567 measured: all extensive, all previously drawn as
+  // choropleths carrying the full 291x Kutch-over-Mumbai distortion, excluded
+  // for no reason other than their unit string not being listed here.
+  //   visits      -> tourist_visits_domestic, tourist_visits_foreign
+  //   households  -> households
+  //   ₹ crore     -> gst_total
+  // "₹ crore" and not "₹": the bare-rupee metrics are mgnrega_avg_wage_day and
+  // econ_percapita_nsdp_rbi, both already per-something and correctly shaded.
+  // The composite guard above does not catch "₹" on its own, so listing the
+  // denominated unit rather than the currency is what keeps them out.
+  "visits", "households", "₹ crore",
+]);
 
 export function isCountUnit(unit: string | null | undefined): boolean {
   if (!unit) return false;
@@ -194,27 +213,24 @@ export function floorShare(
   return { drawn: positive.length, atFloor, share: atFloor / positive.length, threshold };
 }
 
-/** Extensive quantities this layer does NOT symbolise, and the bias they still carry
- *  (#567).
+/** Extensive quantities this layer does NOT symbolise (#567).
  *
- *  Area bias comes from a quantity being EXTENSIVE — adding up across regions — not
- *  from its unit appearing in COUNT_UNITS. These four add up, are drawn as choropleths,
- *  and therefore inherit precisely the distortion research/758 says a choropleth cannot
- *  fix by any choice of palette, class count or break method. Kutch still outweighs
- *  Mumbai City by 291x on every one of them.
+ *  EMPTY AS OF 2026-08-22, and deliberately kept rather than deleted.
  *
- *  They are excluded because their units are not in the Set, which is a phase-1
- *  boundary, not a judgement that they are unaffected. Recorded here as a named gap so
- *  the exclusion is a decision someone can see rather than an accident of unit strings,
- *  and asserted in tests/symbol-maps.spec.ts so the list cannot quietly grow.
+ *  It held four metrics — households, tourist_visits_domestic,
+ *  tourist_visits_foreign, gst_total — that add up across regions, were drawn as
+ *  choropleths, and therefore carried exactly the area bias this layer exists to
+ *  remove. They were excluded for no better reason than their unit strings not
+ *  appearing in COUNT_UNITS. Those three units are now listed, so all four are
+ *  symbolised and the gap is closed.
  *
- *  Not on this list, and correctly so: mgnrega_avg_wage_day (₹ per day) and
- *  econ_percapita_nsdp_rbi (₹ per capita) are already normalised — intensive, unbiased,
- *  and right to stay choropleths. Sharing a "₹" unit with an extensive total is exactly
- *  why unit strings alone cannot decide this. */
-export const EXTENSIVE_NOT_SYMBOLISED: readonly { id: string; unit: string }[] = [
-  { id: "households", unit: "households" },
-  { id: "tourist_visits_domestic", unit: "visits" },
-  { id: "tourist_visits_foreign", unit: "visits" },
-  { id: "gst_total", unit: "₹ crore" },
-] as const;
+ *  The list stays because the FAILURE MODE has not gone anywhere: eligibility is
+ *  decided from a unit string, so the next extensive metric to arrive with an
+ *  unlisted unit will be silently shaded in the same way. When that happens it is
+ *  recorded here, visibly, rather than being invisible until someone measures it
+ *  again. tests/symbol-maps.spec.ts asserts it is empty AND that those four now
+ *  get circles, so re-emptying it by deleting a real entry cannot pass.
+ *
+ *  Still correctly absent: mgnrega_avg_wage_day and econ_percapita_nsdp_rbi are
+ *  "₹" but per-day and per-capita — intensive, unbiased, right to stay shaded. */
+export const EXTENSIVE_NOT_SYMBOLISED: readonly { id: string; unit: string }[] = [] as const;
