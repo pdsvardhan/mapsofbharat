@@ -1,0 +1,48 @@
+{
+  "tests": "tests/metric-capabilities.spec.ts",
+  "mutations": [
+    {
+      "name": "the toggle stops filtering unsuitable forms — the dishonest-choice bug itself",
+      "file": "lib/metric-capabilities.ts",
+      "find": "    .filter((c) => c.standing !== \"unsuitable\")\n",
+      "replace": ""
+    },
+    {
+      "name": "canRender waves everything through",
+      "file": "lib/metric-capabilities.ts",
+      "find": "  return offerableViz(metricId, unit, values).includes(viz);",
+      "replace": "  return true;"
+    },
+    {
+      "name": "ranking inverted, so unsuitable sorts first and becomes the default",
+      "file": "lib/metric-capabilities.ts",
+      "find": "const ORDER: Record<Standing, number> = { preferred: 0, available: 1, unsuitable: 2 };",
+      "replace": "const ORDER: Record<Standing, number> = { preferred: 2, available: 1, unsuitable: 0 };"
+    },
+    {
+      "name": "a total is merely available rather than preferred, so it opens shaded",
+      "file": "lib/metric-capabilities.ts",
+      "find": "      viz: \"symbol\",\n      standing: \"preferred\",",
+      "replace": "      viz: \"symbol\",\n      standing: \"available\","
+    },
+    {
+      "name": "shading a total loses its area-bias caveat",
+      "file": "lib/metric-capabilities.ts",
+      "find": "      reason: \"Shading a total makes big districts dominate — Kutch covers 291 times the area of Mumbai City. Useful for comparing with other published maps, but read it with that in mind.\",",
+      "replace": "      reason: \"Shading works here too.\","
+    },
+    {
+      "name": "the extensive-pending metrics get told they are rates",
+      "file": "lib/metric-capabilities.ts",
+      "find": "    reason: isExtensivePending(metricId)\n      ? \"This is a total and circles would suit it, but its unit is not yet one the map draws circles for.\"\n      : \"Sizing circles by a rate would invent a distortion that working per-person had already removed.\",",
+      "replace": "    reason: \"Sizing circles by a rate would invent a distortion that working per-person had already removed.\","
+    },
+    {
+      "name": "a signed total stops naming direction",
+      "file": "lib/metric-capabilities.ts",
+      "find": "      reason: \"A gain and a loss of the same size would draw the identical circle.\",",
+      "replace": "      reason: \"Circles are not offered here.\",",
+      "tests": "tests/metric-capabilities.spec.ts"
+    }
+  ]
+}
