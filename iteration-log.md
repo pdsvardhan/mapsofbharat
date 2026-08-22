@@ -873,3 +873,87 @@ Then the four remaining report-822 findings (centroid guard, symbol floor, the t
 defects, untested hover). **Owner-blocked and now one credential, not two:** the cloudflared
 tunnel's `AccountTag 496603bdcf153182af21eddb89e1a6b1` IS the R2 account id, so #544 needs a
 token minted, not an account created — and that same token unblocks 405-E and 405-F.
+
+---
+
+## Session 2026-08-22 — verification debt, then a direction
+
+**Stage:** Stage 4 iterate — report-822 cleanup, backups, and the first piece of a
+visualisation-first architecture
+**Duration:** ~7h30m
+**Commits:** `d5af3e9` … `de02157` (12), deployed at `de02157`
+
+**What changed:**
+
+- **#557 — a mutation harness that cannot report a false all-clear.** The root cause was
+  mechanical: `playwright.config` exposed only the human-readable `list` reporter, so there was
+  nothing machine-readable to read a verdict from, which is why someone reached for `tail -4` and
+  why it cut the "N failed" line. `PW_JSON` now opts in a JSON reporter alongside; `scripts/mutation-test.sh`
+  reads `stats.unexpected`, runs a baseline first, refuses untracked targets, refuses browser-side
+  targets without `--rebuilt`, and exits **2 ERROR** when a run cannot be measured rather than
+  degrading to KILLED or SURVIVED.
+- **#563 — vintage regions out of the search palette.** Latent, not live: the store holds only
+  `state`/`district` today, so Kerala returns one hit and it fires on the next pipeline run.
+  Worse than the to-do said — `india-map.tsx:440` builds `Map<code,…>` and `:1221` records that the
+  same code can mean a different region across vintages, so vintage rows collide on the key rather
+  than merely duplicating a name. Fixed by filtering, in `lib/region-search.ts` so it is testable.
+- **#565 — the centroid guard made load-bearing.** Its test asserted lon 66–99, lat 5–38, which is
+  India's bounding box; `build_centroids.py` wrote bad points and printed "all inside" anyway; and
+  nothing invoked it. Now: the builder refuses to write, `scripts/check-centroids.mjs` does real
+  point-in-polygon in prebuild (Node, because the Docker builder is a bare `node:20-slim` with no
+  python3 or shapely), and the spec proves the predicate can FAIL before proving it passes. **Data
+  was never wrong** — all 1,438 shipped points pass. Only the guard was vacuous.
+- **#566 — the floor measured, then surfaced.** 53.5% of `livestock_poultry` districts draw at an
+  identical 1.2px, 41.5% of wheat. The to-do proposed sizing the floor from real data; that cannot
+  work, and the numbers say why — a 10× radius range (100× by area) against six orders of magnitude.
+  So the claim was narrowed (`floorShare`, `floorThreshold`, real-store bounds) and the legend now
+  says where the scale stops resolving, from 10% up.
+- **#567 — both halves.** The claim "only 9 of 87 district metrics carry a count unit, so area bias
+  can only bite those 9" was wrong twice: 89, not 87, and the inference does not hold at all, since
+  bias follows from a quantity being EXTENSIVE. The four it missed are now **turned on** —
+  `households`, both `tourist_visits`, `gst_total` — floor shares measured first, all under the 60%
+  backstop. And the SIZE/SHADE flip is now scoped to the metric it was made on.
+- **#568 / #571 — the symbol layer's listeners.** Deleting both `wire()` calls left all 17 symbol
+  tests green, because a circle sits on a point inside its own polygon so the fill answers the same.
+  Now tested where it discriminates: a click on a circle overlapping a *neighbour*. Doing that
+  exposed **#571** — hover had the same double-dispatch the click got a guard for in report 822 and
+  never got one itself; hovering Bihar's circle over Jharkhand left `[10,20]` both lit and the
+  tooltip on the wrong one. Fixed and proven red-before-green.
+- **#544 — backups are real.** 917 objects, 1167 MiB in R2, verified file-by-file against local
+  rather than trusting the "done" line. That verification found `pipeline/shrug` missing entirely
+  — 161 MB, an omission with nothing recording it as skipped, and it holds the sub-district
+  crosswalk `reaggregate.py` uses to overwrite every district.
+- **#575 — the capability matrix.** One resolver for what a metric may honestly be drawn as,
+  replacing logic spread across four sites. Three states, not two: `preferred` / `available` /
+  `unsuitable`, so "choropleth of a count" can be offered *with its caveat* rather than being
+  forced into a binary. The toggle now offers the first two and never the third.
+- **#547 phase B foundation.** `d3-geo` in devDependencies via `scripts/build-family-paths.mjs`,
+  prebuild-wired, plus `adr-d3geo`.
+
+**Decisions:** `adr-d3geo` (d3-geo as a build-time devDependency, via precomputed paths, with the
+`<defs>`/`<use>` payload addendum). Owner rulings recorded as **#575**: form follows the data;
+metric-first stays the front door with browse-by-form as a second entrance; the data decides the
+default, ranked.
+
+**Friction:** *process* — **#557 recurred six times in one session**, which is the finding of the
+day. `tail -8` said `262 passed` while JSON said `unexpected: 6`. My own #565 tests picked every
+"outside" point to the RIGHT of its shape, where the rightward ray hits nothing, so a broken parity
+toggle passed all ten. #563's subquery guard passed on row-insertion luck. My first #568 hover test
+passed with the wire deleted. `build-family-paths` reported "735 paths", exit 0, and all 735 spanned
+the whole panel. Only the last was caught by the harness; the rest were caught by distrusting the
+count. *tooling* — `m.fire("click")` does not dispatch delegated listeners in the browser's order
+and nearly had me file a P1 against correct behaviour; drive the real mouse. *tooling* —
+`queryRenderedFeatures` needs an `[x,y]` array, a `{x,y}` object silently returns nothing. *tooling*
+— the metric chooser is topic-first, and a URL navigation remounts the component, so ref-scoped
+behaviour must be tested through the chooser. *env-limitation* — rclone 1.60.1 (newest on Ubuntu
+24.04) 501s the first PUT of every new object on R2; `--s3-no-head` silences it by skipping
+post-upload verification, so refused. *process* — I ran four builds without `GIT_SHA`, leaving
+`/api/health` reporting `commit: unknown`; the memory documents passing it and I did not read it.
+
+**Next session context:** **#547 phase B** — the foundation is committed and two of the plan's
+assumptions are corrected in the ADR: the route cannot be statically generated (`.dockerignore`
+excludes `data`), and the grid must render `<defs>` + `<use>` or eight district panels cost 4,587
+KiB. What remains is the `/family/[id]` route and the panel grid. Then **#408** phase 2, which needs
+a written plan first (`research/531`). **Owner:** `#574` wants a current rclone, which touches four
+other backup jobs on this box; `#499` go-live parts; and whether browse-by-form is worth building
+before #408 gives it more than two sections to browse.
