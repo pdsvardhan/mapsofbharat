@@ -113,6 +113,51 @@ function ScaleNote({ family }: { family: FamilyDetail }) {
   );
 }
 
+/**
+ * Whether the panels add up, stated with the number actually measured (iter-40
+ * item 972).
+ *
+ * Only two of the nine families genuinely decompose a quantity, and both were
+ * proven by test rather than assumed — R1 originally claimed three more and none
+ * of them survived. So this caption is driven entirely by `partToWhole`, which is
+ * `false` unless lib/metric-families.ts measured the members summing.
+ *
+ * It prints the REAL figure. Religion averages 97.6, not 100, and a caption that
+ * rounded that to "these sum to 100%" would be claiming a completeness the
+ * catalogue does not have. The count of districts inside the 97-103 band is
+ * printed for the same reason: an average of 97.6 says nothing about how many
+ * districts are near it.
+ *
+ * The other seven families get the opposite sentence rather than silence. Grids
+ * of related indicators look exactly like decompositions, and a reader who
+ * assumes these add up will misread every one of them.
+ */
+function SumNote({ family }: { family: FamilyDetail }) {
+  const ptw = family.partToWhole;
+  const n = family.resolvedMembers;
+
+  if (!ptw) {
+    return (
+      <p className="mt-6 text-[12px] leading-relaxed text-faint">
+        These are {n} related indicators from one source, not parts of one whole. They
+        do not add up to anything.
+      </p>
+    );
+  }
+
+  const avg = ptw.sumsTo.toLocaleString("en-IN", { maximumFractionDigits: 1 });
+  return (
+    <p className="mt-6 text-[12px] leading-relaxed text-muted">
+      These {n} shares are parts of one whole. Across the districts drawn here they sum
+      to <span className="font-mono text-foreground">{avg}%</span> on average, and{" "}
+      <span className="font-mono text-foreground">
+        {ptw.within.toLocaleString("en-IN")} of {ptw.of.toLocaleString("en-IN")}
+      </span>{" "}
+      districts sum to within 97–103%.
+    </p>
+  );
+}
+
 export function FamilyGrid({ family, paths, panel }: Props) {
   const codes = drawOrder(paths);
   const ramp = PALETTES[family.palette].fn;
@@ -179,6 +224,8 @@ export function FamilyGrid({ family, paths, panel }: Props) {
           </figure>
         ))}
       </div>
+
+      <SumNote family={family} />
     </div>
   );
 }
