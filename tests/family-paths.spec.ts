@@ -7,6 +7,8 @@ import { join } from "node:path";
 import {
   LAYERS,
   PANEL,
+  SNAP,
+  extentOf,
   projectCollection,
   rewind,
   round,
@@ -74,11 +76,98 @@ test.describe("#547 the projection is shared across panels", () => {
     expect(skipped).toContain("(no id)");
   });
 
-  test("rounding trims precision without mangling the path", () => {
-    expect(round("M1.23456,2.98765L3.1,4.0")).toBe("M1.2,3L3.1,4");
+  // iter-41 item 976 replaced 0.1-rounding with a 0.5px grid snap plus two
+  // point-level reductions. The old assertion here encoded the old contract
+  // ("M1.2,3L3.1,4") and is updated, not deleted.
+  test("snapping trims precision without mangling the path", () => {
+    expect(round("M1.23456,2.98765L3.1,4.0")).toBe("M1,3L3,4");
     expect(round(null)).toBeNull();
-    // command letters survive
-    expect(round("M0.55,0.55Z")).toMatch(/^M[\d.]+,[\d.]+Z$/);
+    // command letters survive on a shape that has any
+    expect(round("M0.55,0.55L9,0.55L9,9Z")).toMatch(/^M[\d.]+,[\d.]+(?:L[\d.]+,[\d.]+)+Z$/);
+  });
+
+  test("a subpath that draws nothing is never emitted", () => {
+    // One point is a moveto with no line.
+    expect(round("M0.55,0.55Z")).toBe("");
+    // Two identical points is the case that actually shipped. Snapping made
+    // (78.2,99.1) (78.6,99.4) (78.1,99.0) into (78,99) (78.5,99.5) (78,99); all
+    // three are distinct so the dedupe left them alone; the middle one is exactly
+    // collinear so it went; and the survivors were written out as a zero-extent
+    // "M78,99L78,99Z". Three district subpaths and two state paths did this.
+    expect(round("M78.2,99.1L78.6,99.4L78.1,99.0Z")).toBe("");
+
+    // THE INVARIANT, asserted on the shipped artefact rather than on a fixture:
+    // no subpath anywhere spans nothing. A count would not catch this — the bad
+    // subpaths were present and counted, they simply had no area.
+    const layers = artefact().layers as Record<string, Paths>;
+    const empty: string[] = [];
+    for (const [name, layer] of Object.entries(layers)) {
+      for (const [id, d] of Object.entries(layer)) {
+        for (const m of d.matchAll(/M([^MZ]*)(Z?)/g)) {
+          const { w, h } = extentOf(m[1]) as { w: number; h: number };
+          if (w <= 0 && h <= 0) empty.push(`${name}/${id}`);
+        }
+      }
+    }
+    expect(empty, "subpaths with zero extent").toEqual([]);
+  });
+
+  test("no district loses all of its geometry", () => {
+    // The other half of the rule above: dropping empty subpaths must never drop a
+    // whole district, so every one of the 735 still has something to draw.
+    const layer = artefact().layers.district as Paths;
+    const gone = Object.entries(layer).filter(([, d]) => !d || !d.includes("M"));
+    expect(gone.map(([id]) => id), "districts left with no geometry").toEqual([]);
+    expect(Object.keys(layer).length).toBe(735);
+  });
+
+  test("every coordinate lands on the snap grid", () => {
+    const d = round("M1.23456,2.98765L3.1,4.04L7.77,9.99Z");
+    for (const n of d.match(/-?[\d.]+/g) ?? []) {
+      const onGrid = Math.abs(Number(n) / SNAP - Math.round(Number(n) / SNAP)) < 1e-9;
+      expect(onGrid, `${n} is off the ${SNAP}px grid`).toBe(true);
+    }
+  });
+
+  test("neighbours that snap onto the same point collapse to one", () => {
+    // 5.1 and 5.2 both snap to 5.0 — two points become one, and the path must
+    // not carry a lineto that goes nowhere.
+    expect(round("M0,0L5.1,5.1L5.2,5.2L10,0Z")).toBe("M0,0L5,5L10,0Z");
+
+    // AND THE CASE THAT ACTUALLY PINS THE DEDUPE BRANCH. An exact duplicate is
+    // always collinear with its neighbours (b - a is the zero vector, so the
+    // cross product is 0), which means the collinear rule below absorbs every
+    // duplicate that has a point after it — deleting the dedupe entirely still
+    // passed the assertion above. A duplicate at the END of a subpath has no
+    // following point, so nothing else can remove it, and this is the assertion
+    // that fails when the dedupe goes.
+    expect(round("M0,0L5,5L5,5Z")).toBe("M0,0L5,5Z");
+  });
+
+  test("a vertex exactly on the line between its neighbours is dropped", () => {
+    // The middle point adds nothing to the outline, so removing it cannot move
+    // the shape — which is why this reduction is safe on shared borders.
+    expect(round("M0,0L5,0L10,0L10,10Z")).toBe("M0,0L10,0L10,10Z");
+  });
+
+  test("a vertex OFF the line is kept", () => {
+    // The guard against the reduction above being too eager: bend the middle
+    // point and it must survive.
+    expect(round("M0,0L5,5L10,0L10,10Z")).toBe("M0,0L5,5L10,0L10,10Z");
+  });
+
+  test("no shipped district is flattened by the snap", () => {
+    // THE POINT OF THE WHOLE ITEM. Snapping destroys shapes smaller than one
+    // grid cell, and a destroyed district still counts as a path — it just spans
+    // nothing. 1px was rejected during item 976 precisely because it collapsed
+    // district 26_494, which measures 0.5x0.3px at full resolution.
+    const layer = artefact().layers.district as Paths;
+    const flat: string[] = [];
+    for (const [id, d] of Object.entries(layer)) {
+      const { w, h, points } = extentOf(d) as { w: number; h: number; points: number };
+      if (points < 3 || w <= 0 || h <= 0) flat.push(`${id} ${w}x${h}`);
+    }
+    expect(flat, "districts flattened to nothing").toEqual([]);
   });
 });
 

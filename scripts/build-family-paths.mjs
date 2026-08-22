@@ -83,11 +83,120 @@ export function rewind(geometry) {
   return geometry;
 }
 
-/** Trim path coordinates to one decimal. Purely a size measure — see the note at
- *  the projection below. Returns null unchanged so the caller's own check still
- *  distinguishes "no drawable geometry" from "empty string". */
-export function round(d) {
-  return d == null ? d : d.replace(/-?\d+\.\d+/g, (n) => String(Math.round(Number(n) * 10) / 10));
+/** Grid the artefact snaps to, in panel px (#547, iter-41 item 976).
+ *
+ *  0.5px on a 220x240 panel. Chosen by measuring, not by taste:
+ *
+ *    step   artefact   gzip   districts lost   degenerate
+ *    0.1     344 KiB  95 KiB        0              0
+ *    0.25    313 KiB  74 KiB        0              0
+ *    0.5     221 KiB  54 KiB        0              0
+ *    1.0     130 KiB  36 KiB        0              1  <- 26_494 collapses
+ *
+ *  1px is the tempting number and it is wrong: district 26_494 measures 0.5x0.3px
+ *  at full resolution and snapping at 1px flattens it to nothing. A district that
+ *  renders as nothing is a district silently missing from the map, which is the
+ *  same class of failure as the backwards rings — invisible, and green. */
+export const SNAP = 0.5;
+
+/**
+ * Snap path coordinates to the SNAP grid and drop the vertices that collapse.
+ *
+ * WHY SNAPPING AND NOT DOUGLAS-PEUCKER. These are 735 adjacent polygons that
+ * share borders, and a line simplifier drops vertices based on the ring it is
+ * walking. Two districts traverse their shared border in opposite directions, so
+ * a simplifier can drop different vertices on each side and open a crack between
+ * them. Snapping cannot: it is a pure function of the coordinate itself, so a
+ * vertex on a shared border lands in the same place no matter which district is
+ * being drawn, and any divergence is bounded by the step.
+ *
+ * Two reductions follow the snap, both deterministic per coordinate and so both
+ * topology-safe: consecutive duplicate points collapse to one, and exactly
+ * collinear middles are dropped (collinearity is symmetric, so both sides of a
+ * shared border drop the same point).
+ *
+ * Returns null unchanged so the caller's own check still distinguishes "no
+ * drawable geometry" from "empty string".
+ */
+export function round(d, step = SNAP) {
+  if (d == null) return d;
+  const q = (n) => Math.round((Math.round(Number(n) / step) * step) * 100) / 100;
+
+  const out = [];
+  // d3-geo emits one or more subpaths: "M x,y L x,y ... Z". Parsed rather than
+  // regex-substituted, because the reductions below are decisions about POINTS
+  // and a substitution can only see text. An earlier pass here did try to collapse
+  // duplicates with a lookahead and silently removed none of the 13,180 that were
+  // actually in the artefact - the file got smaller from shorter numbers alone,
+  // which looked like success.
+  for (const m of d.matchAll(/M([^MZ]*)(Z?)/g)) {
+    const pts = [];
+    for (const pm of m[1].matchAll(/(-?[\d.]+),(-?[\d.]+)/g)) {
+      pts.push([q(pm[1]), q(pm[2])]);
+    }
+
+    // Drop vertices that sit EXACTLY on the line between their neighbours. Exact
+    // collinearity means removing the point cannot move the outline by even a
+    // sub-pixel, so this is free shape-wise - and it is symmetric, so two
+    // districts sharing a border make the same decision from either direction.
+    const keep = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = keep[keep.length - 1];
+      const b = pts[i];
+      const c = pts[i + 1];
+      if (a && c) {
+        const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        if (cross === 0) continue;
+      }
+      keep.push(b);
+    }
+
+    // A subpath that draws nothing is not emitted. The rule is stated as EXTENT
+    // rather than as a point count, because the point count is not sufficient and
+    // measuring the artefact is what proved it.
+    //
+    // Duplicates are handled ENTIRELY here and by the collinear rule above, and
+    // an explicit dedupe pass was tried and removed: with this guard in place,
+    // regenerating with the dedupe disabled produces byte-identical layers
+    // (244,505 chars either way). It could not, because a repeated point is a
+    // degenerate collinear case wherever it sits, and the one case the collinear
+    // rule cannot reach - a subpath whose points ALL collapse - is exactly what
+    // this extent check rejects. Three points snapping to
+    // (78,99), (78.5,99.5), (78,99) are all distinct, so none is deduped; the
+    // middle one is exactly collinear with its neighbours, so it goes; and what
+    // is left is two identical points that get written out as "M78,99L78,99Z" -
+    // zero extent, invisible, and still counted as a path. Three district
+    // subpaths did precisely that.
+    // ONE rule, not two. A separate `keep.length < 2` check sat here and mutation
+    // testing could not make it matter: zero or one point measures as zero extent
+    // and is rejected below anyway. Two overlapping guards mean one of them is
+    // never the reason anything happens, and that is the branch that rots.
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of keep) {
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+    if (x1 - x0 <= 0 && y1 - y0 <= 0) continue;
+    out.push("M" + keep.map((p) => `${p[0]},${p[1]}`).join("L") + m[2]);
+  }
+  return out.join("");
+}
+
+/** Width and height a path actually spans, in panel px. The guard reads this
+ *  rather than a vertex count, because a count cannot tell a real district from
+ *  one flattened to a line. */
+export function extentOf(d) {
+  const n = (d.match(/-?[\d.]+/g) || []).map(Number);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i + 1 < n.length; i += 2) {
+    if (n[i] < x0) x0 = n[i];
+    if (n[i] > x1) x1 = n[i];
+    if (n[i + 1] < y0) y0 = n[i + 1];
+    if (n[i + 1] > y1) y1 = n[i + 1];
+  }
+  return { w: x1 - x0, h: y1 - y0, points: n.length / 2 };
 }
 
 /**
@@ -148,6 +257,26 @@ function build() {
     const fc = JSON.parse(readFileSync(p, "utf-8"));
     const { paths, skipped } = projectCollection(fc, key);
     const n = Object.keys(paths).length;
+
+    // THE SNAP GUARD (iter-41 item 976). Snapping trades precision for bytes, and
+    // the thing it can silently destroy is a district small enough to fall inside
+    // one grid cell. Counting outputs would not notice: the path is still there,
+    // still a string, still counted — it just spans nothing. So this measures the
+    // EXTENT of every shipped path and refuses a build where any district has
+    // been flattened to a line or a point.
+    const flattened = [];
+    for (const [id, d] of Object.entries(paths)) {
+      const { w, h, points } = extentOf(d);
+      if (points < 3 || w <= 0 || h <= 0) flattened.push(`${id} (${w}x${h}, ${points}pts)`);
+    }
+    if (flattened.length) {
+      console.error(
+        `  ${src}: ${flattened.length} district(s) FLATTENED by the ${SNAP}px snap: ${flattened.slice(0, 6).join(", ")}`
+      );
+      console.error(`  ${src}: lower SNAP in scripts/build-family-paths.mjs — a district that spans nothing is a district missing from every panel`);
+      problems += flattened.length;
+    }
+
     if (skipped.length) {
       console.error(`  ${src}: ${skipped.length} feature(s) produced no path: ${skipped.slice(0, 6).join(", ")}`);
       problems += skipped.length;

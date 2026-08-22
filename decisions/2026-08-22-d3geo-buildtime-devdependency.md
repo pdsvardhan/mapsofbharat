@@ -97,3 +97,87 @@ multiple is viable at all.
 Coordinates are also rounded to one decimal in the artefact: the panel is 220×240
 CSS px, so 0.1px is well below anything a screen resolves, and it removed 24% of
 the file for no visible change.
+
+## Addendum, 2026-08-23: the budget above measured two different things
+
+The addendum above set the grid's budget at **837 KiB raw / 36 KiB gzipped** for
+eight district panels. Once the panels actually rendered (iter-40 item 970), the
+measured pages came out at 1,208–3,090 KiB raw and 249–456 KiB gzipped. The
+budget was not missed by the grid. It was comparing two different quantities, and
+it was missing a third.
+
+**The grid's own markup is the size predicted.** Measured on a production build:
+409 KiB of `<defs>`, and 45.2 bytes per `<use>` — so religion's six panels are
+~604 KiB of SVG against ~837 KiB projected for eight. The `<defs>` + `<use>`
+decision holds exactly as recorded.
+
+**"36 KiB gzipped" was the artefact's own gzip, not a page's.** The artefact
+compresses to 36 KiB on disk; a rendered page containing it, plus its `<use>`
+references, plus the page around them, does not. Those numbers were never
+comparable, and quoting one as a budget for the other made a passing grade
+impossible to fail honestly.
+
+**And a server-rendered React tree ships twice.** This is the part nothing could
+have predicted before there was a page: Next serialises the rendered tree into
+the HTML a second time as RSC flight data inside `<script>`, so every path string
+and every `<use>` is paid for twice. On religion that was 886 KiB of the 1,537.
+It is not avoidable by rearranging the component — a single opaque HTML string
+prop is serialised just the same.
+
+### What changed (iter-41 item 976)
+
+The projection now snaps to a **0.5px grid** and drops vertices that are exactly
+collinear, in `scripts/build-family-paths.mjs`. Both reductions are pure
+functions of the coordinates, so two districts sharing a border make identical
+decisions from either side and no cracks open between them — the reason this is a
+snap rather than Douglas-Peucker, which walks each ring separately and can drop
+different vertices on each side of a shared border.
+
+The tolerance was measured, not chosen:
+
+| step | artefact | gzip | districts flattened |
+|---|---|---|---|
+| 0.1 | 344 KiB | 95 KiB | 0 |
+| 0.25 | 313 KiB | 74 KiB | 0 |
+| **0.5** | **182 KiB** | **47 KiB** | **0** |
+| 1.0 | 130 KiB | 36 KiB | **21** |
+
+1px is the tempting number and it is wrong: it flattens 21 districts, including
+`26_494` and `04_55`, to zero extent. A district that spans nothing still counts
+as a path — it is present, it is a string, it renders nothing — so the build now
+**refuses** any tolerance that produces one, by measuring each path's extent
+rather than counting paths.
+
+District layer: 394 → 182 KiB (−54%), 37,126 → 19,732 points (−47%).
+
+Resulting pages, production build:
+
+| family | panels | raw before → after | gzip before → after |
+|---|---|---|---|
+| mgnrega | 3 | 1,208 → 776 KiB | 249 → 148 KiB |
+| religion | 6 | 1,537 → 1,104 KiB | 283 → 181 KiB |
+| census-pca | 9 | 1,869 → 1,438 KiB | 315 → 216 KiB |
+| nfhs5-health | 22 | 3,090 → 2,666 KiB | 456 → 359 KiB |
+
+The `<use>` elements are untouched by any of this and dominate the large grids —
+nfhs5-health's 22 panels carry 16,170 of them — which is why its gzip falls 21%
+where a three-panel family falls 41%.
+
+`/family/[id]` still ships **0 B** of client JavaScript.
+
+### A correction recorded on purpose
+
+The first implementation of this item shipped a duplicate-point pass whose
+comment claimed it was one of two independent reductions. Mutation testing showed
+it could not change the output: an exact duplicate is a degenerate collinear case
+wherever it sits. Deleting it, however, made things *worse* in a way the unit
+tests did not see — two state paths gained `M115.5,105L115.5,105Z`, a subpath of
+zero extent that draws nothing and counts as geometry. The real rule turned out
+to be neither: **a subpath is emitted only if it spans something**, checked at
+the point of emission, which covers the collapsed case AND the case the collinear
+pass creates by removing a middle vertex from three points. With that guard in
+place the dedupe pass is provably redundant — regenerating without it produces
+byte-identical layers — and it is gone.
+
+Recorded because the sequence is the lesson: two green unit tests, a claim in a
+comment that was false, and only measuring the artefact found it.
