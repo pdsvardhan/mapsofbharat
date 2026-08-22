@@ -9,9 +9,15 @@
 # The ONLY part that cannot be automated is creating the account and minting a token,
 # because that means accepting a provider's terms as you. Two values come out of it.
 #
-#   Cloudflare R2:  dash.cloudflare.com -> R2 -> Manage API tokens -> Create
-#                   "Object Read & Write". Gives an Access Key ID + Secret, and the
-#                   account id is in the R2 endpoint URL.
+#   Cloudflare R2:  dash.cloudflare.com -> R2 -> Manage API tokens ->
+#                   Create Account API token -> "Admin Read & Write".
+#                   Gives an Access Key ID + Secret; the account id is in the R2
+#                   endpoint URL.
+#
+#                   Admin READ ONLY does not work — it authenticates fine and
+#                   then 403s, because a backup writes. Object Read & Write also
+#                   works, but only if you create the bucket in the dashboard
+#                   first: that token type cannot create or list buckets.
 #       ./setup-backup-remote.sh r2 <ACCOUNT_ID> <ACCESS_KEY_ID> <SECRET>
 #
 #   Backblaze B2:   backblaze.com -> App Keys -> Add a New Application Key.
@@ -59,11 +65,33 @@ echo "1/5  config written to $CONF (mode 600)"
 # Prove the credentials actually work BEFORE rewriting the cron. A setup that
 # reports success and leaves a broken remote in the crontab is the exact failure
 # backup-offbox.sh was written to prevent.
-rclone lsd "${REMOTE_NAME}:" >/dev/null 2>&1 || die "credentials rejected — the remote does not list. Nothing else was changed."
-echo "2/5  credentials verified against the provider"
-
-rclone mkdir "${REMOTE_NAME}:${BUCKET}" 2>/dev/null
-rclone lsd "${REMOTE_NAME}:" | grep -q "$BUCKET" || die "could not create or see bucket '$BUCKET'"
+#
+# Two shapes of token are accepted, because R2 splits them and this script used
+# to demand one while its header told you to mint the other:
+#
+#   Admin Read & Write  — can list buckets and create one. Handled below.
+#   Object Read & Write — cannot list or create buckets at all, only put and get
+#                         objects inside a bucket that already exists.
+#
+# The old check was `rclone lsd remote:` alone, which an Object token fails with
+# a bare 403 even when it can write everything this backup needs. So: try the
+# admin path, and fall back to addressing the bucket directly. Only if BOTH fail
+# are the credentials genuinely unusable.
+if rclone lsd "${REMOTE_NAME}:" >/dev/null 2>&1; then
+  echo "2/5  credentials verified (bucket-listing token)"
+  rclone mkdir "${REMOTE_NAME}:${BUCKET}" 2>/dev/null
+  rclone lsd "${REMOTE_NAME}:" | grep -q "$BUCKET" || die "could not create or see bucket '$BUCKET'"
+elif rclone lsjson "${REMOTE_NAME}:${BUCKET}" --max-depth 1 >/dev/null 2>&1; then
+  # An object-scoped token cannot enumerate buckets, but it can address this one.
+  echo "2/5  credentials verified (object-scoped token; bucket must already exist)"
+else
+  die "credentials rejected. Neither listing buckets nor opening '${BUCKET}' worked.
+    - 403 with an Admin READ ONLY token is expected: it cannot write. Mint a
+      read-WRITE one.
+    - With an Object Read & Write token, create the bucket '${BUCKET}' in the R2
+      dashboard first; that token type cannot create it.
+    Nothing else was changed."
+fi
 echo "3/5  bucket ${BUCKET} present"
 
 # Rewrite the 3:45am line: carry the remote, drop --local-only.
