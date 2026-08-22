@@ -1,6 +1,13 @@
 import { test, expect, Page } from "@playwright/test";
 
-import { isCountUnit, legendStops, symbolEligible, symbolRadius } from "@/lib/symbols";
+import {
+  floorShare,
+  floorThreshold,
+  isCountUnit,
+  legendStops,
+  symbolEligible,
+  symbolRadius,
+} from "@/lib/symbols";
 
 // Proportional symbol maps (#408 / #532; research 758 + 531).
 //
@@ -354,5 +361,102 @@ test.describe("centroids are inside their own polygons (built offline)", () => {
         expect(lat).toBeLessThan(38);
       }
     }
+  });
+});
+
+test.describe("#566 the floor's reach is measured, not assumed", () => {
+  // The suite used to sample only ABOVE the floor — the proportionality test says
+  // so in its own comment, "sampled above the floor, where proportionality is
+  // exact by construction". True, and it meant nothing was watching the half of
+  // the map that is below it. On livestock_poultry that is 372 of 695 districts
+  // drawn at one identical radius while differing by more than 100x.
+
+  test("the floor threshold is 1% of the maximum at district bounds", () => {
+    // r = max·√(v/vmax) < min  =>  v < vmax·(min/max)²  =>  (1.2/12)² = 0.01
+    expect(floorThreshold(1000, "district")).toBeCloseTo(10, 6);
+    expect(floorThreshold(48_375_945, "district")).toBeCloseTo(483_759.45, 2);
+    // states have a far kinder ratio: (3/40)² = 0.5625%
+    expect(floorThreshold(1000, "state")).toBeCloseTo(5.625, 6);
+    expect(floorThreshold(0)).toBe(0);
+    expect(floorThreshold(Number.NaN)).toBe(0);
+  });
+
+  test("floorShare counts what symbolRadius actually draws", () => {
+    // one value at the max, one just above 1%, one well below
+    const vals = [1000, 20, 5, 1];
+    const s = floorShare(vals, "district");
+    expect(s.drawn).toBe(4);
+    expect(s.threshold).toBeCloseTo(10, 6);
+    // 5 and 1 are under the threshold; 20 is over
+    expect(s.atFloor).toBe(2);
+    expect(s.share).toBeCloseTo(0.5, 6);
+  });
+
+  test("zeroes and nulls are excluded, not counted as floored", () => {
+    // A zero draws nothing at all, so calling it "at the floor" would overstate
+    // the collapse and make the guard below fire on the wrong thing.
+    const s = floorShare([1000, 0, null, undefined, Number.NaN, 5], "district");
+    expect(s.drawn).toBe(2);
+    expect(s.atFloor).toBe(1);
+  });
+
+  test("an empty dataset reports nothing rather than dividing by zero", () => {
+    const s = floorShare([], "district");
+    expect(s).toEqual({ drawn: 0, atFloor: 0, share: 0, threshold: 0 });
+    expect(floorShare([0, null], "district").drawn).toBe(0);
+  });
+
+  test("every value below the threshold really does draw at the floor", () => {
+    const vals = [1_000_000, 9_999, 5_000, 1];
+    const { threshold } = floorShare(vals, "district");
+    for (const v of vals.filter((v) => v < threshold)) {
+      expect(symbolRadius(v, 1_000_000, "district"), `${v}`).toBe(1.2);
+    }
+  });
+
+  test("the shipped metrics' collapse stays within measured bounds", async ({ request }) => {
+    // Bounds, not equality: the store changes and an exact number would be noise.
+    // But a metric drifting further into the floor flattens more of the map, and
+    // that must not happen silently. Measured 2026-08-22 against the live store.
+    const bounds: [string, number, number][] = [
+      // metric, min share, max share
+      ["livestock_poultry", 0.48, 0.60],
+      ["agri_wheat_production", 0.36, 0.48],
+      ["livestock_buffalo", 0.21, 0.33],
+      ["pop_total", 0.05, 0.15],
+    ];
+    for (const [id, lo, hi] of bounds) {
+      const res = await request.get(`/api/metrics/${id}?level=district`);
+      expect(res.ok(), id).toBeTruthy();
+      const { values } = (await res.json()) as { values: Record<string, number> };
+      const s = floorShare(Object.values(values), "district");
+      expect(s.drawn, `${id} returned no values`).toBeGreaterThan(0);
+      expect(s.share, `${id}: ${s.atFloor}/${s.drawn} at the floor`).toBeGreaterThanOrEqual(lo);
+      expect(s.share, `${id}: ${s.atFloor}/${s.drawn} at the floor`).toBeLessThanOrEqual(hi);
+    }
+  });
+
+  test("no shipped metric collapses more than 60% of its districts", async ({ request }) => {
+    // The backstop. Above this the layer is drawing a map of one dot repeated,
+    // and symbols have stopped being the more honest instrument.
+    const { metrics } = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { id: string; unit: string | null }[];
+    };
+    let checked = 0;
+    for (const m of metrics) {
+      if (!isCountUnit(m.unit)) continue;
+      const { values } = (await (
+        await request.get(`/api/metrics/${m.id}?level=district`)
+      ).json()) as { values: Record<string, number> };
+      const vals = Object.values(values);
+      if (!symbolEligible(m.unit, vals)) continue; // signed metrics never ship as symbols
+      const s = floorShare(vals, "district");
+      if (s.drawn === 0) continue;
+      expect(s.share, `${m.id}: ${s.atFloor}/${s.drawn} at the floor`).toBeLessThan(0.6);
+      checked++;
+    }
+    // Phase 1 ships 9 count metrics; if this ever reads 0 the loop stopped
+    // measuring and every assertion above became vacuous.
+    expect(checked, "no symbol-eligible metrics were checked").toBeGreaterThanOrEqual(8);
   });
 });

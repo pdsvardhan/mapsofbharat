@@ -1,0 +1,35 @@
+{
+  "tests": "tests/symbol-maps.spec.ts",
+  "mutations": [
+    {
+      "name": "threshold drops the square — the radius/area confusion, again",
+      "file": "lib/symbols.ts",
+      "find": "  return vmax * (min / max) ** 2;",
+      "replace": "  return vmax * (min / max);"
+    },
+    {
+      "name": "count strictly below the floor, missing every value sitting exactly on it",
+      "file": "lib/symbols.ts",
+      "find": "  const atFloor = positive.filter((v) => symbolRadius(v, vmax, level) <= min).length;",
+      "replace": "  const atFloor = positive.filter((v) => symbolRadius(v, vmax, level) < min).length;"
+    },
+    {
+      "name": "treat zero as a floored value rather than as no mark",
+      "file": "lib/symbols.ts",
+      "find": "    (v): v is number => v != null && Number.isFinite(v) && v > 0",
+      "replace": "    (v): v is number => v != null && Number.isFinite(v) && v >= 0"
+    },
+    {
+      "name": "report the collapse as zero — the silent all-clear",
+      "file": "lib/symbols.ts",
+      "find": "  return { drawn: positive.length, atFloor, share: atFloor / positive.length, threshold };",
+      "replace": "  return { drawn: positive.length, atFloor, share: 0, threshold };"
+    },
+    {
+      "name": "drop the empty-dataset guard",
+      "file": "lib/symbols.ts",
+      "find": "  if (positive.length === 0) return { drawn: 0, atFloor: 0, share: 0, threshold: 0 };",
+      "replace": ""
+    }
+  ]
+}

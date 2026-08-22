@@ -100,6 +100,12 @@ export type SymbolLevel = keyof typeof SYMBOL_BOUNDS;
  * The floor applies only to values that are actually nonzero: a genuine zero is a fact
  * ("no poultry here") and deserves no mark, while a small nonzero must never round away
  * to invisible. Above the floor the proportionality is exact.
+ *
+ * BELOW the floor it is not, and that is not a rare edge (#566). Everything under 1% of
+ * the maximum draws at the same radius: 53.5% of livestock_poultry districts, 41.5% of
+ * agri_wheat_production. Use floorShare() at the bottom of this file for the measured
+ * number on a given dataset rather than assuming the tail is small — on these metrics it
+ * is most of the map.
  */
 export function symbolRadius(
   value: number | null | undefined,
@@ -123,4 +129,62 @@ export function legendStops(vmax: number): number[] {
   // r/rmax = sqrt(v/vmax), so a radius fraction f corresponds to v = vmax * f².
   const stops = [vmax, vmax * 0.25, vmax * 0.0625];
   return stops.filter((v) => v > 0);
+}
+
+/** The value below which every mark is drawn at the same minimum radius.
+ *
+ *  Falls straight out of the scale: the floor bites when max·√(v/vmax) < min, so
+ *  v < vmax·(min/max)². At district bounds that is (1.2/12)² = 1% of the maximum
+ *  — every district under a hundredth of the largest is one identical dot. */
+export function floorThreshold(vmax: number, level: SymbolLevel = "district"): number {
+  if (!Number.isFinite(vmax) || vmax <= 0) return 0;
+  const { min, max } = SYMBOL_BOUNDS[level];
+  return vmax * (min / max) ** 2;
+}
+
+/** How much of a dataset the floor collapses (#566).
+ *
+ *  THIS IS A LIMIT, NOT A BUG, AND THE NUMBERS SAY SO. The radius range is 10×
+ *  (1.2 to 12), which is 100× by area. Real data here spans up to SIX orders of
+ *  magnitude — agri_wheat_production runs 10^6.1 between its smallest and largest
+ *  district. A hundredfold instrument cannot render a millionfold spread, so some
+ *  collapse is structural and no choice of floor removes it: lowering the floor
+ *  only trades identical dots for invisible ones, which is a worse lie.
+ *
+ *  Measured on the live store, 2026-08-22, district level:
+ *    livestock_poultry      53.5%  (372/695)
+ *    agri_wheat_production  41.5%  (132/318)
+ *    livestock_buffalo      26.7%  (181/679)
+ *    agri_rice_production   23.3%  (96/412)
+ *    livestock_goat         18.7%  (130/695)
+ *    pop_total               9.3%  (68/733)
+ *    livestock_cattle        6.8%  (47/695)
+ *    agri_cropped_area       4.5%  (19/425)
+ *    area_km2                2.7%  (20/733)
+ *
+ *  So on the worst metric, more than half the districts are drawn identically
+ *  while differing by over 100× among themselves. A reader cannot see that from
+ *  the map. The docstring above says "above the floor the proportionality is
+ *  exact", which is true and was doing the work of a claim it does not make —
+ *  it says nothing about how much of the data is below.
+ *
+ *  Exported so the share is a measured quantity rather than an assumption:
+ *  tests/symbol-maps.spec.ts asserts these bounds against the real store, and a
+ *  metric drifting further into the floor turns them red instead of quietly
+ *  flattening more of the map. */
+export function floorShare(
+  values: readonly (number | null | undefined)[],
+  level: SymbolLevel = "district"
+): { drawn: number; atFloor: number; share: number; threshold: number } {
+  const positive = values.filter(
+    (v): v is number => v != null && Number.isFinite(v) && v > 0
+  );
+  if (positive.length === 0) return { drawn: 0, atFloor: 0, share: 0, threshold: 0 };
+  const vmax = Math.max(...positive);
+  const threshold = floorThreshold(vmax, level);
+  const { min } = SYMBOL_BOUNDS[level];
+  // Counted off symbolRadius itself, not off a re-derivation of it, so the two
+  // cannot drift apart and leave this reporting a floor the map does not draw.
+  const atFloor = positive.filter((v) => symbolRadius(v, vmax, level) <= min).length;
+  return { drawn: positive.length, atFloor, share: atFloor / positive.length, threshold };
 }
