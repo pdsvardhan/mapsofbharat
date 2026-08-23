@@ -1,11 +1,11 @@
-<!-- generated from registry @ HEAD on 2026-08-22 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
+<!-- generated from registry @ HEAD on 2026-08-23 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
 # mapsofbharat — Features & Flows (generated reference)
 
 > Generated from the Ottomate registry (the single source of truth). To change anything here, edit the feature/flow/acceptance-criteria in the tracker, then re-run `scripts/generation/gen-reference-docs.mjs --project mapsofbharat`.
 
 ## Features
 
-### done (12)
+### done (13)
 
 - **Canonical metric store and schema** `feat-canonical-store` — _backend_, test: `passing`
   - All data lives in one canonical store — region × metric × year × value — with full metadata on every metric.
@@ -40,6 +40,13 @@
   - AC: An adapter runs fetch then clean then map-to-canonical-region-key (rid) then normalize then load (test: `pipeline/test_pipeline.py`)
   - AC: Re-running an adapter is idempotent (upsert, no duplicates) (test: `pipeline/test_pipeline.py`)
   - AC: Each load records source, year, and license (test: `pipeline/test_pipeline.py`)
+- **Metric families as small multiples** `feat-metric-families` — _ui_, test: `partial`
+  - A set of related official indicators drawn as one grid of district choropleths, so a whole subject reads at a glance. Nine families declared in lib/metric-families.ts, each with an explicit shared or free axis, and a part-to-whole caption only where the members were measured to decompose.
+  - AC: A family page renders one panel per resolved member; every panel draws every district in the artefact, with districts outside the family's shared set present in the no-data tone rather than omitted.
+  - AC: The axis in force is the one the family declares: a shared axis classifies over one pooled domain and renders exactly one legend; a free axis classifies each member on its own values and renders no legend, stating each panel's range in its caption instead.
+  - AC: Panels classify through lib/breaks.ts with the same stats membership the atlas uses (countsInStats, adr-022), so a panel classes a metric the way the main map does.
+  - AC: A part-to-whole caption appears only for families measured to decompose, and prints the measured figure and district count rather than a rounded one; every other family carries the opposite statement.
+  - AC: Every panel is a figure with a figcaption, and its accessible name carries both the value range and whether the scale is shared or not comparable across panels.
 - **Metric selector** `feat-metric-selector` — _ui_, test: `partial`
   - Switch the statistic on the map in one click.
   - AC: User can switch the metric and the map recolours
@@ -68,15 +75,8 @@
   - AC: Each metric exposes methodology text (how the figure was measured/derived), served by the metrics API and shown in the trust surface (test: `tests/methodology.spec.ts`)
   - AC: Source metadata (source, year, license, methodology, coverage) is stored per-metric in the canonical DB rather than hardcoded in the UI, so it stays correct across re-ingests (test: `tests/methodology.spec.ts`)
 
-### building (2)
+### building (1)
 
-- **Metric families as small multiples** `feat-metric-families` — _ui_, test: `partial`
-  - A set of related official indicators drawn as one grid of district choropleths, so a whole subject reads at a glance. Nine families declared in lib/metric-families.ts, each with an explicit shared or free axis, and a part-to-whole caption only where the members were measured to decompose.
-  - AC: A family page renders one panel per resolved member; every panel draws every district in the artefact, with districts outside the family's shared set present in the no-data tone rather than omitted.
-  - AC: The axis in force is the one the family declares: a shared axis classifies over one pooled domain and renders exactly one legend; a free axis classifies each member on its own values and renders no legend, stating each panel's range in its caption instead.
-  - AC: Panels classify through lib/breaks.ts with the same stats membership the atlas uses (countsInStats, adr-022), so a panel classes a metric the way the main map does.
-  - AC: A part-to-whole caption appears only for families measured to decompose, and prints the measured figure and district count rather than a rounded one; every other family carries the opposite statement.
-  - AC: Every panel is a figure with a figcaption, and its accessible name carries both the value range and whether the scale is shared or not comparable across panels.
 - **Symbol / proportional-symbol maps** `feat-symbol-choropleth` — _ui_, test: `partial`
   - Proportional-symbol maps for HOTSPOT metrics where a choropleth misleads (single-district spikes, raw counts). Unblocks roughly 29 district metrics — about a third of the library.
   - AC: Symbol AREA is proportional to value, not radius: a district with 4x the count draws a circle of 2x the radius, so twice the ink means twice the quantity. Holds across the domain, the maximum value takes the maximum radius, and a small nonzero value is floored so it cannot vanish while a real zero draws nothing. Each circle sits on a representative point computed offline to lie INSIDE its own polygon, so none is drawn in the sea or over a neighbour. (test: `tests/symbol-maps.spec.ts`)

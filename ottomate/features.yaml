@@ -422,7 +422,7 @@ features:
       axis, and a part-to-whole caption only where the members were measured to
       decompose.
     type: ui
-    status: building
+    status: done
     priority: P2
     size: M
     test_status: partial
