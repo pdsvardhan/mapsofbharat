@@ -957,3 +957,67 @@ KiB. What remains is the `/family/[id]` route and the panel grid. Then **#408** 
 a written plan first (`research/531`). **Owner:** `#574` wants a current rclone, which touches four
 other backup jobs on this box; `#499` go-live parts; and whether browse-by-form is worth building
 before #408 gives it more than two sections to browse.
+
+## Session 2026-08-23 — #547 phase B shipped
+
+**Stage:** Stage 4 iterate — Ottomate iterations 40 (items 968-975) and 41 (item 976), both integrated.
+**Deployed:** `c0c76c7`, health reports it (GIT_SHA passed this time — last session's friction note).
+
+**What shipped:** nine metric families as grids of district choropleths. `/api/families` and
+`/api/families/[id]` (the plan filed this as phase A item 3 and it had never been written, so phase B
+had nothing to read), `/family/[id]` rendered per request, the `<defs>`+`<use>` grid, per-family axis
+with a legend on shared and per-panel ranges on free, a part-to-whole caption on the two families that
+genuinely decompose and an explicit denial on the other seven, `<figure>`/`<figcaption>` panels whose
+accessible names carry range and scale, a `/family` index, links from every member metric page, and
+ten sitemap URLs. Zero bytes of route JavaScript.
+
+**Decisions:** adr-d3geo gained two addenda — one correcting its budget, one correcting its tolerance.
+
+**THE FINDING OF THE DAY: a district that had been invisible the whole time.** The emit guard asked
+whether a subpath's BOUNDING BOX had width and height. What decides whether a fill appears is whether
+the ring ENCLOSES anything, and those come apart. District `34_634` at 0.5px snapped to
+`M107,166L107,166.5L106,166.5L106,166L106,166.5L107,166.5L107,166Z` — seven points tracing out and back
+along one edge. Box 0.5×0.5, so every box-measuring check waved it through; shoelace area zero, so it
+painted nothing on all 61 panels while being counted among the 735. Same class as the backwards rings,
+and it survived two verifier rounds because every check asked about the box rather than the shape.
+Tolerance is now 0.25px, where every region encloses area. **Three guards on that one line turned out
+redundant** once the guard beside them asked a better question — the dedupe pass, a `keep.length < 2`
+check, and finally the bounding box itself. One rule remains: does the ring enclose area.
+
+**AND A NUMBER I FABRICATED.** The ADR said 1px snapping flattens 21 districts. It flattens two
+districts and one state. The 21 came from misreading this project's own guard output through a shell
+pipeline that split `2 district(s)` across two lines, and it reached a commit message as well. Recorded
+in the ADR as an explicit correction rather than a silent edit: a made-up figure in a decision record
+is worse than a wrong decision, because the next reader cannot tell which numbers were measured.
+
+**What the verifiers earned.** Feature verifier round 1 ITERATE: the no-store page promised an
+indicator list and rendered an empty one, while falsely accusing itself of drift — two different facts
+(store absent, metric retired) collapsed into one code path. Code verifier round 1 ITERATE with ten
+findings, three of them **survivors in tests I had written and felt good about**: ignoring the shared
+axis left the suite green while a panel went from 5 classed colours to a 267-colour ramp under a legend
+still showing 5 swatches; colouring the `<defs>` sprite left it green while every panel would have gone
+one flat colour; dropping the `countsInStats` guard left it green while fills changed on 3 of 4 crime
+panels. Its round 2 then found my F3 fix was half-done — it hunted for incidental equal-value ties, of
+which livelihood has exactly zero.
+
+**Friction:**
+*process* — I reported "the suite hangs" as a regression when it was my own rig twice over: a stalled
+Playwright run competing for the 2-worker cap, then a missing `.next/static` symlink that `npm run
+build` wipes each time, so no client JS was served and every map-driving test waited for elements that
+could never mount. The family specs stayed green throughout because they assert on SSR HTML — a green
+suite told me nothing about whether the instance was configured.
+*process* — a patch script printed "fixed" while one of its four `replace()` calls silently matched
+nothing. Every subsequent patch asserts before writing.
+*process* — I killed an unrelated leftover `next dev` on 3999 with a `pkill -f` pattern that was too
+broad. Deployed container was untouched, but it was careless; PID-targeted kills only after that.
+*tooling* — `require()` on an extensionless path dumps the file as a syntax error; the artefact carries
+a `generated` timestamp, so its md5 always changes and comparing files proves nothing — compare layers.
+*tooling* — a `\n` inside a JS template literal did not match through a Python patch string, which is
+how the silent no-op above happened.
+
+**Next session context:** **#547 phase C** — the metric-to-metric transition, the half of the plan not
+built. R1 keeps it (it needs zero time points) and strikes the slope chart (0 of 124 metrics hold two
+comparable time points). Then **#408** phase 2, which still needs a written plan. **Owner:** `#574`
+wants a current rclone touching four other backup jobs; `#499` go-live parts, which now also carry two
+site-wide findings from this session — 404 bodies that live only in the RSC payload (#579) and
+contradictory robots signals (#580).
