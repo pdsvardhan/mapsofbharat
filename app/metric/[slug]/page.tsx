@@ -16,6 +16,7 @@ import {
   rankRows,
   type MetricListItem,
 } from "@/lib/metric-page-data";
+import { familiesOfMetric } from "@/lib/metric-families";
 import { getMetricLineage } from "@/lib/metric-raw-source";
 import { SITE_URL } from "@/lib/site";
 
@@ -118,6 +119,10 @@ export default async function MetricPage({
   const rows = buildMetricRows(detail);
   const ranks = rankRows(rows);
   const lineage = getMetricLineage(detail.id);
+  // Metric-first is the front door (#575), so the family grid is offered FROM
+  // here rather than competing with it. Membership comes from METRIC_FAMILIES,
+  // never a second list (iter-40 item 975).
+  const families = familiesOfMetric(detail.id);
   const scopeNoun = level === "district" ? "districts" : "states";
   const measured = detail.count - detail.estimated_count;
   const footnote = estimateFootnote(rows, scopeNoun);
@@ -268,6 +273,27 @@ export default async function MetricPage({
           </>
         ) : null}
       </div>
+
+      {families.length ? (
+        <section className="mt-8" data-family-links>
+          <h2 className="mb-2 text-[13px] font-bold uppercase tracking-[.12em] text-faint">
+            Seen with its family
+          </h2>
+          <p className="max-w-3xl text-[13px] leading-relaxed text-muted">
+            This indicator is one of a set drawn on the same districts from the same
+            source. The grid shows them side by side:{" "}
+            {families.map((f, i) => (
+              <span key={f.id}>
+                {i > 0 ? (i === families.length - 1 ? " and " : ", ") : null}
+                <Link href={`/family/${f.id}`} className="text-accent-text hover:underline">
+                  {f.label}
+                </Link>
+              </span>
+            ))}
+            .
+          </p>
+        </section>
+      ) : null}
 
       {/* Interactive map — the real /embed atlas view, framed same-origin. It
           hydrates inside the iframe; the ranked data above/below stays in SSR. */}

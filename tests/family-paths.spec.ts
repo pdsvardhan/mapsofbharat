@@ -7,6 +7,9 @@ import { join } from "node:path";
 import {
   LAYERS,
   PANEL,
+  SNAP,
+  extentOf,
+  flattenedIn,
   projectCollection,
   rewind,
   round,
@@ -74,11 +77,147 @@ test.describe("#547 the projection is shared across panels", () => {
     expect(skipped).toContain("(no id)");
   });
 
-  test("rounding trims precision without mangling the path", () => {
-    expect(round("M1.23456,2.98765L3.1,4.0")).toBe("M1.2,3L3.1,4");
+  // iter-41 item 976 replaced 0.1-rounding with a 0.5px grid snap plus two
+  // point-level reductions. The old assertion here encoded the old contract
+  // ("M1.2,3L3.1,4") and is updated, not deleted.
+  test("snapping trims precision without mangling the path", () => {
+    expect(round("M1.23456,2.98765L3.1,4.04L1.1,5.9Z")).toBe("M1.25,3L3,4L1,6Z");
+    // Two points enclose nothing, so nothing is emitted — the same rule that
+    // rejects a line, applied to the smallest possible case.
+    expect(round("M1.23456,2.98765L3.1,4.0")).toBe("");
     expect(round(null)).toBeNull();
-    // command letters survive
-    expect(round("M0.55,0.55Z")).toMatch(/^M[\d.]+,[\d.]+Z$/);
+    // command letters survive on a shape that has any
+    expect(round("M0.55,0.55L9,0.55L9,9Z")).toMatch(/^M[\d.]+,[\d.]+(?:L[\d.]+,[\d.]+)+Z$/);
+  });
+
+  test("a subpath that draws nothing is never emitted", () => {
+    // One point is a moveto with no line.
+    expect(round("M0.55,0.55Z")).toBe("");
+    // Two identical points is the case that actually shipped. Snapping made
+    // (78.2,99.1) (78.6,99.4) (78.1,99.0) into (78,99) (78.5,99.5) (78,99); all
+    // three are distinct so the dedupe left them alone; the middle one is exactly
+    // collinear so it went; and the survivors were written out as a zero-extent
+    // "M78,99L78,99Z". Three district subpaths and two state paths did this.
+    // Three points that snap exactly collinear: the middle goes, two are left,
+    // and two points enclose nothing.
+    expect(round("M0,0L2.5,2.5L5,5Z")).toBe("");
+
+    // LINE-SHAPED subpaths, the two the bounding-box tests kept missing. Without
+    // these the emit guard could be reverted to `&&` and all 37 tests stayed green
+    // — only --check caught it, because the committed artefact is already clean
+    // and no fixture exercised the shape.
+    expect(round("M0,0L0,5Z"), "a vertical line encloses nothing").toBe("");
+    expect(round("M0,0L5,0Z"), "a horizontal line encloses nothing").toBe("");
+    expect(round("M0,0L5,5Z"), "a diagonal encloses nothing either").toBe("");
+
+    // THE INVARIANT, asserted on the shipped artefact rather than on a fixture:
+    // no subpath anywhere spans nothing. A count would not catch this — the bad
+    // subpaths were present and counted, they simply had no area.
+    const layers = artefact().layers as Record<string, Paths>;
+    const empty: string[] = [];
+    for (const [name, layer] of Object.entries(layers)) {
+      for (const [id, d] of Object.entries(layer)) {
+        for (const m of d.matchAll(/M([^MZ]*)(Z?)/g)) {
+          // ZERO AREA, matching the rule the script states rather than the
+          // condition it happened to use. The spec previously mirrored the
+          // implementation (`w <= 0 && h <= 0`), so it structurally could not see
+          // the three 0-by-0.5 line subpaths that were shipping.
+          const { w, h } = extentOf(m[1]) as { w: number; h: number };
+          if (w <= 0 || h <= 0) empty.push(`${name}/${id} ${w}x${h}`);
+        }
+      }
+    }
+    expect(empty, "subpaths with zero extent").toEqual([]);
+  });
+
+  test("the build's flatten guard detects what it claims to", () => {
+    // THE GUARD THAT NOTHING ASSERTED. At the shipped 0.5px tolerance no region is
+    // flattened, so the guard never fires, so breaking it changed no output and
+    // every mutation of it read as a survivor — the mutation harness said so in as
+    // many words. Extracting it from build() makes it reachable.
+    const flat = flattenedIn as (p: Record<string, string>) => string[];
+    expect(flat({ ok: "M0,0L5,0L5,5Z" }), "a real triangle is not flattened").toEqual([]);
+    // A line: two points, 0 wide. Draws nothing when filled.
+    expect(flat({ line: "M0,0L0,5Z" }).length, "a zero-width line must be caught").toBe(1);
+    // A single point.
+    expect(flat({ dot: "M3,3Z" }).length, "a single point must be caught").toBe(1);
+    // And the shipped artefact is clean by that same rule, both layers.
+    const layers = artefact().layers as Record<string, Paths>;
+    for (const [name, layer] of Object.entries(layers)) {
+      expect(flat(layer), `${name} ships a flattened region`).toEqual([]);
+    }
+  });
+
+  test("no district loses all of its geometry", () => {
+    // The other half of the rule above: dropping empty subpaths must never drop a
+    // whole district, so every one of the 735 still has something to draw.
+    const layer = artefact().layers.district as Paths;
+    const gone = Object.entries(layer).filter(([, d]) => !d || !d.includes("M"));
+    expect(gone.map(([id]) => id), "districts left with no geometry").toEqual([]);
+    expect(Object.keys(layer).length).toBe(735);
+  });
+
+  test("every coordinate in the SHIPPED artefact lands on the snap grid", () => {
+    // Rewritten (iter-41). The old version ran round() on a fixture and then
+    // divided by SNAP — so it passed at ANY tolerance and said nothing about the
+    // file that ships. It asserted that a function is consistent with itself.
+    //
+    // The grid is written as a literal 0.5 on purpose: deriving it from SNAP is
+    // what made the old assertion vacuous. If the tolerance is deliberately
+    // changed, this number changes with it, and that edit is the point.
+    const GRID = 0.25;
+    const layers = artefact().layers as Record<string, Paths>;
+    const offGrid: string[] = [];
+    for (const [name, layer] of Object.entries(layers)) {
+      for (const [id, d] of Object.entries(layer)) {
+        for (const n of d.match(/-?[\d.]+/g) ?? []) {
+          const v = Number(n) / GRID;
+          if (Math.abs(v - Math.round(v)) > 1e-9) offGrid.push(`${name}/${id}:${n}`);
+        }
+      }
+    }
+    expect(offGrid.slice(0, 5), "coordinates off the 0.25px grid").toEqual([]);
+    expect(SNAP, "SNAP moved without this assertion being updated").toBe(GRID);
+  });
+
+  test("neighbours that snap onto the same point collapse to one", () => {
+    // 5.1 and 5.2 both snap to 5.0 — two points become one, and the path must
+    // not carry a lineto that goes nowhere.
+    expect(round("M0,0L5.05,5.05L5.1,5.1L10,0Z")).toBe("M0,0L5,5L10,0Z");
+
+    // A duplicate at the END of a subpath, which is the position no rule reaches
+    // by looking forward. NOTE (iter-41): there is no longer a separate dedupe
+    // pass to pin — removing it left the artefact byte-identical, so it went, and
+    // BOTH of these assertions are now killed by disabling the COLLINEAR rule.
+    // What is left after the duplicate goes is two points, which enclose nothing,
+    // so the whole subpath is dropped rather than emitted as a line.
+    expect(round("M0,0L5,5L5,5Z")).toBe("");
+  });
+
+  test("a vertex exactly on the line between its neighbours is dropped", () => {
+    // The middle point adds nothing to the outline, so removing it cannot move
+    // the shape — which is why this reduction is safe on shared borders.
+    expect(round("M0,0L5,0L10,0L10,10Z")).toBe("M0,0L10,0L10,10Z");
+  });
+
+  test("a vertex OFF the line is kept", () => {
+    // The guard against the reduction above being too eager: bend the middle
+    // point and it must survive.
+    expect(round("M0,0L5,5L10,0L10,10Z")).toBe("M0,0L5,5L10,0L10,10Z");
+  });
+
+  test("no shipped district is flattened by the snap", () => {
+    // THE POINT OF THE WHOLE ITEM. Snapping destroys shapes smaller than one
+    // grid cell, and a destroyed district still counts as a path — it just spans
+    // nothing. 1px was rejected during item 976 precisely because it collapsed
+    // district 26_494, which measures 0.5x0.3px at full resolution.
+    const layer = artefact().layers.district as Paths;
+    const flat: string[] = [];
+    for (const [id, d] of Object.entries(layer)) {
+      const { w, h, points } = extentOf(d) as { w: number; h: number; points: number };
+      if (points < 3 || w <= 0 || h <= 0) flat.push(`${id} ${w}x${h}`);
+    }
+    expect(flat, "districts flattened to nothing").toEqual([]);
   });
 });
 
@@ -119,14 +258,22 @@ test.describe("#547 the shipped artefact is complete", () => {
     }
   });
 
-  test("coordinates carry at most one decimal", () => {
+  test("coordinates carry at most two decimals", () => {
     // The size measure. A regression here quietly doubles the page.
-    const a = artefact();
-    const sample = Object.values(a.layers.district as Paths).slice(0, 40);
-    for (const d of sample) {
-      const overlong = [...d.matchAll(/\d+\.(\d{2,})/g)];
-      expect(overlong.map((m) => m[0]).slice(0, 3), "more than one decimal place").toEqual([]);
+    // EVERY path, both layers. This sampled the first 40 of 735 and a regression
+    // in insertion-order district #226 survived it while #0 killed it — a check
+    // that covered 5% of what its name claims.
+    const layers = artefact().layers as Record<string, Paths>;
+    const overlong: string[] = [];
+    for (const [name, layer] of Object.entries(layers)) {
+      for (const [id, d] of Object.entries(layer)) {
+        // Two, not one: the grid is 0.25px, so 106.75 is exact and expected. The
+        // point of the check is that nothing carries FULL float precision, which
+        // is what quietly doubles the page.
+        for (const m of d.matchAll(/\d+\.(\d{3,})/g)) overlong.push(`${name}/${id}:${m[0]}`);
+      }
     }
+    expect(overlong.slice(0, 5), "more than two decimal places").toEqual([]);
   });
 });
 

@@ -414,3 +414,56 @@ features:
     notes: "Roadmap #408 (product growth); adr-plan parks bivariate to post-launch."
     acceptance_criteria: []
     dependencies: []
+  - id: feat-metric-families
+    title: Metric families as small multiples
+    short_description: A set of related official indicators drawn as one grid of
+      district choropleths, so a whole subject reads at a glance. Nine families
+      declared in lib/metric-families.ts, each with an explicit shared or free
+      axis, and a part-to-whole caption only where the members were measured to
+      decompose.
+    type: ui
+    status: building
+    priority: P2
+    size: M
+    test_status: partial
+    notes: "Roadmap #547 phase B. Plan in
+      planning/547-small-multiples-and-transitions.md; adr-d3geo governs how
+      geometry reaches the page. Built in Ottomate iteration 40 (items 968-975)
+      and iteration 41 (item 976). Phase C (metric-to-metric transition) is NOT
+      built. THREE FURTHER ACCEPTANCE CRITERIA did not fit the 5-AC cap and are
+      recorded here rather than dropped: (6) geometry is defined once per page
+      in a defs sprite and referenced per panel, and nothing at runtime imports
+      d3-geo; (7) an unknown family id returns 404, an absent store or
+      unreadable geometry artefact states what is missing instead of rendering
+      an empty grid, and a declared member absent from the store is named on the
+      page; (8) each family is reachable from every member metric page and from
+      a /family index, and the index plus every family appears in sitemap.xml.
+      All three are asserted by tests/family-grid.spec.ts."
+    acceptance_criteria:
+      - content: A family page renders one panel per resolved member; every panel draws
+          every district in the artefact, with districts outside the family's
+          shared set present in the no-data tone rather than omitted.
+        test_status: not-tested
+        linked_test: null
+      - content: "The axis in force is the one the family declares: a shared axis
+          classifies over one pooled domain and renders exactly one legend; a
+          free axis classifies each member on its own values and renders no
+          legend, stating each panel's range in its caption instead."
+        test_status: not-tested
+        linked_test: null
+      - content: Panels classify through lib/breaks.ts with the same stats membership
+          the atlas uses (countsInStats, adr-022), so a panel classes a metric
+          the way the main map does.
+        test_status: not-tested
+        linked_test: null
+      - content: A part-to-whole caption appears only for families measured to
+          decompose, and prints the measured figure and district count rather
+          than a rounded one; every other family carries the opposite statement.
+        test_status: not-tested
+        linked_test: null
+      - content: Every panel is a figure with a figcaption, and its accessible name
+          carries both the value range and whether the scale is shared or not
+          comparable across panels.
+        test_status: not-tested
+        linked_test: null
+    dependencies: []

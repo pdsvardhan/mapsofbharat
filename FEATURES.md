@@ -1,4 +1,4 @@
-<!-- generated from registry @ 1ecda37 on 2026-08-11 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
+<!-- generated from registry @ HEAD on 2026-08-22 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
 # mapsofbharat — Features & Flows (generated reference)
 
 > Generated from the Ottomate registry (the single source of truth). To change anything here, edit the feature/flow/acceptance-criteria in the tracker, then re-run `scripts/generation/gen-reference-docs.mjs --project mapsofbharat`.
@@ -20,26 +20,26 @@
   - AC: A colour-blind-safe palette (Viridis) is the default; a diverging palette (RdBu) is used for vs-average mode
 - **Compare mode (region, year, or metric)** `feat-compare-mode` — _ui_, test: `passing`
   - Put two regions, two years, or two metrics side by side with a difference view.
-  - AC: Two regions, two years, or two metrics render side by side
-  - AC: A difference or percent-change view is available
+  - AC: Two regions render side by side in A/B slots with THE GAP and a plain-language read. Compare-by-year is struck: 0 of 124 metrics hold two comparable time points (research/2026-08-20-455). Compare-by-metric is to-do #547, not this feature. (test: `tests/flows.spec.ts`)
+  - AC: A difference or percent-change view is available (test: `tests/flows.spec.ts`)
 - **Demographics vertical (Census 2011)** `feat-demographics-pilot` — _hybrid_, test: `partial`
   - Census 2011 demographics was the proving ground — ingested end to end and rendered at district level on today's boundaries.
-  - AC: Census 2011 district data (population, literacy, SC/ST, sex ratios, work participation, livelihood) loads on current-day boundaries
+  - AC: Census 2011 district data (population, literacy, SC/ST, sex ratios, work participation, livelihood) loads on current-day boundaries (test: `pipeline/test_pipeline.py`)
   - AC: All demographic metrics render in choropleth, compare, and export
 - **Export and shareable/embeddable views** `feat-export-share` — _ui_, test: `partial`
   - Any view exports to CSV, PNG or SVG — or share it as a permalink, or embed it as an iframe.
-  - AC: The CARD social export downloads a PNG with headline, values, legend, source attribution and brand block (4:5/1:1, ink/paper) — sole image export since iter-72 (test: `tests/flows.spec.ts`)
-  - AC: A permalink encodes metric, mode, drilled state, and compare pins, and restores that view on load
+  - AC: The CARD social export downloads a PNG with headline, values, legend, source attribution and brand block (4:5/1:1, ink/paper) — sole image export since iter-72 (test: `tests/social-card.spec.ts`)
+  - AC: A permalink encodes metric, mode, drilled state, and compare pins, and restores that view on load (test: `tests/flows.spec.ts`)
 - **Geography backbone and region crosswalk** `feat-geo-backbone` — _backend_, test: `partial`
   - The hard part: a crosswalk reconciling Census-2011 districts with today's boundaries, so old data renders correctly on the current, Survey-of-India-compliant map.
-  - AC: A Census-2011 sub-district to current-district crosswalk (rid-keyed) reaggregates 2011 data onto current boundaries, validated against official PCA (median diff < 2%)
-  - AC: Every state and district polygon resolves to one canonical region_id
-  - AC: Boundary set passes a Survey-of-India compliance check (J&K, Ladakh, Arunachal, Aksai Chin)
+  - AC: A Census-2011 sub-district to current-district crosswalk (rid-keyed) reaggregates 2011 data onto current boundaries, validated against official PCA (median diff < 2%) (test: `pipeline/test_pipeline.py`)
+  - AC: Every state and district polygon resolves to one canonical region_id (test: `pipeline/test_pipeline.py`)
+  - AC: Boundary set passes a Survey-of-India compliance check (J&K, Ladakh, Arunachal, Aksai Chin) (test: `scripts/check-boundaries.mjs`)
 - **Ingestion pipeline and dataset adapters** `feat-ingest-pipeline` — _automated_, test: `partial`
   - Each dataset gets an adapter that fetches, cleans, maps and loads it — adding a new statistic is a pipeline run, not a rebuild.
-  - AC: An adapter runs fetch then clean then map-to-canonical-region-key (rid) then normalize then load
-  - AC: Re-running an adapter is idempotent (upsert, no duplicates)
-  - AC: Each load records source, year, and license
+  - AC: An adapter runs fetch then clean then map-to-canonical-region-key (rid) then normalize then load (test: `pipeline/test_pipeline.py`)
+  - AC: Re-running an adapter is idempotent (upsert, no duplicates) (test: `pipeline/test_pipeline.py`)
+  - AC: Each load records source, year, and license (test: `pipeline/test_pipeline.py`)
 - **Metric selector** `feat-metric-selector` — _ui_, test: `partial`
   - Switch the statistic on the map in one click.
   - AC: User can switch the metric and the map recolours
@@ -52,7 +52,7 @@
   - AC: A vs national/state average diverging view can be toggled (test: `tests/rankings.spec.ts`)
 - **Region detail panel** `feat-region-detail` — _ui_, test: `passing`
   - Click any state or district to open its full profile panel.
-  - AC: Clicking a region opens a panel with its value and rank per metric, with citations
+  - AC: Clicking a region opens a panel with its value and rank per metric, with citations (test: `tests/rankings.spec.ts`)
   - AC: The region panel shows the value against the national/state average (vs-average) and the region's rank or percentile position (test: `tests/rankings.spec.ts`)
   - AC: The detail panel works at both state and district drill levels, always reflecting the currently selected region (test: `tests/rankings.spec.ts`)
 - **Social export mode (Instagram-ready map cards)** `feat-social-export` — _ui_, test: `passing`
@@ -64,11 +64,28 @@
   - AC: Discrete 5-class legend with Indian-format break labels K/L/Cr, brand block with wordmark + @mapsofbharat + site URL plus source citation, all legible in both dark ink and paper almanac themes (test: `tests/social-card.spec.ts`)
 - **Source citation and methodology surface** `feat-source-trust` — _ui_, test: `partial`
   - Every number carries its official source, year and methodology — nothing uncited, ever.
-  - AC: Every metric shows source, year, and license, with a working citation link
+  - AC: Every metric shows source, year, and license, with a working citation link (test: `tests/methodology.spec.ts`)
   - AC: Each metric exposes methodology text (how the figure was measured/derived), served by the metrics API and shown in the trust surface (test: `tests/methodology.spec.ts`)
-  - AC: Source metadata (source, year, license, methodology, coverage) is stored per-metric in the canonical DB rather than hardcoded in the UI, so it stays correct across re-ingests
+  - AC: Source metadata (source, year, license, methodology, coverage) is stored per-metric in the canonical DB rather than hardcoded in the UI, so it stays correct across re-ingests (test: `tests/methodology.spec.ts`)
 
-### planned (5)
+### building (2)
+
+- **Metric families as small multiples** `feat-metric-families` — _ui_, test: `partial`
+  - A set of related official indicators drawn as one grid of district choropleths, so a whole subject reads at a glance. Nine families declared in lib/metric-families.ts, each with an explicit shared or free axis, and a part-to-whole caption only where the members were measured to decompose.
+  - AC: A family page renders one panel per resolved member; every panel draws every district in the artefact, with districts outside the family's shared set present in the no-data tone rather than omitted.
+  - AC: The axis in force is the one the family declares: a shared axis classifies over one pooled domain and renders exactly one legend; a free axis classifies each member on its own values and renders no legend, stating each panel's range in its caption instead.
+  - AC: Panels classify through lib/breaks.ts with the same stats membership the atlas uses (countsInStats, adr-022), so a panel classes a metric the way the main map does.
+  - AC: A part-to-whole caption appears only for families measured to decompose, and prints the measured figure and district count rather than a rounded one; every other family carries the opposite statement.
+  - AC: Every panel is a figure with a figcaption, and its accessible name carries both the value range and whether the scale is shared or not comparable across panels.
+- **Symbol / proportional-symbol maps** `feat-symbol-choropleth` — _ui_, test: `partial`
+  - Proportional-symbol maps for HOTSPOT metrics where a choropleth misleads (single-district spikes, raw counts). Unblocks roughly 29 district metrics — about a third of the library.
+  - AC: Symbol AREA is proportional to value, not radius: a district with 4x the count draws a circle of 2x the radius, so twice the ink means twice the quantity. Holds across the domain, the maximum value takes the maximum radius, and a small nonzero value is floored so it cannot vanish while a real zero draws nothing. Each circle sits on a representative point computed offline to lie INSIDE its own polygon, so none is drawn in the sea or over a neighbour. (test: `tests/symbol-maps.spec.ts`)
+  - AC: Only COUNT metrics are offered symbols. Rates stay choropleths — including count-shaped rates such as pop_density, and rates that merely look skewed, which is the case a HOTSPOT-flag check gets wrong (research/531). (test: `tests/symbol-maps.spec.ts`)
+  - AC: Signed metrics are refused automatically, because a sqrt-area circle cannot say which direction a change went. forest_change_km2 is excluded by detecting negative values, so the layer fails safe rather than drawing a loss as a gain. (test: `tests/symbol-maps.spec.ts`)
+  - AC: Symbol mode keeps full interaction parity with the choropleth: every feature-state write reaches the symbol source, selection from the rail works and opens the region panel, and hover behaves the same. A mode that drops half the interactions is a demo, not a view. (test: `tests/symbol-maps.spec.ts`)
+  - AC: SHADE / SIZE is a real, shareable choice: flipping the mode changes the map, only a deliberate flip travels in the URL, and a shared sym=0 link opens as a choropleth for the recipient. (test: `tests/symbol-maps.spec.ts`)
+
+### planned (4)
 
 - **Bivariate choropleth** `feat-bivariate-map` — _ui_, test: `not-tested`
   - Two curated metrics on one map via a 2D colour matrix, with pairings chosen at build time. Parked to post-launch per the launch plan.
@@ -76,8 +93,6 @@
   - Categorical map rendering for non-continuous indicators (e.g. the dominant category per region), with a legend of discrete classes.
 - **Hex-state and cartogram views** `feat-hex-cartogram` — _ui_, test: `not-tested`
   - Hex-state and population-cartogram layouts that give small or dense regions fair visual weight versus a geographic choropleth.
-- **Symbol / proportional-symbol maps** `feat-symbol-choropleth` — _ui_, test: `not-tested`
-  - Proportional-symbol maps for HOTSPOT metrics where a choropleth misleads (single-district spikes, raw counts). Unblocks roughly 29 district metrics — about a third of the library.
 - **VSUP uncertainty encoding toggle** `feat-vsup-uncertainty` — _ui_, test: `not-tested`
   - A value-suppressing-uncertainty toggle that folds confidence / coverage into the colour, so estimated or thin-coverage values read as less certain.
 

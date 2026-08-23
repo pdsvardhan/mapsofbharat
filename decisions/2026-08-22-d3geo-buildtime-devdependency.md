@@ -97,3 +97,140 @@ multiple is viable at all.
 Coordinates are also rounded to one decimal in the artefact: the panel is 220×240
 CSS px, so 0.1px is well below anything a screen resolves, and it removed 24% of
 the file for no visible change.
+
+## Addendum, 2026-08-23: the budget above measured two different things
+
+The addendum above set the grid's budget at **837 KiB raw / 36 KiB gzipped** for
+eight district panels. Once the panels actually rendered (iter-40 item 970), the
+measured pages came out at 1,208–3,090 KiB raw and 249–456 KiB gzipped. The
+budget was not missed by the grid. It was comparing two different quantities, and
+it was missing a third.
+
+**The grid's own markup is the size predicted.** Measured on a production build:
+409 KiB of `<defs>`, and 45.2 bytes per `<use>` — so religion's six panels are
+~604 KiB of SVG against ~837 KiB projected for eight. The `<defs>` + `<use>`
+decision holds exactly as recorded.
+
+**"36 KiB gzipped" was the artefact's own gzip, not a page's.** The artefact
+compresses to 36 KiB on disk; a rendered page containing it, plus its `<use>`
+references, plus the page around them, does not. Those numbers were never
+comparable, and quoting one as a budget for the other made a passing grade
+impossible to fail honestly.
+
+**And a server-rendered React tree ships twice.** This is the part nothing could
+have predicted before there was a page: Next serialises the rendered tree into
+the HTML a second time as RSC flight data inside `<script>`, so every path string
+and every `<use>` is paid for twice. On religion that was 886 KiB of the 1,537.
+It is not avoidable by rearranging the component — a single opaque HTML string
+prop is serialised just the same.
+
+### What changed (iter-41 item 976)
+
+The projection now snaps to a **0.5px grid** and drops vertices that are exactly
+collinear, in `scripts/build-family-paths.mjs`. Both reductions are pure
+functions of the coordinates, so two districts sharing a border make identical
+decisions from either side and no cracks open between them — the reason this is a
+snap rather than Douglas-Peucker, which walks each ring separately and can drop
+different vertices on each side of a shared border.
+
+The tolerance was measured, not chosen:
+
+| step | artefact | gzip | districts flattened |
+|---|---|---|---|
+| 0.1 | 327 KiB | 92 KiB | 0 |
+| 0.25 | 283 KiB | 68 KiB | 0 |
+| **0.5** | **182 KiB** | **47 KiB** | **0** |
+| 1.0 | 98 KiB | 28 KiB | **2 districts + 1 state** |
+
+1px is the tempting number and it is wrong: it flattens districts `04_55` and
+`26_494`, and state `04`, to zero extent.
+
+> **Correction, same day.** This paragraph first said *21 districts*. That number
+> was never measured — it came from misreading the guard's own output, where a
+> shell pipeline split `2 district(s)` across two lines and `2` was read together
+> with the `1` of the following line. The real figure is two districts and one
+> state, and the build refuses all three. Recorded rather than quietly edited,
+> because a fabricated number in a decision record is worse than the decision
+> being wrong: the next reader has no way to tell which figures were measured. A district that spans nothing still counts
+as a path — it is present, it is a string, it renders nothing — so the build now
+**refuses** any tolerance that produces one, by measuring each path's extent
+rather than counting paths.
+
+District layer: 394 → 182 KiB (−54%), 37,126 → 19,732 points (−47%).
+
+Resulting pages, production build:
+
+| family | panels | raw before → after | gzip before → after |
+|---|---|---|---|
+| mgnrega | 3 | 1,208 → 776 KiB | 249 → 148 KiB |
+| religion | 6 | 1,537 → 1,104 KiB | 283 → 181 KiB |
+| census-pca | 9 | 1,869 → 1,438 KiB | 315 → 216 KiB |
+| nfhs5-health | 22 | 3,090 → 2,666 KiB | 456 → 359 KiB |
+
+The `<use>` elements are untouched by any of this and dominate the large grids —
+nfhs5-health's 22 panels carry 16,170 of them — which is why its gzip falls 21%
+where a three-panel family falls 41%.
+
+`/family/[id]` still adds **0 B** of route JavaScript — the grid is a server
+component with no state and no hydration. The page is not JavaScript-free: it
+still loads the app's shared ~121 kB first-load bundle, as every route does.
+Earlier wording here said the page "ships 0 B of client JavaScript", which
+overstated it.
+
+### Second correction: 0.5px was still wrong, and 0.25 is the tolerance
+
+The table above was measured with an emit guard that asked whether a subpath's
+BOUNDING BOX had width and height. Replacing that question with "does this ring
+enclose anything" — the thing that actually decides whether a fill appears —
+changed the answer for one district.
+
+At 0.5px, district `34_634` snapped to
+
+```
+M107,166L107,166.5L106,166.5L106,166L106,166.5L107,166.5L107,166Z
+```
+
+Seven points, tracing out and back along the same edge. Its bounding box is
+0.5 × 0.5, so every guard that measured a box waved it through; its shoelace area
+is **zero**, so it painted nothing on all 61 panels. It shipped in the artefact,
+was counted among the 735, and was invisible — the same failure as the backwards
+rings, and it survived two rounds of review because every check asked about the
+box rather than the shape.
+
+**The tolerance is therefore 0.25px, not 0.5.**
+
+| step | district layer | gzip | regions that draw nothing |
+|---|---|---|---|
+| 0.1 | 327 KiB | 92 KiB | 0 |
+| **0.25** | **282 KiB** | **68 KiB** | **0** |
+| 0.5 | 182 KiB | 47 KiB | 1 — district 34_634 |
+| 1.0 | 98 KiB | 28 KiB | 3 — 04_55, 26_494, state 04 |
+
+Resulting pages, production build at 0.25px:
+
+| family | panels | raw | gzip |
+|---|---|---|---|
+| mgnrega | 3 | 982 KiB | 190 KiB |
+| religion | 6 | 1,310 KiB | 225 KiB |
+| census-pca | 9 | 1,644 KiB | 261 KiB |
+| nfhs5-health | 22 | 2,871 KiB | 404 KiB |
+
+Against the 249–456 KiB gzipped this started at, 0.25 keeps most of the win and
+costs about 100 KiB of artefact over 0.5 — for a district that can be seen.
+
+### A correction recorded on purpose
+
+The first implementation of this item shipped a duplicate-point pass whose
+comment claimed it was one of two independent reductions. Mutation testing showed
+it could not change the output: an exact duplicate is a degenerate collinear case
+wherever it sits. Deleting it, however, made things *worse* in a way the unit
+tests did not see — two state paths gained `M115.5,105L115.5,105Z`, a subpath of
+zero extent that draws nothing and counts as geometry. The real rule turned out
+to be neither: **a subpath is emitted only if it spans something**, checked at
+the point of emission, which covers the collapsed case AND the case the collinear
+pass creates by removing a middle vertex from three points. With that guard in
+place the dedupe pass is provably redundant — regenerating without it produces
+byte-identical layers — and it is gone.
+
+Recorded because the sequence is the lesson: two green unit tests, a claim in a
+comment that was false, and only measuring the artefact found it.
