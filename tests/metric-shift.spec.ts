@@ -130,16 +130,23 @@ test.describe("#547C the transition draws and re-sorts (items 978, 980)", () => 
     const a = (await (await request.get("/api/metrics/literacy_rate?level=district")).json()) as {
       values: Record<string, number>;
     };
-    const b = (await (await request.get("/api/metrics/muslim_pct?level=district")).json()) as {
-      values: Record<string, number>;
-    };
+    // The partner is DELIBERATELY one with gaps (699 of 733). Against a
+    // 733-complete partner the shared set equals the base set, and this test
+    // cannot tell intersection from union - the exact mutation it exists to
+    // kill would survive. Caught while writing the manifest, not by running it.
+    const b = (await (
+      await request.get("/api/metrics/nfhs5_full_immunization?level=district")
+    ).json()) as { values: Record<string, number> };
     const expected = sharedCodes(a.values, b.values).length;
-    expect(expected).toBeGreaterThan(700);
+    expect(expected).toBeGreaterThan(600);
+    expect(expected, "partner must have gaps or this test proves nothing").toBeLessThan(
+      Object.keys(a.values).length
+    );
 
     await page.goto("/metric/literacy_rate");
-    await page.locator("[data-shift-picker]").selectOption("muslim_pct");
+    await page.locator("[data-shift-picker]").selectOption("nfhs5_full_immunization");
     await expect(page.locator("[data-shift-dot]")).toHaveCount(expected);
-    expect(page.url()).toContain("vs=muslim_pct");
+    expect(page.url()).toContain("vs=nfhs5_full_immunization");
   });
 
   test("re-sorting moves dots, stages colour after position, and announces", async ({
