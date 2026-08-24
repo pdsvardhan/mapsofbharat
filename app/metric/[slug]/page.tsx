@@ -18,6 +18,8 @@ import {
 } from "@/lib/metric-page-data";
 import { familiesOfMetric } from "@/lib/metric-families";
 import { getMetricLineage } from "@/lib/metric-raw-source";
+import { transitionPartners } from "@/lib/metric-pairs";
+import { MetricShift } from "@/components/atlas/metric-shift";
 import { SITE_URL } from "@/lib/site";
 
 // Canonical, server-rendered, indexable page for one metric (iter-131 item 829).
@@ -123,6 +125,12 @@ export default async function MetricPage({
   // here rather than competing with it. Membership comes from METRIC_FAMILIES,
   // never a second list (iter-40 item 975).
   const families = familiesOfMetric(detail.id);
+  // The transition's eligible partners (#547 phase C, iter-42). Empty when this
+  // metric misses its level's coverage floor, in which case the section simply
+  // does not exist - a picker of pairs as thin as the base would be worse than
+  // no picker.
+  const shiftPartners = transitionPartners(detail.id, level);
+  const nameOf = Object.fromEntries(rows.map((r) => [r.code, r.name]));
   const scopeNoun = level === "district" ? "districts" : "states";
   const measured = detail.count - detail.estimated_count;
   const footnote = estimateFootnote(rows, scopeNoun);
@@ -330,6 +338,33 @@ export default async function MetricPage({
       </section>
 
       {/* Data lineage + tiered download (iter-131 item 831), server-rendered */}
+      {shiftPartners.length ? (
+        <section className="mt-8" data-band="shift">
+          <h2 className="mb-2 text-[13px] font-bold uppercase tracking-[.12em] text-faint">
+            Re-ranked against another metric
+          </h2>
+          <p className="mb-3 max-w-3xl text-[13px] leading-relaxed text-muted">
+            Pick a second metric and watch every {scopeNoun.replace(/s$/, "")} keep its
+            identity while the ranking re-sorts — the same {scopeNoun}, ordered by a
+            different question.
+          </p>
+          <MetricShift
+            base={{
+              id: detail.id,
+              name: detail.name,
+              category: detail.category,
+              unit: detail.unit,
+              year: detail.year,
+              decimals: detail.decimals,
+            }}
+            level={level}
+            values={detail.values}
+            names={nameOf}
+            partners={shiftPartners}
+          />
+        </section>
+      ) : null}
+
       <MetricLineage
         metricId={detail.id}
         source={detail.source}
