@@ -93,6 +93,15 @@ test.describe("#547C layout math (item 978, node-side)", () => {
     const last = cellCentre(732, d);
     expect(last.x).toBeLessThan(700);
     expect(last.y).toBeLessThan(d.height);
+    // AND THE GRID IS GRID-SHAPED. The first version of this test verified
+    // capacity and arithmetic but never the aspect, so a mutation collapsing the
+    // grid to ONE COLUMN - 733 rows, 513,100px tall - passed every assertion.
+    // The whole point of the target aspect is a grid a page can hold.
+    for (const n of [733, 576, 36]) {
+      const g = gridDims(n);
+      expect(g.height / g.width, String(n) + " dots: aspect").toBeGreaterThan(0.35);
+      expect(g.height / g.width, String(n) + " dots: aspect").toBeLessThan(0.85);
+    }
   });
 
   test("rank order is by value descending with a STABLE tie-break", () => {
