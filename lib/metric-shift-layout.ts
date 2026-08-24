@@ -1,3 +1,5 @@
+import { countsInStats } from "@/lib/estimate-kind";
+
 // Pure layout math for the metric-to-metric transition (#547 phase C, iter-42
 // items 977/978). No DOM, no DB, no React — everything here is testable
 // node-side and mutation-provable without a rebuild, which is why it is split
@@ -64,4 +66,26 @@ export function sharedCodes(
   return Object.keys(a)
     .filter((c) => b[c] != null)
     .sort();
+}
+
+/**
+ * The values class edges may be computed over: the shared set MINUS the copies
+ * adr-022 excludes (an inherited value duplicates a real district already
+ * counted; projections stay). The code verifier caught the first version of the
+ * transition computing edges over ALL shared values while its caption claimed
+ * "colours class the metric the way the map does" - on
+ * nfhs5_full_immunization's 39 inherited copies the quintile edges measurably
+ * moved, so a district could take a different class here than on the map above
+ * it. Same rule as lib/family-data.ts, extracted PURE so a node-side mutation
+ * can kill it without a rebuild.
+ */
+export function statsValues(
+  codes: string[],
+  values: Record<string, number>,
+  estimated: Record<string, 1 | undefined>,
+  estimateKind: Record<string, string | undefined>
+): number[] {
+  return codes
+    .filter((c) => countsInStats(estimated[c] ? 1 : 0, estimateKind[c] ?? null))
+    .map((c) => values[c]);
 }

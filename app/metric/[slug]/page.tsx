@@ -359,6 +359,8 @@ export default async function MetricPage({
             }}
             level={level}
             values={detail.values}
+            estimated={detail.estimated}
+            estimateKind={detail.estimate_kind}
             names={nameOf}
             partners={shiftPartners}
           />

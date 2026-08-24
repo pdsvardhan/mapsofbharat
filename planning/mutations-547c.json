@@ -31,6 +31,12 @@
       "file": "lib/metric-shift-layout.ts",
       "find": "    .filter((c) => b[c] != null)",
       "replace": "    .filter(() => true)"
+    },
+    {
+      "name": "the adr-022 filter admits copies into the class edges",
+      "file": "lib/metric-shift-layout.ts",
+      "find": "    .filter((c) => countsInStats(estimated[c] ? 1 : 0, estimateKind[c] ?? null))",
+      "replace": "    .filter(() => true)"
     }
   ]
 }

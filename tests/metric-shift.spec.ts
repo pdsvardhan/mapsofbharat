@@ -6,6 +6,7 @@ import {
   linear,
   rankOrder,
   sharedCodes,
+  statsValues,
 } from "@/lib/metric-shift-layout";
 
 // The metric-to-metric transition (#547 phase C, iter-42 items 977-982).
@@ -47,6 +48,20 @@ test.describe("#547C the pair rule admits what it claims (item 977)", () => {
     // addition is SUPPOSED to break this line - the number is then re-measured
     // and moved, which is the acknowledgment the rule wants.
     expect(pool.length, "district pool - re-measure if the catalogue moved").toBe(74);
+
+    // And the SHARED-district count the lib's own comment states: the
+    // districts on which EVERY eligible metric carries a value. The lock said
+    // R1's counts become assertions; 576 lived only in a comment until the
+    // code verifier pointed it out.
+    let shared: string[] | null = null;
+    for (const id of pool) {
+      const d = (await (
+        await request.get(`/api/metrics/${id}?level=district`)
+      ).json()) as { values: Record<string, number> };
+      const keys = new Set(Object.keys(d.values));
+      shared = shared === null ? [...keys] : shared.filter((k) => keys.has(k));
+    }
+    expect(shared?.length, "shared districts across the eligible pool").toBe(576);
     const html = await (await request.get("/metric/literacy_rate")).text();
     const options = [...html.matchAll(/<option value="([a-z0-9_]+)"/g)].map((m) => m[1]);
     expect(new Set(options).size, "picker options").toBe(pool.length - 1);
@@ -119,6 +134,25 @@ test.describe("#547C layout math (item 978, node-side)", () => {
 
   test("sharedCodes is the intersection, sorted", () => {
     expect(sharedCodes({ x: 1, y: 2, z: 3 }, { y: 9, z: 8, w: 7 })).toEqual(["y", "z"]);
+  });
+
+  test("class edges exclude copies and keep projections (adr-022)", () => {
+    // The code verifier's HARD finding on this feature: edges were computed
+    // over ALL shared values while the caption claimed map-parity, and 39
+    // inherited copies on the fixture partner measurably moved the quintiles.
+    // countsInStats is the atlas's own membership rule: inherited values are
+    // COPIES of real districts already counted and stay out; projections are a
+    // region's only figure and stay in.
+    const codes = ["a", "b", "c", "d"];
+    const values = { a: 10, b: 20, c: 30, d: 40 };
+    const out = statsValues(
+      codes,
+      values,
+      { b: 1, d: 1 },
+      { b: "inherited", d: "projected" }
+    );
+    expect(out, "inherited dropped, projected kept").toEqual([10, 30, 40]);
+    expect(statsValues(codes, values, {}, {})).toEqual([10, 20, 30, 40]);
   });
 });
 

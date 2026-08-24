@@ -17,6 +17,7 @@ import {
   linear,
   rankOrder,
   sharedCodes,
+  statsValues,
 } from "@/lib/metric-shift-layout";
 import type { TransitionPartner } from "@/lib/metric-pairs";
 
@@ -36,9 +37,10 @@ import type { TransitionPartner } from "@/lib/metric-pairs";
 // prefers-reduced-motion does not get a slower version of the animation; it
 // gets a DIFFERENT RENDERING — the static two-axis scatter, which carries both
 // metrics at once so nothing needs to move at all. R1 rules that rendering IS
-// the fallback rather than a third product. Changes are announced to assistive
-// tech via aria-live either way, and the picker is a native <select>, keyboard
-// operable for free.
+// the fallback rather than a third product. Loading a comparison announces via
+// aria-live in BOTH modes; a re-sort additionally announces in grid mode - in
+// scatter mode there is no re-sort to announce, because nothing moves. The
+// picker is a native <select>, keyboard operable for free.
 //
 // No new dependency (owner call at the iter-42 gate): positions are plain
 // math, the staging is CSS transitions on SVG transforms. adr-032 stays intact
@@ -58,6 +60,11 @@ type Props = {
   base: Meta;
   level: "district" | "state";
   values: Record<string, number>;
+  /** adr-022 metadata for the base metric: which codes are estimates, and of
+   *  what kind. Edges are computed over the copy-free subset; every dot is
+   *  still painted. */
+  estimated: Record<string, 1>;
+  estimateKind: Record<string, string>;
   names: Record<string, string>;
   partners: TransitionPartner[];
 };
@@ -71,8 +78,9 @@ function paletteFor(category: string) {
   return PALETTES[id].fn;
 }
 
-/** Class edges + colour for one metric over exactly the values in view — the
- *  atlas's own selector and breaks (adr-033), never a second scheme. */
+/** Class edges + colour for one metric — the atlas's own selector and breaks
+ *  (adr-033), computed over the copy-free stats subset (adr-022) while every
+ *  dot still gets painted. `vals` must already be the stats subset. */
 function colourer(meta: Meta, vals: number[]) {
   const ref = METRIC_REFERENCE[meta.id] ?? null;
   const method = selectMethod(vals, { isPct: meta.unit === "%", reference: ref }).method;
@@ -94,9 +102,21 @@ function fmt(v: number, meta: Meta): string {
   );
 }
 
-export function MetricShift({ base, level, values, names, partners }: Props) {
+export function MetricShift({
+  base,
+  level,
+  values,
+  estimated,
+  estimateKind,
+  names,
+  partners,
+}: Props) {
   const [partnerId, setPartnerId] = useState<string>("");
   const [partnerValues, setPartnerValues] = useState<Record<string, number> | null>(null);
+  const [partnerEst, setPartnerEst] = useState<{
+    estimated: Record<string, 1>;
+    estimateKind: Record<string, string>;
+  }>({ estimated: {}, estimateKind: {} });
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error">("idle");
   const [view, setView] = useState<"base" | "partner">("base");
   const [reduced, setReduced] = useState(false);
@@ -152,12 +172,25 @@ export function MetricShift({ base, level, values, names, partners }: Props) {
       signal: ctl.signal,
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((d: { values?: Record<string, number> }) => {
-        if (ctl.signal.aborted) return;
-        if (!d.values || !Object.keys(d.values).length) throw new Error("empty");
-        setPartnerValues(d.values);
-        setLoadState("idle");
-      })
+      .then(
+        (d: {
+          values?: Record<string, number>;
+          estimated?: Record<string, 1>;
+          estimate_kind?: Record<string, string>;
+        }) => {
+          if (ctl.signal.aborted) return;
+          if (!d.values || !Object.keys(d.values).length) throw new Error("empty");
+          setPartnerValues(d.values);
+          setPartnerEst({
+            estimated: d.estimated ?? {},
+            estimateKind: d.estimate_kind ?? {},
+          });
+          setLoadState("idle");
+          setAnnounce(
+            `Comparison loaded: ${Object.keys(d.values).length} values fetched.`
+          );
+        }
+      )
       .catch((e) => {
         if (ctl.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return;
         setPartnerValues(null);
@@ -179,7 +212,17 @@ export function MetricShift({ base, level, values, names, partners }: Props) {
     const posIndex = new Map(
       rankOrder(currentValues, shared).map((code, i) => [code, i])
     );
-    const fill = colourer(current, shared.map((c) => currentValues[c]));
+    // Edges over the copy-free subset (adr-022); paint over everything. If a
+    // metric were somehow all copies on this set, fall back to all values
+    // rather than classing on nothing - impossible today (no metric is wholly
+    // estimated), but coded rather than assumed.
+    const est = view === "base" ? estimated : partnerEst.estimated;
+    const kind = view === "base" ? estimateKind : partnerEst.estimateKind;
+    const stats = statsValues(shared, currentValues, est, kind);
+    const fill = colourer(
+      current,
+      stats.length ? stats : shared.map((c) => currentValues[c])
+    );
 
     // The reduced-motion rendering: both metrics at once, nothing moving.
     const baseVals = shared.map((c) => values[c]);
@@ -203,7 +246,7 @@ export function MetricShift({ base, level, values, names, partners }: Props) {
           scatterHeight - pad - linear(partnerValues[c], pMin, pMax, scatterHeight - 2 * pad),
       },
     };
-  }, [partner, partnerValues, shared, view, base, values]);
+  }, [partner, partnerValues, partnerEst, shared, view, base, values, estimated, estimateKind]);
 
   const resort = useCallback(
     (next: "base" | "partner") => {
