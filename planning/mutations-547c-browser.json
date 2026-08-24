@@ -1,0 +1,70 @@
+{
+  "tests": "tests/metric-shift.spec.ts",
+  "requires_rebuild": true,
+  "note": "#547 phase C, BROWSER-SIDE half. Each mutation only reaches the page after `npm run build` and a server restart. Per step: apply -> build -> restart -> CONFIRM THE CONTROL changed in the served page -> run the spec. A stale server produced false all-clears twice during phase B; the control check is not optional.",
+  "mutations": [
+    {
+      "name": "district floor loosened to 400 - the MGNREGA family and csection would silently gain sections",
+      "file": "lib/metric-pairs.ts",
+      "find": "export const TRANSITION_FLOOR = { district: 690, state: 30 } as const;",
+      "replace": "export const TRANSITION_FLOOR = { district: 400, state: 30 } as const;",
+      "control": "/metric/mgnrega_pct_hh_100_days gains data-band=shift; the exact-count test reads more than 74"
+    },
+    {
+      "name": "base metric offers itself as its own partner",
+      "file": "lib/metric-pairs.ts",
+      "find": "  return eligible.filter((m) => m.id !== metricId);",
+      "replace": "  return eligible;",
+      "control": "literacy_rate appears in its own picker; option count reads 74 not 73"
+    },
+    {
+      "name": "under-covered base gets a picker anyway",
+      "file": "lib/metric-pairs.ts",
+      "find": "  if (!eligible.some((m) => m.id === metricId)) return [];",
+      "replace": "",
+      "control": "/metric/nfhs5_csection_private gains data-band=shift"
+    },
+    {
+      "name": "staging removed - colour changes with position instead of after it",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "transition: `transform ${MOVE_MS}ms ease-in-out, fill ${FILL_MS}ms ease ${MOVE_MS}ms`,",
+      "replace": "transition: `transform ${MOVE_MS}ms ease-in-out, fill ${FILL_MS}ms ease`,",
+      "control": "the transition property on a dot loses its 1000ms fill delay"
+    },
+    {
+      "name": "reduced-motion fork hardwired off",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "    const apply = () => setReduced(mq.matches);",
+      "replace": "    const apply = () => setReduced(false);",
+      "control": "data-shift-mode stays grid and sort buttons render under reducedMotion: reduce"
+    },
+    {
+      "name": "URL state not written - views stop being shareable",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "      history.replaceState(null, \"\", url.toString());",
+      "replace": "",
+      "control": "page.url() lacks vs= after picking"
+    },
+    {
+      "name": "deep link ignored on mount",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "    if (vs && partners.some((p) => p.id === vs)) setPartnerId(vs);",
+      "replace": "",
+      "control": "?vs=sex_ratio leaves the picker empty"
+    },
+    {
+      "name": "announcement silenced",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "      setAnnounce(`Re-sorted by ${name}. ${shared.length} ${level}s re-ranked.`);",
+      "replace": "",
+      "control": "the scoped aria-live region stays empty after a re-sort"
+    },
+    {
+      "name": "dots drawn for the base metric's whole set, not the shared set",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "    () => (partnerValues ? sharedCodes(values, partnerValues) : []),",
+      "replace": "    () => (partnerValues ? Object.keys(values).sort() : []),",
+      "control": "dot count reads 733 against an expected shared set of fewer for a partner with gaps"
+    }
+  ]
+}

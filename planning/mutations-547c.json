@@ -1,0 +1,36 @@
+{
+  "tests": "tests/metric-shift.spec.ts",
+  "note": "#547 phase C, NODE-SIDE half. tests/metric-shift.spec.ts imports lib/metric-shift-layout.ts directly, so these run unattended via scripts/mutation-test.sh --manifest planning/mutations-547c.json. The browser-side half lives in mutations-547c-browser.json (rebuild + control per step). The layout maths is split into a pure lib precisely so this half EXISTS - logic that only lives inside a client component can only be mutation-tested through a served build.",
+  "mutations": [
+    {
+      "name": "rank order inverted - lowest first would flip every re-sort",
+      "file": "lib/metric-shift-layout.ts",
+      "find": "  return [...codes].sort((a, b) => values[b] - values[a] || (a < b ? -1 : 1));",
+      "replace": "  return [...codes].sort((a, b) => values[a] - values[b] || (a < b ? -1 : 1));"
+    },
+    {
+      "name": "tie-break removed - equal-valued dots would swap places between renders",
+      "file": "lib/metric-shift-layout.ts",
+      "find": "  return [...codes].sort((a, b) => values[b] - values[a] || (a < b ? -1 : 1));",
+      "replace": "  return [...codes].sort((a, b) => values[b] - values[a]);"
+    },
+    {
+      "name": "grid collapses to one column",
+      "file": "lib/metric-shift-layout.ts",
+      "find": "  const cols = Math.max(1, Math.ceil(Math.sqrt(n / targetAspect)));",
+      "replace": "  const cols = 1;"
+    },
+    {
+      "name": "degenerate domain divides by zero instead of centring",
+      "file": "lib/metric-shift-layout.ts",
+      "find": "  if (d === 0) return span / 2;",
+      "replace": "  if (false) return span / 2;"
+    },
+    {
+      "name": "sharedCodes returns the union side, not the intersection",
+      "file": "lib/metric-shift-layout.ts",
+      "find": "    .filter((c) => b[c] != null)",
+      "replace": "    .filter(() => true)"
+    }
+  ]
+}
