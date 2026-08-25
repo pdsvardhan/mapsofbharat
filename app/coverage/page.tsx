@@ -95,9 +95,17 @@ export default function CoveragePage() {
 
             This used to nest a second div to stack the label over its note, which
             put dt and dd two levels down, so their parent was not a child of the
-            dl. The list stopped being a list: a screen reader read the provenance
-            key as loose text instead of pairing each term with its description,
-            which is the entire point of the key.
+            dl — an invalid content model, and 9 axe nodes per viewport.
+
+            WHAT THIS DOES NOT CLAIM, corrected after verification. An earlier
+            version of this comment said a screen reader read the key as loose
+            text. That is not demonstrable: Chromium's accessibility tree exposed
+            correctly paired term/definition nodes BEFORE the change as well, and
+            the ariaSnapshot is byte-identical either side. What actually changed
+            is a valid content model and one less ignored generic — real
+            conformance, at zero visual cost, but not a change in what Chromium
+            announces. Other engines were not measured, so whether any AT ever
+            behaved differently here is unknown rather than established.
 
             A grid does the stacking that the inner div was doing — swatch in the
             first column spanning both rows, dt above dd in the second — so the

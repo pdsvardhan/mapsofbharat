@@ -1484,7 +1484,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         e.preventDefault();
         setSearchOpen((o) => !o); setChooserOpen(false); setScaleOpen(false);
       } else if (e.key === "Escape") {
-        if (searchOpen || chooserOpen || scaleOpen) {
+        // socialOpen belongs in this list and was missing (iter-44, found by the
+        // feature verifier). The export dialog closes itself through its own
+        // window listener, so Escape LOOKED right — but this handler then fell
+        // through to the branch below and silently threw away the reader's
+        // drill-down. Measured: drill into Jharkhand, open CARD, press Escape,
+        // and the breadcrumb goes from "India | Jharkhand" back to "India".
+        //
+        // This is the contract use-dismiss.ts spells out — Escape dismisses the
+        // TOPMOST layer only — and the same trap it warns about: "anything new
+        // that listens for Escape on window while a popover can sit above it will
+        // be starved here, and nothing enforces that contract but this comment."
+        // A fourth overlay was added and nothing made it join the guard.
+        if (searchOpen || chooserOpen || scaleOpen || socialOpen) {
           setSearchOpen(false); setChooserOpen(false); setScaleOpen(false);
         } else if (selectedRef.current || focusRef.current) {
           // Escape steps all the way back to the national view (item 405)
@@ -1495,7 +1507,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [minimal, searchOpen, chooserOpen, scaleOpen]);
+  }, [minimal, searchOpen, chooserOpen, scaleOpen, socialOpen]);
 
   // ── breadcrumb model ────────────────────────────────────────────────────
   const crumbs = useMemo(() => {
