@@ -88,14 +88,26 @@ test.describe("#580 — every indexing signal agrees", () => {
 
       const header = r.headers()["x-robots-tag"] ?? "";
       const html = await r.text();
-      const meta = /<meta name="robots" content="([^"]*)"/i.exec(html)?.[1] ?? "";
+      // ALL of them, not the first. `.exec()` returns only the first match, so a
+      // page emitting `noindex` AND `index, follow` would have been read as
+      // agreeing with whichever came first — a guard that cannot see the
+      // contradiction it exists to catch. Found by the iter-43 code verifier on
+      // /_not-found, which really does emit both in a launched build.
+      const metas = [...html.matchAll(/<meta name="robots" content="([^"]*)"/gi)].map((m) =>
+        m[1].toLowerCase()
+      );
 
       // Both must exist to be compared — an absent meta is how this silently
       // passed before.
-      expect(meta, `${path} emitted no meta robots at all`).not.toBe("");
+      expect(metas.length, `${path} emitted no meta robots at all`).toBeGreaterThan(0);
+      expect(
+        metas.length,
+        `${path} emitted ${metas.length} robots metas (${metas.join(" | ")}); a page that says two different things says nothing`
+      ).toBe(1);
 
       const headerSaysNo = header.includes("noindex");
-      const metaSaysNo = meta.includes("noindex");
+      const metaSaysNo = metas[0].includes("noindex");
+      const meta = metas[0];
       expect(
         metaSaysNo,
         `${path}: header says "${header}" but meta says "${meta}" — the two halves of the switch disagree`

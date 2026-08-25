@@ -59,18 +59,27 @@ function fingerprint(path, idProp) {
     ids.push(String(f.properties?.[idProp] ?? ""));
     // Deterministic regardless of key order in the source file.
     //
-    // THE SEPARATOR BELOW IS A LITERAL 0x01 (SOH) BYTE, AND IT IS DELIBERATE.
+    // THIS FILE USES TWO LITERAL CONTROL BYTES AS SEPARATORS, AND BOTH ARE
+    // DELIBERATE: 0x01 (SOH) joins key=value pairs within a row, just below, and
+    // 0x02 (STX) joins the rows themselves further down. They nest, which is the
+    // whole point — a row separator that could appear inside a row would let two
+    // different property sets fingerprint identically.
     // It joins property key=value pairs into one fingerprint row, and it is
     // chosen precisely because no district name, state name or code can contain
     // it — a printable separator like "|" or "," could collide with real data
     // and make two different property sets fingerprint identically, which in
     // this file means a changed boundary passing the gate.
     //
-    // Flagged here because iter-43 found the SAME byte used by ACCIDENT in
+    // Neither can occur in a district name, a state name or a code, which is
+    // exactly why they were chosen over "|" or ",".
+    //
+    // Flagged here because iter-43 found the 0x01 used by ACCIDENT in
     // scripts/backup-offbox.sh and scripts/restore-drill.sh, where a sed
     // replacement should have read backslash-1 — and a blanket "strip the
     // control bytes" sweep would silently change this fingerprint and break the
-    // Survey-of-India boundary gate. This one stays.
+    // Survey-of-India boundary gate. BOTH of these stay. (The first version of
+    // this label named only the 0x01 — so a sweep following it would still have
+    // corrupted the 0x02 eleven lines down. Caught by the iter-43 code verifier.)
     const props = f.properties ?? {};
     propRows.push(
       Object.keys(props).sort().map((k) => k + "=" + String(props[k])).join("")

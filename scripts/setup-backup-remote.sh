@@ -80,7 +80,14 @@ echo "1/5  config written to $CONF (mode 600)"
 if rclone lsd "${REMOTE_NAME}:" >/dev/null 2>&1; then
   echo "2/5  credentials verified (bucket-listing token)"
   rclone mkdir "${REMOTE_NAME}:${BUCKET}" 2>/dev/null
-  rclone lsd "${REMOTE_NAME}:" | grep -q "$BUCKET" || die "could not create or see bucket '$BUCKET'"
+  # Same two-step as restore-drill.sh's home-page check, and for the same reason:
+  # `cmd | grep -q` under `set -o pipefail` fails when grep matches EARLY, because
+  # grep exits and the writer dies on a broken pipe. Harmless with two buckets,
+  # a coin-flip with fifty. Fixed here before it bites rather than after.
+  buckets_out="$(mktemp)"
+  rclone lsd "${REMOTE_NAME}:" > "$buckets_out" 2>/dev/null
+  grep -q "$BUCKET" "$buckets_out" || { rm -f "$buckets_out"; die "could not create or see bucket '$BUCKET'"; }
+  rm -f "$buckets_out"
 elif rclone lsjson "${REMOTE_NAME}:${BUCKET}" --max-depth 1 >/dev/null 2>&1; then
   # An object-scoped token cannot enumerate buckets, but it can address this one.
   echo "2/5  credentials verified (object-scoped token; bucket must already exist)"

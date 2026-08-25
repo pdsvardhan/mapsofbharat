@@ -53,7 +53,18 @@ const DESCRIPTION =
 // the value baked into its HTML is correct in both launch states. Shallow
 // metadata merge means a page's own robots always beats this one.
 //
-// So: every route whose robots directive DEPENDS on the flag renders per
+// One route still inherits a flag-dependent directive into static HTML, and it
+// is named here rather than left as a surprise: `/_not-found`. A build made with
+// SITE_LAUNCHED=true bakes BOTH Next's own `noindex` for the not-found boundary
+// and this layout's `index, follow`, so a 404 then carries two contradictory
+// robots metas. It is harmless — a 404's STATUS governs indexing, and crawlers
+// take the most restrictive directive — but it is the same defect class, so it
+// is disclosed. It is also not runtime-testable: it depends on the flag at BUILD
+// time, and CI builds unlaunched then runs launched, so no served-page assertion
+// can reach it. Fixing it properly means giving the not-found boundary its own
+// robots, which Next does not currently allow from `not-found.tsx`.
+//
+// Otherwise: every route whose robots directive depends on the flag renders per
 // request, and flipping SITE_LAUNCHED moves all three signals together with no
 // rebuild — the guarantee robots.ts already gives. Any new route that inherits
 // its robots from here must be dynamic too, and tests/iter43-hardening.spec.ts

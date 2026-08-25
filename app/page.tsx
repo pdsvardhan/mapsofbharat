@@ -20,6 +20,15 @@ import { AtlasHome } from "@/components/atlas-home";
 // marked "use client", which was measured: with the config exported from the old
 // client page, `/` still built as ○ (static) and index.html still shipped a baked
 // robots meta. The client half now lives in components/atlas-home.tsx.
+// THE COST, stated rather than discovered under load. As a prerender, `/` was the
+// only content page a CDN could hold (`s-maxage=31536000`); dynamic, it now sends
+// `private, no-store` like every other page, so at launch the busiest URL becomes
+// always-origin on a single home server. Measured TTFB went ~1.5-2.9ms to
+// ~4.7-6.5ms, which is nothing — the body is a loading shell, since the map is
+// `ssr: false` and every heavy asset (geometry, JS chunks) is still static and
+// edge-cached. Re-adding a cache header here is possible but is a trap while the
+// robots directive still depends on SITE_LAUNCHED: a year-long edge copy would
+// outlive the flag flip. If it is ever wanted, it needs a purge at launch.
 export const dynamic = "force-dynamic";
 
 export default function HomePage() {

@@ -145,7 +145,23 @@ else
 fi
 
 # A page, not just an API — the thing a human would look at.
-curl -sf "http://127.0.0.1:$PORT/" | grep -qi "<html" || fail "the home page did not render from restored data"
+#
+# FETCHED TO A FILE, THEN GREPPED, and the two-step is the whole point.
+# `curl -sf ... | grep -qi` reads as equivalent and is not: `grep -q` exits the
+# instant it matches, curl loses its writer, dies with exit 23, and
+# `set -o pipefail` promotes that to the pipeline's status. So the check FAILS
+# precisely when the page is big enough that grep matches before curl finishes —
+# i.e. it gets less reliable as the page gets healthier.
+#
+# It was harmless while `/` was a small prerendered page. Making `/` dynamic in
+# iter-43 (#580) grew the response to ~17KB and curl started losing the race every
+# time: 3 of 3 clean runs failed with "the home page did not render from restored
+# data" while the page rendered perfectly at 200. Worse, this check sits BEFORE
+# the raw-mirror verification below, so the drill aborted here and the mirror
+# guard never ran at all.
+page_html="$WORK/home.html"
+curl -sf "http://127.0.0.1:$PORT/" -o "$page_html"   || fail "the home page did not respond from restored data"
+grep -qi "<html" "$page_html"   || fail "the home page responded but rendered no HTML from restored data"
 log "home page renders"
 
 # -- 4. the raw tree, the asset git does not carry --------------------------
@@ -188,8 +204,15 @@ if [ "$mirrored" = "0" ]; then
 fi
 # A count far below what the snapshot recorded is the partial-loss case the old
 # guard could never see. Same 90% floor backup-offbox.sh uses.
+# The asymmetry with $mirrored above is deliberate, and is stated rather than
+# left to be rediscovered: an unreadable $mirrored means the check could not run
+# and must fail, whereas an unreadable $declared means there is no BASELINE to
+# compare against — a snapshot taken before raw-file-count.txt existed, say. That
+# is a real and harmless case, so it proceeds. But it still SKIPS a check, and a
+# silent skip is indistinguishable from a pass, so it says so out loud.
 case "$declared" in
-  ''|*[!0-9]*) ;;
+  ''|*[!0-9]*)
+    log "  NOTE: snapshot recorded no usable raw file count ('$declared') - partial-loss check SKIPPED, not passed" ;;
   *) if [ "$declared" -gt 0 ] && [ "$mirrored" -lt "$(( declared * 9 / 10 ))" ]; then
        fail "the raw mirror holds $mirrored files but the snapshot recorded $declared - treat this drill as FAILED"
      fi ;;

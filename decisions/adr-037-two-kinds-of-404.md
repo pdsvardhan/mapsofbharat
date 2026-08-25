@@ -74,8 +74,9 @@ It was removed rather than kept as dead configuration.
 > stable runtime never consults the file, and that adopting it would mean moving a
 > live site onto an experimental React runtime. An independent verifier checked
 > and none of that is true — `global-not-found` appears in the stable and
-> experimental runtime bundles alike (3 hits each, byte-identical logic), and no
-> runtime swap was ever substantiated.
+> experimental runtime bundles alike (3 hits each; the logic is equivalent, with
+> only minified identifiers differing), and no runtime swap was ever
+> substantiated.
 >
 > The error came from a measurement that could not tell the two outcomes apart.
 > The `global-not-found.tsx` under test rendered the *same component* as
