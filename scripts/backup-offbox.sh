@@ -235,14 +235,35 @@ else
       log "  mirroring $d (incremental - only changed files move)"
       rclone sync "$STAGE/raw-current/$d" "$REMOTE/raw-current/$d"         --transfers 4 --retries 3         --backup-dir "$REMOTE/raw-deleted/$STAMP"         || fail "rclone sync of $d failed"
     done
-    remote_raw="$(rclone size "$REMOTE/raw-current" --json 2>/dev/null | sed -n 's/.*"count":\([0-9]*\).*//p')"
-    if [ -n "$remote_raw" ]; then
-      log "  remote raw mirror holds $remote_raw files (local $raw_file_count)"
-      # A mirror that quietly lost most of its files is the failure worth catching;
-      # rclone exiting 0 says the transfer ran, not that the bytes are there.
-      if [ "$remote_raw" -lt "$(( raw_file_count * 9 / 10 ))" ]; then
-        fail "remote raw mirror holds $remote_raw of $raw_file_count files - treat tonight as FAILED"
-      fi
+    remote_raw="$(rclone size "$REMOTE/raw-current" --json 2>/dev/null | sed -n 's/.*"count":\([0-9]*\).*/\1/p')"
+    # FAIL CLOSED (#574, iter-43). The backreference above used to be a literal
+    # 0x01 (SOH) control byte rather than the two characters backslash and 1 —
+    # a shell-escaping accident, invisible to cat, grep and every editor view;
+    # `cat -A` renders it ^A. It did not crash. It LIED:
+    #
+    #   sed replaced the whole line with the control byte, so remote_raw held a
+    #   single unprintable character. `[ -n ]` therefore passed; the log line
+    #   printed "holds  files" with a blank where the number belongs; and the
+    #   comparison died with "[: : integer expression expected", which is a
+    #   non-fatal bash error inside an `if`, so the script continued and exited 0.
+    #
+    # So this check has never run, on any night, and every run reported success.
+    # Measured against rclone 1.60.1 and 1.75.0: the JSON is byte-identical
+    # (`{"count":905,...}`), so this was never a version problem.
+    #
+    # The old `if [ -n ... ]` wrapper is gone with it. Treating an unreadable
+    # count as a reason to SKIP the check makes skipping indistinguishable from
+    # passing; a verifier that cannot take its own measurement has verified
+    # nothing, and must say so rather than fall through quietly.
+    case "$remote_raw" in
+      ''|*[!0-9]*)
+        fail "could not read the remote raw file count (got '$remote_raw') — the mirror check did NOT run, treat tonight as FAILED" ;;
+    esac
+    log "  remote raw mirror holds $remote_raw files (local $raw_file_count)"
+    # A mirror that quietly lost most of its files is the failure worth catching;
+    # rclone exiting 0 says the transfer ran, not that the bytes are there.
+    if [ "$remote_raw" -lt "$(( raw_file_count * 9 / 10 ))" ]; then
+      fail "remote raw mirror holds $remote_raw of $raw_file_count files - treat tonight as FAILED"
     fi
   fi
   rclone sync "$STAGE/daily"  "$REMOTE/daily"  --transfers 2 --retries 3 \

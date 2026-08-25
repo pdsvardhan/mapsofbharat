@@ -42,3 +42,4 @@ The canonical index of architecture decisions for Maps of Bharat. Each row links
 | [adr-034](decisions/adr-034-border-cascade-layer.md) | 2026-08-13 | system | The border hierarchy the code asked for and the cascade threw away |
 | [adr-035](decisions/adr-035-administered-area-denominator.md) | 2026-08-21 | reliability | Population density divides by administered area, and says so |
 | [adr-036](decisions/adr-036-count-marginal-workers.md) | 2026-08-21 | reliability | The four worker categories now count everyone who works |
+| [adr-037](decisions/adr-037-two-kinds-of-404.md) | 2026-08-25 | reliability | Two kinds of 404, and the one we could not fix |

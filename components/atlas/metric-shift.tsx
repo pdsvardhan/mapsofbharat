@@ -198,6 +198,13 @@ export function MetricShift({
         setLoadState("error");
       });
     return () => ctl.abort();
+    // `values` is deliberately NOT a dependency (lint baseline, iter-43). It is
+    // read here only to count the SHARED set for the aria-live announcement; the
+    // fetch itself depends on partnerId and level alone. Including it would
+    // re-run this effect — refetching the partner and re-announcing — every time
+    // the base metric's values object changed identity, which is a new object on
+    // every parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerId, level]);
 
   const shared = useMemo(
