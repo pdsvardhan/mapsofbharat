@@ -409,3 +409,12 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/adr-036-count-marginal-workers.md
+  - id: adr-037-two-kinds-of-404
+    project_slug: mapsofbharat
+    title: Two kinds of 404, and the one we could not fix
+    status: accepted
+    date: 2026-08-25T00:00:00.000Z
+    tags:
+      - curated
+      - cat:reliability
+    body_path: decisions/adr-037-two-kinds-of-404.md

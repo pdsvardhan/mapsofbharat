@@ -145,7 +145,32 @@ else
 fi
 
 # A page, not just an API — the thing a human would look at.
-curl -sf "http://127.0.0.1:$PORT/" | grep -qi "<html" || fail "the home page did not render from restored data"
+#
+# FETCHED TO A FILE, THEN GREPPED, and the two-step is the whole point.
+# `curl -sf ... | grep -qi` reads as equivalent and is not: `grep -q` exits the
+# instant it matches, curl loses its writer, dies with exit 23, and
+# `set -o pipefail` promotes that to the pipeline's status. So the check FAILS
+# precisely when the page is big enough that grep matches before curl finishes —
+# i.e. it gets less reliable as the page gets healthier.
+#
+# It was harmless while `/` was a prerendered page and became deterministic when
+# iter-43 (#580) made `/` dynamic: 3 of 3 clean runs failed with "the home page did
+# not render from restored data" while the page rendered perfectly at 200.
+#
+# THE MECHANISM IS THE ENCODING, NOT THE SIZE, and the distinction matters to
+# anyone tuning this later. A dynamic route is `Transfer-Encoding: chunked` with no
+# Content-Length, so its writes are spread over time and land after `grep -q` has
+# already exited; a prerendered page arrives in one burst that fits the pipe
+# buffer. Measured back to back on the same construct: the chunked 17.3KB page
+# gave exit 23 three times out of three, while a 13.6KB Content-Length page gave
+# exit 0 three times out of three. 3.7KB does not explain a deterministic flip —
+# streaming does. The fixed form handles a 131KB JSON body without trouble.
+#
+# Worse than a false red: this check sits BEFORE the raw-mirror verification
+# below, so the drill aborted here and the mirror guard never ran at all.
+page_html="$WORK/home.html"
+curl -sf "http://127.0.0.1:$PORT/" -o "$page_html"   || fail "the home page did not respond from restored data"
+grep -qi "<html" "$page_html"   || fail "the home page responded but rendered no HTML from restored data"
 log "home page renders"
 
 # -- 4. the raw tree, the asset git does not carry --------------------------
@@ -158,14 +183,57 @@ declared=0
 [ -f "$SNAP/raw-file-count.txt" ] && declared="$(cat "$SNAP/raw-file-count.txt")"
 
 if [ "$FROM_REMOTE" -eq 1 ]; then
-  mirrored="$(rclone size "$MIRROR" --json 2>/dev/null | sed -n "s/.*[\"]count[\"]:\([0-9]*\).*//p")"
+  mirrored="$(rclone size "$MIRROR" --json 2>/dev/null | sed -n "s/.*[\"]count[\"]:\([0-9]*\).*/\1/p")"
 else
   mirrored="$(find "$MIRROR" -type f 2>/dev/null | wc -l)"
 fi
 
-if [ -z "$mirrored" ] || [ "$mirrored" = "0" ]; then
+# FAIL CLOSED (#574, iter-43). The sed above had a literal 0x01 (SOH) control
+# byte in place of the two characters backslash and 1 — the same escaping
+# accident as scripts/backup-offbox.sh, fixed there and missed here, which is
+# why the sweep matters more than the individual fix. Only `cat -A` renders it
+# (as ^A); cat, grep and every editor show nothing.
+#
+# The consequence was specific and bad: on the --from-remote path `$mirrored`
+# was ALWAYS that one unprintable byte, so `-z` was false and `= "0"` was false
+# and this guard could never fire. A remote mirror that had lost 800 of its 905
+# files would have been reported as a PASSED restore drill. The single-file
+# probe below still caught a TOTALLY empty mirror, which is the only reason this
+# was survivable; partial loss was undetectable.
+#
+# A non-numeric answer now FAILS rather than falling through. A drill that could
+# not take its own measurement has not verified a backup, and saying so is the
+# entire job of this script.
+case "$mirrored" in
+  ''|*[!0-9]*)
+    fail "could not read the raw mirror file count at $MIRROR (got '$mirrored') - the mirror check did NOT run, treat this drill as FAILED" ;;
+esac
+if [ "$mirrored" = "0" ]; then
   fail "the raw mirror at $MIRROR is empty - the one asset git cannot rebuild is NOT backed up"
 fi
+# A count far below what the snapshot recorded is the partial-loss case the old
+# guard could never see. Same 90% floor backup-offbox.sh uses.
+# The asymmetry with $mirrored above is deliberate, and is stated rather than
+# left to be rediscovered: an unreadable $mirrored means the check could not run
+# and must fail, whereas an unreadable $declared means there is no BASELINE to
+# compare against — a snapshot taken before raw-file-count.txt existed, say. That
+# is a real and harmless case, so it proceeds. But it still SKIPS a check, and a
+# silent skip is indistinguishable from a pass, so it says so out loud.
+# `0` belongs in the SKIP branch, not the compare branch. $declared is
+# pre-initialised to 0 above and only overwritten if raw-file-count.txt exists, so
+# an ABSENT file — the exact case this comment names, and what
+# `backup-offbox.sh --no-raw` produces — arrives here as a perfectly numeric 0.
+# The first version of this guard sent it to the `*)` branch, where
+# `[ "$declared" -gt 0 ]` skipped the check without saying so: the silent skip
+# survived inside the very branch written to abolish it. With 0 handled here the
+# `-gt 0` test is redundant and is gone.
+case "$declared" in
+  ''|0|*[!0-9]*)
+    log "  NOTE: snapshot recorded no usable raw file count ('$declared') - partial-loss check SKIPPED, not passed" ;;
+  *) if [ "$mirrored" -lt "$(( declared * 9 / 10 ))" ]; then
+       fail "the raw mirror holds $mirrored files but the snapshot recorded $declared - treat this drill as FAILED"
+     fi ;;
+esac
 log "raw mirror holds $mirrored files (backup recorded $declared at snapshot time)"
 
 # Actually restore a file and read it, rather than trusting a count. A mirror of

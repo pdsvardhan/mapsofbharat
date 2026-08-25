@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { Umami } from "@/components/analytics/umami";
-import { SITE_URL } from "@/lib/site";
+import { IS_LAUNCHED, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -22,7 +22,58 @@ const TITLE = "Maps of Bharat — India statistics, mapped";
 const DESCRIPTION =
   "Map-first data visualization for India. Official statistics as interactive choropleths, drilling India to state to district, fully cited.";
 
-export const metadata: Metadata = {
+// LAUNCH-AWARE, and a function rather than a constant (iter-43 item 1007, to-do
+// #580).
+//
+// WHAT WAS WRONG. Three things decide whether this site is indexable, and only
+// two of them read the flag. `middleware.ts` sets X-Robots-Tag noindex,nofollow
+// site-wide while !IS_LAUNCHED, and `app/robots.ts` is force-dynamic precisely so
+// the flag flips without a rebuild — its own comment names "two halves of one
+// switch disagreeing" as the failure it exists to prevent. This block was the
+// third half, and it disagreed: a hard-coded `index: true` shipped on every page
+// while the header said the opposite. The header wins, so nothing was ever
+// mis-indexed — but the contradiction sat directly in the launch path, where the
+// header is the part that goes away.
+//
+// WHY A FUNCTION. `export const metadata` is evaluated once at module load; a
+// `generateMetadata` is evaluated per render. That only buys anything for routes
+// that actually render per request, and THAT IS THE CATCH THIS COMMENT ORIGINALLY
+// GOT WRONG — it claimed every page route here is `force-dynamic`. Two were not.
+//
+// `/` was statically prerendered, so this function ran at BUILD time and froze
+// `noindex, nofollow` into .next/server/app/index.html. Flipping SITE_LAUNCHED
+// would have moved the header and robots.txt and left the markup on the most
+// valuable URL on the site telling crawlers to skip it — turning a cosmetic
+// contradiction into a live de-indexing bug. app/page.tsx is now a Server
+// Component exporting `force-dynamic` for exactly this reason; read the comment
+// there before undoing it.
+//
+// `/embed` is still prerendered, and that is SAFE rather than overlooked: it
+// declares its own permanent `robots:{index:false}` in app/embed/layout.tsx, so
+// the value baked into its HTML is correct in both launch states. Shallow
+// metadata merge means a page's own robots always beats this one.
+//
+// One route still inherits a flag-dependent directive into static HTML, and it
+// is named here rather than left as a surprise: `/_not-found`. A build made with
+// SITE_LAUNCHED=true bakes BOTH Next's own `noindex` for the not-found boundary
+// and this layout's `index, follow`, so a 404 then carries two contradictory
+// robots metas. It is harmless — a 404's STATUS governs indexing, and crawlers
+// take the most restrictive directive — but it is the same defect class, so it
+// is disclosed. It is also not runtime-testable: it depends on the flag at BUILD
+// time, and CI builds unlaunched then runs launched, so no served-page assertion
+// can reach it. Fixing it properly means giving the not-found boundary its own
+// robots, which Next does not currently allow from `not-found.tsx`.
+//
+// Otherwise: every route whose robots directive depends on the flag renders per
+// request, and flipping SITE_LAUNCHED moves all three signals together with no
+// rebuild — the guarantee robots.ts already gives. Any new route that inherits
+// its robots from here must be dynamic too, and tests/iter43-hardening.spec.ts
+// runs in both launch states to catch one that is not.
+//
+// Pages that declare their own `robots` still win: Next merges metadata shallowly
+// per top-level key, which is how /embed keeps index:false in both launch states.
+export function generateMetadata(): Metadata {
+  return {
   // metadataBase is what turns every RELATIVE metadata URL below (and every
   // file-convention image) into the ABSOLUTE one an unfurler needs. WhatsApp —
   // the primary distribution channel for this project — will not render a link
@@ -42,19 +93,25 @@ export const metadata: Metadata = {
   // own `metadata`, /methodology in app/methodology/layout.tsx, /embed with an
   // explicit `null` — so nothing silently inherits `/` as its canonical.
   alternates: { canonical: "/" },
-  // Indexable, and allow the full-size image + snippet in a result card (this is
-  // the directive that lets the OG card show large in Google/Discover).
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
-    },
-  },
+  // Once launched: indexable, and allow the full-size image + snippet in a result
+  // card (the directive that lets the OG card show large in Google/Discover).
+  // Before launch: the same noindex,nofollow the middleware header already sends,
+  // so a crawler reading the markup and a crawler reading the headers are told the
+  // same thing. Default is unlaunched, so a forgotten flag fails toward "not
+  // indexed" here exactly as it does in lib/site.
+  robots: IS_LAUNCHED
+    ? {
+        index: true,
+        follow: true,
+        googleBot: {
+          index: true,
+          follow: true,
+          "max-image-preview": "large",
+          "max-snippet": -1,
+          "max-video-preview": -1,
+        },
+      }
+    : { index: false, follow: false, googleBot: { index: false, follow: false } },
   // opengraph-image.png / twitter-image.png (app/) and manifest.ts are picked up
   // by the App Router file conventions — no need to list images here. Those
   // conventions also emit og:image:width/height/type/alt, which is what gets
@@ -74,7 +131,8 @@ export const metadata: Metadata = {
     site: "@maps_of_bharat",
     creator: "@maps_of_bharat",
   },
-};
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#0b0c10", // no-token: read by the browser chrome as a literal, before any stylesheet exists

@@ -18,6 +18,24 @@ import { test, expect } from "@playwright/test";
 // SITE_TWITTER_IMAGE from @/lib/site and add `images: [...]` to openGraph and
 // twitter. /coverage was added to INDEXABLE on 2026-08-10 once its og:image landed.
 
+/** LAUNCH-AWARE (to-do 525), added iter-43 with #580.
+ *
+ *  The robots assertion below used to read `not.toContain("noindex")`
+ *  unconditionally. That was only ever true because app/layout.tsx hard-coded
+ *  `robots:{index:true}` — the very contradiction #580 records, since middleware
+ *  has been sending `X-Robots-Tag: noindex` site-wide the whole time. The
+ *  assertion was encoding the defect as the expectation, so fixing the defect
+ *  turned it red.
+ *
+ *  Both states are asserted rather than skipped: a skip reads as green, and this
+ *  project has already been bitten by tests that passed by not running.
+ *
+ *  (An earlier draft of this comment said noindex.spec.ts was already launch-aware.
+ *  It was not — it asserted the pre-launch posture unconditionally and went red
+ *  under SITE_LAUNCHED=true. It was made launch-aware in the same iteration, so
+ *  the claim is true now, but it was written before it was true.) */
+const LAUNCHED = process.env.SITE_LAUNCHED === "true";
+
 /** Pages whose <head> must be complete enough to produce a rich link preview. */
 const INDEXABLE = ["/", "/metric", "/metric/literacy_rate", "/methodology", "/coverage"];
 
@@ -57,9 +75,19 @@ test.describe("per-page metadata floor (to-do 406)", () => {
       expect(canonical!).toMatch(/^https:\/\//);
       expect(new URL(canonical!).pathname.replace(/\/$/, "")).toBe(path.replace(/\/$/, ""));
 
-      // indexable
+      // Indexable — but only once launched. Pre-launch the page must say noindex
+      // in the markup too, agreeing with the X-Robots-Tag header the middleware
+      // already sends. The default `?? "index"` stays for the launched branch: an
+      // ABSENT robots meta means indexable, which is the correct reading.
       const robots = attr(html, /<meta name="robots"[^>]*>/, "content") ?? "index";
-      expect(robots.toLowerCase(), `${path} robots`).not.toContain("noindex");
+      if (LAUNCHED) {
+        expect(robots.toLowerCase(), `${path} robots`).not.toContain("noindex");
+      } else {
+        expect(
+          robots.toLowerCase(),
+          `${path} robots must match the middleware header before launch (#580)`
+        ).toContain("noindex");
+      }
 
       // OG card: absolute image URL + the dimensions WhatsApp uses to decide
       // between a large preview and a thumbnail

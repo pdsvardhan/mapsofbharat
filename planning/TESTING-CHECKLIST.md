@@ -153,3 +153,35 @@ appearance, so the only thing to *look* at is the one item below.
   "reformat".
 - **Backups got ~8x cheaper.** The raw tree is mirrored incrementally rather than
   re-archived nightly: ~1.3GB total instead of ~10GB, which fits a free tier.
+
+## iter-43 — the 404 page, and one thing to check at launch
+
+- [ ] **There is a real 404 page now.** Follow a dead link — for example
+      `https://mapsofbharat.vault7a.xyz/does-not-exist` — and you should get a
+      proper page: the brand mark, "Page not found", a sentence explaining that an
+      indicator id may have been renamed or retired, and four cards linking to
+      Every indicator / Indicator families / Coverage / Report a problem. Check the
+      four links go where they say.
+
+- [ ] **Two routes still look bare without JavaScript, deliberately.**
+      `/metric/no-such-metric` and `/family/no-such-family` show the same page in a
+      browser, but their text is delivered by JavaScript rather than sitting in the
+      HTML. That is a framework limitation, it is written up in `adr-037`, and it
+      costs nothing that matters — the page still returns a proper 404, so search
+      engines never index it either way. Nothing to do; listed so it is not
+      reported as a bug later.
+
+- [ ] **The homepage is no longer pre-built.** It is generated per request now, so
+      the indexing switch can be flipped without a rebuild. It should look and feel
+      exactly as before — the map, the START HERE card, all the controls. If it
+      feels slower to first paint, say so; measured it was about 3ms slower, which
+      should be invisible.
+
+### AT LAUNCH — one check that only becomes possible then
+
+- [ ] **After the site is rebuilt with `SITE_LAUNCHED=true`**, fetch any dead URL
+      and confirm the page does NOT contain `index, follow`. A 404 built in the
+      launched state bakes both `noindex` and `index, follow` into its HTML. It is
+      harmless — a 404 is never indexed, and crawlers obey the stricter of the two —
+      but this is the one state no test can reach, because CI builds unlaunched and
+      only runs launched. Raised by the iter-43 verifiers; see `app/layout.tsx`.
