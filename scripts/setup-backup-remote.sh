@@ -86,7 +86,9 @@ if rclone lsd "${REMOTE_NAME}:" >/dev/null 2>&1; then
   # a coin-flip with fifty. Fixed here before it bites rather than after.
   buckets_out="$(mktemp)"
   rclone lsd "${REMOTE_NAME}:" > "$buckets_out" 2>/dev/null
-  grep -q "$BUCKET" "$buckets_out" || { rm -f "$buckets_out"; die "could not create or see bucket '$BUCKET'"; }
+  # -F: a bucket name is a literal, not a pattern. Without it a name containing
+  # "." would match a DIFFERENT bucket and report success for the wrong one.
+  grep -qF "$BUCKET" "$buckets_out" || { rm -f "$buckets_out"; die "could not create or see bucket '$BUCKET'"; }
   rm -f "$buckets_out"
 elif rclone lsjson "${REMOTE_NAME}:${BUCKET}" --max-depth 1 >/dev/null 2>&1; then
   # An object-scoped token cannot enumerate buckets, but it can address this one.

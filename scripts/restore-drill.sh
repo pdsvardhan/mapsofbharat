@@ -153,12 +153,21 @@ fi
 # precisely when the page is big enough that grep matches before curl finishes —
 # i.e. it gets less reliable as the page gets healthier.
 #
-# It was harmless while `/` was a small prerendered page. Making `/` dynamic in
-# iter-43 (#580) grew the response to ~17KB and curl started losing the race every
-# time: 3 of 3 clean runs failed with "the home page did not render from restored
-# data" while the page rendered perfectly at 200. Worse, this check sits BEFORE
-# the raw-mirror verification below, so the drill aborted here and the mirror
-# guard never ran at all.
+# It was harmless while `/` was a prerendered page and became deterministic when
+# iter-43 (#580) made `/` dynamic: 3 of 3 clean runs failed with "the home page did
+# not render from restored data" while the page rendered perfectly at 200.
+#
+# THE MECHANISM IS THE ENCODING, NOT THE SIZE, and the distinction matters to
+# anyone tuning this later. A dynamic route is `Transfer-Encoding: chunked` with no
+# Content-Length, so its writes are spread over time and land after `grep -q` has
+# already exited; a prerendered page arrives in one burst that fits the pipe
+# buffer. Measured back to back on the same construct: the chunked 17.3KB page
+# gave exit 23 three times out of three, while a 13.6KB Content-Length page gave
+# exit 0 three times out of three. 3.7KB does not explain a deterministic flip —
+# streaming does. The fixed form handles a 131KB JSON body without trouble.
+#
+# Worse than a false red: this check sits BEFORE the raw-mirror verification
+# below, so the drill aborted here and the mirror guard never ran at all.
 page_html="$WORK/home.html"
 curl -sf "http://127.0.0.1:$PORT/" -o "$page_html"   || fail "the home page did not respond from restored data"
 grep -qi "<html" "$page_html"   || fail "the home page responded but rendered no HTML from restored data"
@@ -210,10 +219,18 @@ fi
 # compare against — a snapshot taken before raw-file-count.txt existed, say. That
 # is a real and harmless case, so it proceeds. But it still SKIPS a check, and a
 # silent skip is indistinguishable from a pass, so it says so out loud.
+# `0` belongs in the SKIP branch, not the compare branch. $declared is
+# pre-initialised to 0 above and only overwritten if raw-file-count.txt exists, so
+# an ABSENT file — the exact case this comment names, and what
+# `backup-offbox.sh --no-raw` produces — arrives here as a perfectly numeric 0.
+# The first version of this guard sent it to the `*)` branch, where
+# `[ "$declared" -gt 0 ]` skipped the check without saying so: the silent skip
+# survived inside the very branch written to abolish it. With 0 handled here the
+# `-gt 0` test is redundant and is gone.
 case "$declared" in
-  ''|*[!0-9]*)
+  ''|0|*[!0-9]*)
     log "  NOTE: snapshot recorded no usable raw file count ('$declared') - partial-loss check SKIPPED, not passed" ;;
-  *) if [ "$declared" -gt 0 ] && [ "$mirrored" -lt "$(( declared * 9 / 10 ))" ]; then
+  *) if [ "$mirrored" -lt "$(( declared * 9 / 10 ))" ]; then
        fail "the raw mirror holds $mirrored files but the snapshot recorded $declared - treat this drill as FAILED"
      fi ;;
 esac
