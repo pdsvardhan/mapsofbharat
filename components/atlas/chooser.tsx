@@ -4,7 +4,8 @@
 // sliding accent bar, right metric list with unit + source per row.
 // Fed entirely by the live /api/metrics taxonomy.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { coverageOf, sourceLegend, sourceSigil } from "@/lib/source-sigil";
 import { Metric, CAT_DESC, CAT_ICON, catAccent, hexA, orderedCategories } from "./cats";
 
@@ -73,6 +74,9 @@ export function ChooserModal({
   // movement arms it, and a topic must then be entered afresh, so nothing
   // switches until the user aims at something.
   const [hoverArmed, setHoverArmed] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Mounted only while open (india-map renders it behind `chooserOpen &&`).
+  useDialogFocus(true, dialogRef);
   // One entry per distinct sigil ON SCREEN, so the key can never explain a source
   // this topic does not show, nor omit one it does.
   const legend = useMemo(() => sourceLegend(inCat.map((m) => m.source)), [inCat]);
@@ -80,7 +84,12 @@ export function ChooserModal({
   return (
     <div className="atl-fade fixed inset-0 z-40 flex items-center justify-center" style={{ background: "rgba(7,8,11,.74)" }} onClick={onClose}>
       <div
-        role="dialog" aria-label="Choose an indicator" onClick={(e) => e.stopPropagation()}
+        // aria-modal + the focus contract (iter-44 item 1054). Measured: this
+        // rendered role=dialog while focus stayed on the opener and thirty Tab
+        // presses walked out into the page behind. tabIndex={-1} gives the hook
+        // somewhere to put focus when the dialog has no focusable child yet.
+        ref={dialogRef} tabIndex={-1}
+        role="dialog" aria-modal="true" aria-label="Choose an indicator" onClick={(e) => e.stopPropagation()}
         onMouseMove={() => { if (!hoverArmed) setHoverArmed(true); }}
         // Stays 920. This was briefly widened to 1000 to fit the longest name in the
         // catalogue, back when body text was rendering in the system fallback because

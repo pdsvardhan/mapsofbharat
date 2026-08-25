@@ -70,7 +70,15 @@ export function CiteBlock(props: CiteProps) {
         To cite this
       </h2>
       <div className="flex flex-col gap-3 border-y-[3px] border-border px-1 py-4" data-band="cite">
-        <p className="font-mono text-[12px] leading-relaxed text-muted">{shown}</p>
+        {/* break-words is load-bearing for WCAG 1.4.10 reflow (iter-44 item 1056).
+            The citation ends in a source URL, and a monospace URL is one
+            unbreakable token: at 12px it measures well past the 272px content
+            column a 320px viewport leaves, so the TEXT overflowed while this
+            paragraph's own box stayed 272 wide. That is why the document gained
+            23px of horizontal scroll on /metric/[slug] while no element's
+            rectangle exceeded the viewport — the overflow had no box to find it
+            by. Measured before/after: documentElement.scrollWidth 343 -> 320. */}
+        <p className="break-words font-mono text-[12px] leading-relaxed text-muted">{shown}</p>
         <div className="flex items-center gap-3">
           <button
             type="button"

@@ -90,17 +90,31 @@ export default function CoveragePage() {
 
       {/* Provenance key — the same classes and colours the coverage map uses */}
       <dl className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {/* dl > div > (dt, dd) — the ONE div wrapper HTML permits, and no more
+            (iter-44, axe definition-list + dlitem, 18 nodes).
+
+            This used to nest a second div to stack the label over its note, which
+            put dt and dd two levels down, so their parent was not a child of the
+            dl. The list stopped being a list: a screen reader read the provenance
+            key as loose text instead of pairing each term with its description,
+            which is the entire point of the key.
+
+            A grid does the stacking that the inner div was doing — swatch in the
+            first column spanning both rows, dt above dd in the second — so the
+            rendering is unchanged and the semantics are correct. */}
         {PROVENANCE_CLASSES.map((c) => (
-          <div key={c} className="flex items-start gap-2.5 border border-border px-3 py-2.5" style={{ background: "var(--panel)" }}>
+          <div
+            key={c}
+            className="grid grid-cols-[auto_1fr] items-start gap-x-2.5 border border-border px-3 py-2.5"
+            style={{ background: "var(--panel)" }}
+          >
             <span
-              className="mt-0.5 h-3 w-4 flex-none rounded-[2px]"
+              className="row-span-2 mt-0.5 h-3 w-4 flex-none rounded-[2px]"
               style={{ background: PROVENANCE_COLOR[c] }}
               aria-hidden="true"
             />
-            <div>
-              <dt className="text-[12.5px] font-semibold text-bright">{PROVENANCE_LABEL[c]}</dt>
-              <dd className="text-[11.5px] leading-snug text-muted">{PROVENANCE_NOTE[c]}</dd>
-            </div>
+            <dt className="text-[12.5px] font-semibold text-bright">{PROVENANCE_LABEL[c]}</dt>
+            <dd className="text-[11.5px] leading-snug text-muted">{PROVENANCE_NOTE[c]}</dd>
           </div>
         ))}
       </dl>
@@ -127,7 +141,7 @@ export default function CoveragePage() {
               <li key={m.id} data-coverage-row data-measured-share={m.measuredShare.toFixed(4)}>
                 <Link
                   href={`/metric/${m.id}`}
-                  className="block border border-border px-4 py-3 hover:border-faint"
+                  className="block border border-border px-4 py-3 no-underline hover:border-faint"
                   style={{ background: "var(--panel)" }}
                 >
                   <div className="flex items-baseline justify-between gap-3">

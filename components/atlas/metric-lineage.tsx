@@ -121,7 +121,7 @@ export function MetricLineage({
               <a
                 data-testid="raw-download"
                 href={`/metric/${metricId}/raw`}
-                className="inline-flex w-fit items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-[12px] font-bold transition-colors hover:bg-accent-hover"
+                className="inline-flex w-fit items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-[12px] font-bold no-underline transition-colors hover:bg-accent-hover"
                 style={{ color: "var(--accent-ink)" }}
               >
                 ↓ Download raw source

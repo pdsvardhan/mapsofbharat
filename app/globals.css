@@ -181,6 +181,62 @@ body {
 }
 }
 
+/* IN-TEXT LINKS ARE UNDERLINED AT REST (iter-44, WCAG 1.4.1 / axe
+   link-in-text-block).
+
+   Measured 2026-08-26 against the live site: 28 links per viewport were
+   distinguishable from the prose around them by HUE ALONE, and barely that —
+   --accent-text #e0603d measures 1.31:1 against --muted and 1.04:1 against
+   --faint, where the rule requires 3:1. Every one carried `hover:underline`, so
+   the affordance appeared only once you had already found the link, which is no
+   help to the reader who cannot separate the two colours in the first place.
+
+   DO NOT "TIDY" text-decoration-line OUT OF THIS RULE. axe will not stop you:
+   with the line set to `none` but `text-underline-offset` and
+   `text-decoration-thickness` left behind, the link's decoration properties still
+   differ from its parent's, which axe's heuristic accepts as distinguishing —
+   measured, it reported ZERO violations on /methodology while nothing was
+   underlined on screen. Removing the whole rule brought all 16 back. The direct
+   assertion in tests/a11y.spec.ts ("prose links are VISIBLY underlined") exists
+   because of exactly this, and it is the guard that would catch it.
+
+   UNDERLINE RATHER THAN MORE CONTRAST. Reaching 3:1 against every surrounding
+   tone would take a hue this palette does not have, and the owner's ruling
+   (2026-08-25) was to fix a11y inside the existing almanac palette. Underlining
+   is also the remedy the rule itself names.
+
+   Scoped to <main>, so the map chrome on / and /embed is untouched — both already
+   audit clean and their controls are buttons, not prose links. Layered for the
+   adr-034 / #524 reason: an unlayered rule here would outrank every Tailwind
+   utility, including the `hover:underline` these links already carry and the
+   `no-underline` opt-out below. */
+@layer base {
+  main a[href] {
+    text-decoration-line: underline;
+    text-underline-offset: 0.18em;
+    text-decoration-thickness: from-font;
+  }
+  /* Composed links are not in-text links. The 404 recovery cards, the metric
+     index rows, the family cards and the coverage rows each wrap a heading, a
+     description and often figures; underlining every run inside them reads as
+     damage rather than affordance — the coverage rows underlined the title, the
+     unit, the percentage and the caption all at once, which is what the
+     screenshot caught. axe does not flag any of them: they are not inside a text
+     block. Single-run text links stay underlined, footer links included, because
+     those are exactly the ones axe DID flag.
+
+     The distinction is composed-vs-single-run, which no CSS selector can express,
+     so the composed ones carry Tailwind's `no-underline` explicitly. That is safe
+     to get wrong in only one direction: over-exempting turns
+     tests/a11y.spec.ts red, because the rule that flagged them is still watching.
+     `nav` is the marker because that is what those cards already live in; any
+     future card-shaped link can opt out with Tailwind's `no-underline`, which
+     lands in @layer utilities and therefore wins over this. */
+  main nav a[href] {
+    text-decoration-line: none;
+  }
+}
+
 /* thin editorial scrollbars */
 .atl-scroll::-webkit-scrollbar { width: 6px; }
 .atl-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
