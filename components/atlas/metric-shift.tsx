@@ -186,9 +186,10 @@ export function MetricShift({
             estimateKind: d.estimate_kind ?? {},
           });
           setLoadState("idle");
-          setAnnounce(
-            `Comparison loaded: ${Object.keys(d.values).length} values fetched.`
-          );
+          // Announce the number the view will DRAW - the shared set - not the
+          // fetch size, which is a transport detail no reader placed.
+          const common = Object.keys(d.values).filter((c) => values[c] != null).length;
+          setAnnounce(`Comparison loaded: ${common} ${level}s in common shown.`);
         }
       )
       .catch((e) => {

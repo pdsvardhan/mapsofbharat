@@ -1,6 +1,15 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
 import {
+  DEFAULT_PALETTE,
+  METRIC_REFERENCE,
+  PALETTES,
+  SUGGESTED_PALETTE,
+  colorFor,
+  computeBreaks,
+  selectMethod,
+} from "@/lib/breaks";
+import {
   cellCentre,
   gridDims,
   linear,
@@ -228,6 +237,102 @@ test.describe("#547C the transition draws and re-sorts (items 978, 980)", () => 
     await page.goto("/metric/literacy_rate?vs=sex_ratio");
     await expect(page.locator("[data-shift-picker]")).toHaveValue("sex_ratio");
     await expect(page.locator("[data-shift-dot]").first()).toBeVisible();
+  });
+});
+
+test.describe("#547C the filter is WIRED, not merely defined (round-2 HARD)", () => {
+  test("dots take the copy-free colours, on a fixture where copies change them", async ({
+    page,
+    request,
+  }) => {
+    // The code verifier disconnected the adr-022 filter AT ITS CALL SITE -
+    // statsValues intact, empty metadata passed in - and the whole suite stayed
+    // green: the node-side kill proves the pure function, and nothing proved
+    // the wiring. This test reads actual dot fills against expectations
+    // computed through the SAME two doors the component uses, on a partner
+    // whose copies genuinely move the edges (the verifier's sweep found 20
+    // such metrics; nfhs5_health_insurance even flips selection method).
+    type Detail = {
+      values: Record<string, number>;
+      estimated: Record<string, 1>;
+      estimate_kind: Record<string, string>;
+      unit: string;
+      category: string;
+    };
+    const partnerId = "nfhs5_health_insurance";
+    const a = (await (
+      await request.get("/api/metrics/literacy_rate?level=district")
+    ).json()) as Detail;
+    const b = (await (await request.get(`/api/metrics/${partnerId}?level=district`)).json()) as Detail;
+    const shared = sharedCodes(a.values, b.values);
+
+    // category comes from the LIST endpoint - the same source the component's
+    // partner props are built from. The detail endpoint does not carry it, and
+    // the first version of this test read b.category there, got undefined, fell
+    // back to the default ramp and failed against a correctly-sunset page:
+    // wrong door, silently.
+    const list = (await (await request.get("/api/metrics")).json()) as {
+      metrics: { id: string; category: string; unit: string }[];
+    };
+    const meta = list.metrics.find((m) => m.id === partnerId);
+    expect(meta, "partner missing from the catalogue list").toBeTruthy();
+
+    const ref = METRIC_REFERENCE[partnerId] ?? null;
+    const pal = PALETTES[SUGGESTED_PALETTE[meta!.category] ?? DEFAULT_PALETTE].fn;
+    const expectFor = (vals: number[]) => {
+      const method = selectMethod(vals, { isPct: meta!.unit === "%", reference: ref }).method;
+      const edges = computeBreaks(vals, method, 5, ref);
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      return (v: number) => colorFor(v, min, max, edges, pal);
+    };
+    const filtered = expectFor(statsValues(shared, b.values, b.estimated, b.estimate_kind));
+    const unfiltered = expectFor(shared.map((c) => b.values[c]));
+
+    // The fixture must DISCRIMINATE, or this test proves nothing: there must be
+    // dots whose colour differs between the two computations. If the store ever
+    // loses this property, fail loudly here and pick a new fixture.
+    const discriminating = shared.filter((c) => filtered(b.values[c]) !== unfiltered(b.values[c]));
+    expect(
+      discriminating.length,
+      "fixture no longer discriminates filtered vs unfiltered - choose another"
+    ).toBeGreaterThan(10);
+
+    await page.goto(`/metric/literacy_rate?vs=${partnerId}`);
+    await page.locator('[data-shift-sort="partner"]').click();
+    await expect(page.locator('[data-shift-sort="partner"]')).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    // The fill ATTRIBUTE updates on render; only the painted colour animates.
+    for (const code of discriminating.slice(0, 12)) {
+      const actual = await page
+        .locator(`[data-shift-dot="${code}"]`)
+        .getAttribute("fill");
+      expect(actual, `${code}: must take the copy-free colour`).toBe(filtered(b.values[code]));
+      expect(actual, `${code}: must NOT take the unfiltered colour`).not.toBe(
+        unfiltered(b.values[code])
+      );
+    }
+  });
+
+  test("loading a comparison announces the count the view draws", async ({ page, request }) => {
+    // The announcement's own coverage (round-2 SOFT): deleting the setAnnounce
+    // call survived, and its old text reported the fetch size - a transport
+    // detail - rather than the shared count a reader was shown.
+    const a = (await (
+      await request.get("/api/metrics/literacy_rate?level=district")
+    ).json()) as { values: Record<string, number> };
+    const b = (await (
+      await request.get("/api/metrics/nfhs5_full_immunization?level=district")
+    ).json()) as { values: Record<string, number> };
+    const common = sharedCodes(a.values, b.values).length;
+
+    await page.goto("/metric/literacy_rate");
+    await page.locator("[data-shift-picker]").selectOption("nfhs5_full_immunization");
+    await expect(page.locator('[data-shift] [aria-live="polite"]')).toContainText(
+      `${common} districts in common`
+    );
   });
 });
 

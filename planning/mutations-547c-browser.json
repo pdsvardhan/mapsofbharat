@@ -65,6 +65,20 @@
       "find": "    () => (partnerValues ? sharedCodes(values, partnerValues) : []),",
       "replace": "    () => (partnerValues ? Object.keys(values).sort() : []),",
       "control": "dot count reads 733 against an expected shared set of fewer for a partner with gaps"
+    },
+    {
+      "name": "the adr-022 filter disconnected at its CALL SITE - statsValues intact, empty metadata passed",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "    const est = view === \"base\" ? estimated : partnerEst.estimated;",
+      "replace": "    const est = view === \"base\" ? {} : {};",
+      "control": "the round-2 wiring test goes red: discriminating dots take the unfiltered colour. This exact mutation survived 12/12 before that test existed - the node-side kill proves only the pure function."
+    },
+    {
+      "name": "the load announcement silenced",
+      "file": "components/atlas/metric-shift.tsx",
+      "find": "          setAnnounce(`Comparison loaded: ${common} ${level}s in common shown.`);",
+      "replace": "",
+      "control": "the loading-announces test goes red; deleting this call survived before that test existed (round-2 SOFT)"
     }
   ]
 }
