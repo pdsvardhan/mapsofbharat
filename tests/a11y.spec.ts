@@ -35,6 +35,10 @@ type Route = {
   /** Floors the page must clear before it is worth auditing. */
   minText: number;
   minLinks: number;
+  /** How many `ready` matches the real page has. A text floor catches a page
+   *  that failed to render; only a STRUCTURAL count catches one that rendered
+   *  most of itself and dropped the part under audit. */
+  minReady: number;
 };
 
 /** Every route a reader can reach, with what proves it actually rendered.
@@ -50,18 +54,18 @@ type Route = {
  *  taken from what the page actually renders today and set well below it. A page
  *  that half-renders fails here instead of passing an audit of nothing. */
 const ROUTES: Route[] = [
-  { path: "/", ready: "canvas", name: "atlas", minText: 100, minLinks: 0 },
-  { path: "/metric", ready: "a[href^='/metric/']", name: "metric index", minText: 3000, minLinks: 100 },
-  { path: "/metric/literacy_rate", ready: '[data-oid="metric-rank-table"]', name: "metric detail", minText: 5000, minLinks: 5 },
-  { path: "/family", ready: "a[href^='/family/']", name: "family index", minText: 800, minLinks: 8 },
-  { path: "/family/religion", ready: "figure", name: "family detail", minText: 500, minLinks: 5 },
-  { path: "/coverage", ready: "dl dt", name: "coverage", minText: 3000, minLinks: 100 },
-  { path: "/methodology", ready: "a[href^='http']", name: "methodology", minText: 20000, minLinks: 40 },
-  { path: "/corrections", ready: "form", name: "corrections", minText: 500, minLinks: 3 },
-  { path: "/terms", ready: "main h2", name: "terms", minText: 1500, minLinks: 3 },
-  { path: "/privacy", ready: "main h2", name: "privacy", minText: 1500, minLinks: 3 },
-  { path: "/embed?metric=literacy_rate", ready: "canvas", name: "embed", minText: 0, minLinks: 0 },
-  { path: "/does-not-exist", ready: "main nav a", name: "404", minText: 200, minLinks: 4 },
+  { path: "/", ready: "canvas", name: "atlas", minText: 100, minLinks: 0, minReady: 1 },
+  { path: "/metric", ready: "a[href^='/metric/']", name: "metric index", minText: 6000, minLinks: 100, minReady: 100 },
+  { path: "/metric/literacy_rate", ready: '[data-oid="metric-rank-table"] tbody tr', name: "metric detail", minText: 5000, minLinks: 5, minReady: 500 },
+  { path: "/family", ready: "a[href^='/family/']", name: "family index", minText: 1000, minLinks: 8, minReady: 8 },
+  { path: "/family/religion", ready: "figure", name: "family detail", minText: 500, minLinks: 5, minReady: 5 },
+  { path: "/coverage", ready: "dl dt", name: "coverage", minText: 6000, minLinks: 100, minReady: 4 },
+  { path: "/methodology", ready: "a[href^='http']", name: "methodology", minText: 40000, minLinks: 40, minReady: 40 },
+  { path: "/corrections", ready: "form", name: "corrections", minText: 500, minLinks: 3, minReady: 1 },
+  { path: "/terms", ready: "main h2", name: "terms", minText: 1500, minLinks: 3, minReady: 3 },
+  { path: "/privacy", ready: "main h2", name: "privacy", minText: 1500, minLinks: 3, minReady: 3 },
+  { path: "/embed?metric=literacy_rate", ready: "canvas", name: "embed", minText: 0, minLinks: 0, minReady: 1 },
+  { path: "/does-not-exist", ready: "main nav a", name: "404", minText: 200, minLinks: 4, minReady: 4 },
 ];
 
 async function settle(page: Page, ready: string) {
@@ -97,10 +101,19 @@ for (const vp of [
         // Vacuity guard: prove there is a PAGE to audit before auditing it, with
         // floors that a half-rendered page cannot clear. `> 0` did not qualify —
         // eight characters of "Loading…" satisfied it.
-        const rendered = await page.evaluate(() => ({
+        const rendered = await page.evaluate((sel) => ({
           text: document.body.innerText.trim().length,
           links: document.querySelectorAll("a[href]").length,
-        }));
+          ready: document.querySelectorAll(sel).length,
+        }), route.ready);
+        // The structural floor is the one with teeth. Text and link floors catch a
+        // page that did not render; they do NOT catch one that rendered most of
+        // itself and dropped the part under audit — /coverage regressed from four
+        // provenance pairs to one and cleared both, with axe reporting zero.
+        expect(
+          rendered.ready,
+          `${route.path} matched ${rendered.ready} of "${route.ready}", below its floor of ${route.minReady} — the content under audit is not all there`
+        ).toBeGreaterThanOrEqual(route.minReady);
         expect(
           rendered.text,
           `${route.path} rendered ${rendered.text} chars, below its floor of ${route.minText} — a clean axe result here would be auditing nothing`
@@ -163,14 +176,23 @@ test.describe("what axe cannot see", () => {
         // once its links are removed, so its link is judged. A composed card, or a
         // nav of four cards, is nothing BUT link text, so it is not — no class
         // consulted, and an opt-out on a prose link now fails here.
-        const parent = a.parentElement;
-        if (!parent) continue;
-        const parentText = (parent.textContent || "").trim().length;
-        const linkTextInParent = Array.from(parent.querySelectorAll("a[href]")).reduce(
+        // THE NEAREST BLOCK ANCESTOR, never a.parentElement. Judging the immediate
+        // parent is defeated by any inline wrapper: put a <span> (or <strong>, or
+        // a Tailwind styling wrapper) around a genuine prose link and the parent
+        // holds nothing but the link, so the margin is 0 and the link is skipped.
+        // The iter-44 feature verifier did exactly that to the real "coverage
+        // table" link inside its real sentence — decoration gone, this test green,
+        // axe green. An easy accident, and invisible.
+        const block = a.closest(
+          "p,li,dd,dt,td,th,figcaption,blockquote,footer,div,section,article,main"
+        );
+        if (!block) continue;
+        const blockText = (block.textContent || "").trim().length;
+        const linkTextInBlock = Array.from(block.querySelectorAll("a[href]")).reduce(
           (n, el) => n + (el.textContent || "").trim().length,
           0
         );
-        if (parentText - linkTextInParent < 12) continue;
+        if (blockText - linkTextInBlock < 12) continue;
         out.push({
           text: (a.textContent || "").trim().slice(0, 40),
           deco: getComputedStyle(a).textDecorationLine,
@@ -390,16 +412,53 @@ test.describe("Escape closes an overlay without taking anything else with it", (
   test("Escape on the export dialog keeps the map where the reader put it", async ({ page }) => {
     await page.goto("/");
     await page.waitForSelector("canvas", { timeout: 30_000 });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
 
-    // Pick an indicator so the export dialog is enabled, then drill into a state.
+    // Pick an indicator so the export dialog is enabled.
     await page.getByRole("button", { name: /browse indicators/i }).first().click();
     await page.locator('[role="dialog"]').first().waitFor({ timeout: 10_000 });
     await page.getByRole("button", { name: /literacy rate/i }).first().click();
     await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10_000 });
     await page.waitForTimeout(2500);
 
-    const crumbsBefore = await page.evaluate(() => document.body.innerText.slice(0, 400));
+    // AND ACTUALLY DRILL IN, which the first version of this test claimed in its
+    // comment and never did — so nothing was selected, the handler's
+    // `else if (selectedRef.current || focusRef.current)` branch was a no-op, and
+    // it passed against the UNFIXED build.
+    //
+    // READ THIS BEFORE TRUSTING THIS TEST AS A REGRESSION GUARD. Adding the drill
+    // was necessary and is not sufficient: I could not construct a mutation that
+    // makes this test fail. Reverting the fix — dropping `socialOpen` from
+    // india-map's Escape guard — leaves it GREEN, because a drill performed by
+    // clicking the map does not reach the state that triggered the original
+    // defect. The feature verifier reproduced that defect on production
+    // (`accad4a`) where Escape was the odd one out among the three close paths,
+    // and confirmed on this commit that all three now agree; that measurement,
+    // not this test, is the evidence the fix works.
+    //
+    // So what this asserts is the INVARIANT — Escape must close the dialog without
+    // disturbing the map behind it — and it would catch a future regression that
+    // does reach this path. It is NOT proven to catch the specific bug it was
+    // written for, and it is labelled that way rather than left to look stronger
+    // than it is.
+    const trail = page.locator('nav[aria-label="Drill trail"]');
+    await trail.waitFor({ timeout: 15_000 });
+    const atNational = (await trail.innerText()).trim();
+
+    const box = await page.locator("canvas").first().boundingBox();
+    expect(box, "no map canvas to click").not.toBeNull();
+    let drilled = atNational;
+    for (const [fx, fy] of [[0.5, 0.55], [0.45, 0.45], [0.55, 0.62], [0.4, 0.6]]) {
+      await page.mouse.click(box!.x + box!.width * fx, box!.y + box!.height * fy);
+      await page.waitForTimeout(1800);
+      drilled = (await trail.innerText()).trim();
+      if (drilled !== atNational) break;
+    }
+    // Non-vacuity: if the click never drilled, everything below proves nothing.
+    expect(
+      drilled,
+      "clicking the map never changed the drill trail — this test cannot detect the defect it exists for"
+    ).not.toBe(atNational);
 
     const card = page.getByRole("button", { name: /export a social media card/i }).first();
     await card.waitFor({ timeout: 15_000 });
@@ -412,11 +471,14 @@ test.describe("Escape closes an overlay without taking anything else with it", (
     await expect(dialog).toBeHidden({ timeout: 8_000 });
     await page.waitForTimeout(1200);
 
-    const crumbsAfter = await page.evaluate(() => document.body.innerText.slice(0, 400));
+    // Assert the DRILL TRAIL, not the whole page. Two lines of the selected-region
+    // readout legitimately disappear while any dialog is open — measured on
+    // production too, for every close path — so a whole-page comparison would be
+    // comparing something that is allowed to change.
     expect(
-      crumbsAfter,
-      "Escape closed the export dialog AND changed the map behind it — the keypress leaked to the map's own Escape handler"
-    ).toBe(crumbsBefore);
+      (await trail.innerText()).trim(),
+      "Escape closed the export dialog AND threw away the reader's drill-down — the keypress leaked to the map's own Escape handler"
+    ).toBe(drilled);
   });
 });
 
