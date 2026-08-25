@@ -1088,3 +1088,138 @@ bivariate; hex is state-level only and cartograms are DO-NOT-BUILD (758). **Owne
 wants a current rclone shared with four other backup jobs; `#499` go-live, still carrying `#579`
 (404 bodies live only in the RSC payload) and `#580` (contradictory robots signals). Also open
 from this session: `#581`, the page registry is a partial index.
+
+## Session 2026-08-25/26 — iterations 43 and 44: hardening, then the a11y audit
+
+**Stage:** Stage 4 iterate — Ottomate iterations 43 (items 1006-1009) and 44 (items 1050-1056).
+**Deployed:** `1a35430`, health reports it. Iteration 43 deployed at `accad4a` earlier in the session.
+
+**Entry point:** the owner asked for every buildable item, excluding owner-only
+launch tasks, the paid tier and SEO phase 2. Eight decisions were taken up front
+(data scope, map forms, content machine SKIPPED, rclone, a11y latitude, coverage
+floor, warm standby, deploy cadence) and a five-wave plan written to
+`planning/PLAN-2026-08-25-completion.md`. Waves 1 and 2a are done.
+
+**#547 needed no deploy.** It was already live — `/api/health` reported `0f35c07`
+and the served page rendered `data-band="shift"` with a populated picker. The
+to-do's "NOT deployed" was stale. Two more items were dropped before locking
+because verification showed them already fixed: `#567a` (both read sites already
+guard on `symbolForcedForRef`) and `pop_density` for J&K/Ladakh (Leh reads 3
+people/km², not 339 — adr-035 landed).
+
+### Iteration 43 — what it was locked for, and what it actually found
+
+Locked: #579 404 bodies, #580 robots contradiction, #581 partial page registry,
+#574 rclone. All four shipped. But the iteration's value was elsewhere.
+
+**FOUR GUARDS TURNED OUT NOT TO RUN AT ALL.** Not wrong — unreachable, which
+reading the code does not reveal:
+
+1. `scripts/backup-offbox.sh` verified its remote mirror through a sed whose
+   replacement was a literal **0x01 (SOH) byte** instead of the characters `\` and
+   `1`. Invisible to cat, grep and every editor; `cat -A` renders it `^A`. It did
+   not crash, it lied: `remote_raw` held one unprintable char, so `[ -n ]` passed,
+   the log printed "holds  files" with a blank, and the comparison died with
+   `integer expression expected` — a non-fatal bash error inside an `if`, so the
+   script continued and exited 0. **That check had never run on any night, and
+   every run reported success.**
+2. `scripts/restore-drill.sh` carried the same byte. Proven with a shim: it
+   printed `RESTORE DRILL PASSED` for a mirror holding **12 of 905** files.
+3. The same drill then aborted *before* the repaired guard, because
+   `curl -sf "$URL/" | grep -qi "<html"` under `set -o pipefail` fails when grep
+   matches EARLY. Latent while `/` was prerendered; deterministic once `/` became
+   dynamic. The mechanism is the ENCODING, not the size — a chunked 17.3KB page
+   failed 3/3 while a Content-Length 13.6KB page passed 3/3.
+4. **CI had been red on `main` since before the branch existed**, on Node 22 while
+   the Dockerfile and production run `node:20-slim`. Correcting the pin exposed a
+   second layer: `better-sqlite3` has no prebuilt for that image and node-gyp died
+   with `not found: make`. Still red for a third reason (#610).
+
+A fifth 0x01 exists in `scripts/check-boundaries.mjs` and is DELIBERATE — a
+fingerprint separator, alongside an undocumented 0x02 the first sweep missed. A
+blanket "strip the control bytes" pass would have silently changed the
+Survey-of-India boundary fingerprint. Both are labelled now.
+
+**Verifier rounds: 3 each.** They caught an inversion in the #580 fix that would
+have **de-indexed the homepage at launch** (`app/page.tsx` was the only page route
+without `force-dynamic`, and route segment config is silently ignored in a
+`"use client"` file), a **fabricated mechanism** in adr-037, a control-byte sweep
+that was too narrow, and an agreement test that could only see the first of two
+contradictory robots metas.
+
+### Iteration 44 — the WCAG 2.1 AA audit that had never run
+
+Baseline measured BEFORE locking: axe-core 4.13.0, WCAG 2.1 AA tags only, 12
+routes x 2 viewports — **4 rules, 78 failing nodes, all serious**. The atlas
+scored zero and the scan was confirmed to have power there. Everything found was
+on content pages and in keyboard behaviour axe cannot see: the metric chooser
+rendered `role="dialog"` with no `aria-modal`, never moved focus in, and let 30
+Tab presses walk out into the map behind.
+
+Shipped: `tests/a11y.spec.ts` (the repo's first a11y tooling), in-text links
+underlined at rest, `/coverage`'s definition list repaired, the embed snippet made
+keyboard-reachable, `lib/use-dialog-focus.ts` giving all three overlays a real
+modal contract, reflow fixed at 320px, and the Escape leak that discarded the
+reader's drill-down behind the export dialog.
+
+**TWO OF SEVEN LOCKED ITEMS WERE WRONG AND WERE CORRECTED, NOT BUILT.** 1055 was a
+false positive — the CARD button is `disabled` until a metric is picked, so it
+cannot receive focus and needs no ring; the fix belonged in the harness. 1056 was
+built but blamed the wrong element: the rank table is contained by its own scroll
+box and merely *renders* wide, while the real overflow was an unbreakable
+monospace URL in the citation, whose TEXT overflowed while its paragraph's box
+stayed 272 wide — which is why no element rectangle exceeded the viewport.
+
+**FIVE GUARDS I WROTE THIS ITERATION DID NOT GUARD**, every one caught by mutation
+or a verifier, none by review, none by a passing suite:
+
+- The `no-underline` opt-out **exempted itself** from the test policing it. One
+  class on one prose link stripped underlines from 58 links and the suite reported
+  35/35 green.
+- The "vacuity guard" was satisfied by **eight characters of "Loading…"** on 8 of
+  11 routes; `/coverage` lost its entire provenance key and passed.
+- The focus test took **four attempts**: it returned true on FINDING an element
+  rather than on focus moving; then asserted an intermediate state a working
+  backstop makes unobservable (failing on correct code, passing on the mutant);
+  then a hard-coded selector made it pass alone and fail under load.
+- The Escape regression test I first shipped could not fail at all: it never
+  drilled into the map despite its comment saying so, so it passed against the
+  UNFIXED build. Fixed — and then I wrongly concluded the fixed one still could
+  not fail. See the correction at the end of this entry.
+- axe itself has a blind spot: `text-decoration-line: none` with thickness/offset
+  left in place reports ZERO violations while nothing is underlined.
+
+**Decisions:** adr-037 (two kinds of 404, with an inline correction retracting a
+fabricated mechanism).
+
+**Friction:**
+*process* — I reimplemented the bug `scripts/mutation-test.sh` exists to prevent:
+my harness ran `npm run build` and ignored the exit code, so a mutation that did
+not compile left the old bundle and reported SURVIVED.
+*process* — a nested heredoc through ssh mangled a patch script twice; patches go
+via scp as files.
+*process* — a `pkill`-style pattern containing a port killed my own ssh session;
+`scripts/kill-port.sh` exists for exactly this.
+*tooling* — the Ottomate to-do title cap is 300 chars and is hit constantly;
+measure before POSTing.
+*tooling* — page ids are unique GLOBALLY across projects while the error message
+says project-scoped (filed).
+*env* — a concurrent `npm run build` from a sibling session wipes ALL of `.next`
+and voids any running instance, producing plausible-looking false failures (#607).
+
+**Next session context:** Wave 2 remainder — TEC-20 performance baseline, then
+#405-F geometry via R2 with pre-compression measured against it (#634). Then Wave
+3, the four map forms plus browse-by-form (#408/#575), and Wave 4, the data
+acquisition backlog. **CI is still red (#610)** for a third, pre-existing reason:
+two specs import `.mjs` scripts and Playwright emits CJS into them in the CI
+container. Ruled out: Node version, lockfile drift, transform cache. **Owner:**
+#499 go-live parts, and a Cloudflare Pages token for #405-E.
+
+**A late correction worth keeping.** In round 3 I recorded — in the code and in a
+commit message — that the Escape regression test could not catch the bug it was
+written for. That was wrong. The mutation behind it reverted only the guard
+CONDITION, while `socialOpen` in the effect's DEPENDENCY ARRAY is equally part of
+the fix: with it there, opening the dialog re-runs the effect, so india-map's
+cleanup removes its listener mid-dispatch and the guard is unreachable whatever
+the condition says. Reverted completely, the defect returns and the test goes red.
+A partial revert answers a different question than the one being asked.
