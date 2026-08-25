@@ -35,10 +35,29 @@ const DESCRIPTION =
 // mis-indexed — but the contradiction sat directly in the launch path, where the
 // header is the part that goes away.
 //
-// WHY A FUNCTION. `export const metadata` is evaluated once at module load. A
-// `generateMetadata` is evaluated per render, and every page route in this app is
-// `force-dynamic`, so flipping SITE_LAUNCHED now changes all three signals
-// together with no rebuild — the same guarantee robots.ts already gives.
+// WHY A FUNCTION. `export const metadata` is evaluated once at module load; a
+// `generateMetadata` is evaluated per render. That only buys anything for routes
+// that actually render per request, and THAT IS THE CATCH THIS COMMENT ORIGINALLY
+// GOT WRONG — it claimed every page route here is `force-dynamic`. Two were not.
+//
+// `/` was statically prerendered, so this function ran at BUILD time and froze
+// `noindex, nofollow` into .next/server/app/index.html. Flipping SITE_LAUNCHED
+// would have moved the header and robots.txt and left the markup on the most
+// valuable URL on the site telling crawlers to skip it — turning a cosmetic
+// contradiction into a live de-indexing bug. app/page.tsx is now a Server
+// Component exporting `force-dynamic` for exactly this reason; read the comment
+// there before undoing it.
+//
+// `/embed` is still prerendered, and that is SAFE rather than overlooked: it
+// declares its own permanent `robots:{index:false}` in app/embed/layout.tsx, so
+// the value baked into its HTML is correct in both launch states. Shallow
+// metadata merge means a page's own robots always beats this one.
+//
+// So: every route whose robots directive DEPENDS on the flag renders per
+// request, and flipping SITE_LAUNCHED moves all three signals together with no
+// rebuild — the guarantee robots.ts already gives. Any new route that inherits
+// its robots from here must be dynamic too, and tests/iter43-hardening.spec.ts
+// runs in both launch states to catch one that is not.
 //
 // Pages that declare their own `robots` still win: Next merges metadata shallowly
 // per top-level key, which is how /embed keeps index:false in both launch states.

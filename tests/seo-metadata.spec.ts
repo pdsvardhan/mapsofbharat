@@ -27,9 +27,13 @@ import { test, expect } from "@playwright/test";
  *  assertion was encoding the defect as the expectation, so fixing the defect
  *  turned it red.
  *
- *  Both states are asserted rather than skipped, matching seo.spec.ts and
- *  noindex.spec.ts: a skip reads as green, and this project has already been
- *  bitten by tests that passed by not running. */
+ *  Both states are asserted rather than skipped: a skip reads as green, and this
+ *  project has already been bitten by tests that passed by not running.
+ *
+ *  (An earlier draft of this comment said noindex.spec.ts was already launch-aware.
+ *  It was not — it asserted the pre-launch posture unconditionally and went red
+ *  under SITE_LAUNCHED=true. It was made launch-aware in the same iteration, so
+ *  the claim is true now, but it was written before it was true.) */
 const LAUNCHED = process.env.SITE_LAUNCHED === "true";
 
 /** Pages whose <head> must be complete enough to produce a rich link preview. */

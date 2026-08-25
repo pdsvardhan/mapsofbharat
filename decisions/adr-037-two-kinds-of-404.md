@@ -56,13 +56,36 @@ which.**
    is **not** fixed, and is not quietly left undocumented either.
 
 `app/global-not-found.tsx` — Next's own answer to exactly this — was built,
-wired, and reverted. In 15.5.19 the convention is compiled only into the
-**experimental** app-page runtime (`app-page-experimental.runtime.*`); the stable
-runtime never consults the file, which is why enabling
-`experimental.globalNotFound` changed nothing measurable. Adopting it means moving
-a live site onto Next's experimental React runtime. That is a large, ongoing
-reliability cost, and the thing it buys is body copy on a page search engines do
-not index and readers reach by accident.
+wired, and reverted, because **it does not fix the half that is broken.** Enabled
+(`experimental.globalNotFound`) and rebuilt, it renders server-side for a route
+miss and leaves the `notFound()` routes exactly where they were:
+
+| | route miss | `notFound()` |
+|---|---|---|
+| with `global-not-found` | server-rendered | **41 characters** |
+
+Since the route-miss case is already solved by `app/not-found.tsx`, the file buys
+a second way to do the thing that works and nothing for the thing that does not.
+It was removed rather than kept as dead configuration.
+
+> **Correction, 2026-08-25 (same day, before this ADR was acted on).** The first
+> version of this section gave a *different* and **wrong** reason: that the
+> convention is compiled only into Next's experimental app-page runtime, that the
+> stable runtime never consults the file, and that adopting it would mean moving a
+> live site onto an experimental React runtime. An independent verifier checked
+> and none of that is true — `global-not-found` appears in the stable and
+> experimental runtime bundles alike (3 hits each, byte-identical logic), and no
+> runtime swap was ever substantiated.
+>
+> The error came from a measurement that could not tell the two outcomes apart.
+> The `global-not-found.tsx` under test rendered the *same component* as
+> `not-found.tsx`, so the 680 characters observed on a route miss were consistent
+> with either file having produced them, and "nothing changed" was inferred from a
+> signal that could not have shown a change. The verifier used a sentinel string
+> and got a different, decisive answer. The conclusion below survives; the
+> mechanism given for it was invented, and a fabricated mechanism in a decision
+> record is worse than a wrong decision, because the next reader cannot tell which
+> parts were measured.
 
 ## Consequences
 
@@ -75,5 +98,10 @@ not index and readers reach by accident.
   the limitation rather than the fix. It is written to FAIL the day a Next upgrade
   server-renders the boundary — at which point this ADR is retired and those
   routes move into the block above. The test says so in its own comment.
-- Both halves are mutation-proven: hard-coding the robots block back killed 2
-  tests; emptying the 404 body killed 5.
+- Both halves are mutation-proven: hard-coding the robots block back kills **7**
+  tests across the suite (2 in `iter43-hardening`, 5 in `seo-metadata`); emptying
+  the 404 body kills 5. An earlier draft said 2 for the first, which was the count
+  at the moment it was measured — `seo-metadata.spec.ts` had not yet been made
+  launch-aware, so it still passed under the mutation. Measuring one spec file and
+  reporting it as the suite figure is the same error in miniature as the one
+  corrected above.

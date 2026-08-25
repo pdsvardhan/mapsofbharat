@@ -145,3 +145,20 @@ jobs:
       # playwright.config.ts already exposes the override for exactly this. It costs
       # about 90 seconds and buys a signal that means something.
       - run: PW_WORKERS=1 bash scripts/test-isolated.sh --reporter=line
+
+      # THE LAUNCHED HALF, and it is not optional (iter-43, #580).
+      #
+      # Every robots signal on this site - the X-Robots-Tag header in
+      # middleware.ts, robots.txt in app/robots.ts, and the <meta> the root layout
+      # emits - is derived from SITE_LAUNCHED. Nothing in this repo ever set it, so
+      # the launched branch of every launch-aware spec was written and never
+      # executed, and a real defect shipped green: `/` was statically prerendered,
+      # which froze `noindex, nofollow` into its HTML, so at launch the homepage
+      # would have told crawlers to skip it with no header left to disagree. The
+      # iteration's own test caught it - in a configuration nothing ran.
+      #
+      # Only the launch-sensitive specs run here; the rest are state-independent
+      # and re-running them buys nothing but minutes.
+      - run: PW_WORKERS=1 bash scripts/test-isolated.sh --launched --reporter=line
+          tests/iter43-hardening.spec.ts tests/seo-metadata.spec.ts
+          tests/noindex.spec.ts tests/seo.spec.ts tests/embed-noindex.spec.ts

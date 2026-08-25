@@ -58,6 +58,19 @@ function fingerprint(path, idProp) {
   for (const f of feats) {
     ids.push(String(f.properties?.[idProp] ?? ""));
     // Deterministic regardless of key order in the source file.
+    //
+    // THE SEPARATOR BELOW IS A LITERAL 0x01 (SOH) BYTE, AND IT IS DELIBERATE.
+    // It joins property key=value pairs into one fingerprint row, and it is
+    // chosen precisely because no district name, state name or code can contain
+    // it — a printable separator like "|" or "," could collide with real data
+    // and make two different property sets fingerprint identically, which in
+    // this file means a changed boundary passing the gate.
+    //
+    // Flagged here because iter-43 found the SAME byte used by ACCIDENT in
+    // scripts/backup-offbox.sh and scripts/restore-drill.sh, where a sed
+    // replacement should have read backslash-1 — and a blanket "strip the
+    // control bytes" sweep would silently change this fingerprint and break the
+    // Survey-of-India boundary gate. This one stays.
     const props = f.properties ?? {};
     propRows.push(
       Object.keys(props).sort().map((k) => k + "=" + String(props[k])).join("")

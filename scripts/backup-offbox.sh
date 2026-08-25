@@ -229,7 +229,15 @@ else
   # says the transfer ran, not that the bytes are there - and now, equally, ERROR
   # lines in this log do not by themselves mean it failed. Read the counts.
   #
-  # The real fix is a current rclone (#574); 1.60.1 predates R2 support maturing.
+  # APPLIED 2026-08-25 (#574): the box now runs rclone v1.75.0 from
+  # /usr/local/bin, with PATH set in the crontab so cron resolves it too — the
+  # distro package at /usr/bin is still 1.60.1 and cron would otherwise have kept
+  # using it. Measured before and after on the same NEW object: 1.60.1 returns
+  # `501 NotImplemented` on the first PUT of every new object and succeeds on
+  # retry; 1.75.0 reports `Copied (new)` and handles the --backup-dir
+  # server-side copy/move below cleanly. The deterministic first-PUT failure is
+  # gone. That is NOT a promise that R2 never returns 501 under any condition, so
+  # the reasoning above still stands: read the counts, not the noise.
   if [ "$WITH_RAW" -eq 1 ] && [ "${#RAW_DIRS[@]}" -gt 0 ]; then
     for d in "${RAW_DIRS[@]}"; do
       log "  mirroring $d (incremental - only changed files move)"

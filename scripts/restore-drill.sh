@@ -158,14 +158,42 @@ declared=0
 [ -f "$SNAP/raw-file-count.txt" ] && declared="$(cat "$SNAP/raw-file-count.txt")"
 
 if [ "$FROM_REMOTE" -eq 1 ]; then
-  mirrored="$(rclone size "$MIRROR" --json 2>/dev/null | sed -n "s/.*[\"]count[\"]:\([0-9]*\).*//p")"
+  mirrored="$(rclone size "$MIRROR" --json 2>/dev/null | sed -n "s/.*[\"]count[\"]:\([0-9]*\).*/\1/p")"
 else
   mirrored="$(find "$MIRROR" -type f 2>/dev/null | wc -l)"
 fi
 
-if [ -z "$mirrored" ] || [ "$mirrored" = "0" ]; then
+# FAIL CLOSED (#574, iter-43). The sed above had a literal 0x01 (SOH) control
+# byte in place of the two characters backslash and 1 — the same escaping
+# accident as scripts/backup-offbox.sh, fixed there and missed here, which is
+# why the sweep matters more than the individual fix. Only `cat -A` renders it
+# (as ^A); cat, grep and every editor show nothing.
+#
+# The consequence was specific and bad: on the --from-remote path `$mirrored`
+# was ALWAYS that one unprintable byte, so `-z` was false and `= "0"` was false
+# and this guard could never fire. A remote mirror that had lost 800 of its 905
+# files would have been reported as a PASSED restore drill. The single-file
+# probe below still caught a TOTALLY empty mirror, which is the only reason this
+# was survivable; partial loss was undetectable.
+#
+# A non-numeric answer now FAILS rather than falling through. A drill that could
+# not take its own measurement has not verified a backup, and saying so is the
+# entire job of this script.
+case "$mirrored" in
+  ''|*[!0-9]*)
+    fail "could not read the raw mirror file count at $MIRROR (got '$mirrored') - the mirror check did NOT run, treat this drill as FAILED" ;;
+esac
+if [ "$mirrored" = "0" ]; then
   fail "the raw mirror at $MIRROR is empty - the one asset git cannot rebuild is NOT backed up"
 fi
+# A count far below what the snapshot recorded is the partial-loss case the old
+# guard could never see. Same 90% floor backup-offbox.sh uses.
+case "$declared" in
+  ''|*[!0-9]*) ;;
+  *) if [ "$declared" -gt 0 ] && [ "$mirrored" -lt "$(( declared * 9 / 10 ))" ]; then
+       fail "the raw mirror holds $mirrored files but the snapshot recorded $declared - treat this drill as FAILED"
+     fi ;;
+esac
 log "raw mirror holds $mirrored files (backup recorded $declared at snapshot time)"
 
 # Actually restore a file and read it, rather than trusting a count. A mirror of

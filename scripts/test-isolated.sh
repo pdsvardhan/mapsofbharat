@@ -4,6 +4,7 @@
 #   scripts/test-isolated.sh                          # whole suite
 #   scripts/test-isolated.sh tests/corrections.spec.ts
 #   scripts/test-isolated.sh --grep "dedup"
+#   scripts/test-isolated.sh --launched               # as if SITE_LAUNCHED=true
 #
 # WHY. `BASE_URL` defaults to http://localhost:8610, which is the PRODUCTION
 # container. Any spec that writes therefore writes to production by default: on
@@ -25,6 +26,21 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 REPO="$PWD"
+
+# --launched runs the whole thing as if SITE_LAUNCHED=true (iter-43, #580).
+# The indexing posture has TWO states and only one was ever exercised: the
+# response header (middleware.ts), robots.txt (app/robots.ts) and the <meta>
+# the root layout emits are all derived from SITE_LAUNCHED, and nothing in this
+# repo set it. So the launched half of every launch-aware spec was written and
+# never run, and a defect in it shipped green - "/" was baking noindex,nofollow
+# into prerendered HTML, which after launch would have de-indexed the homepage.
+# The flag goes to BOTH the scratch server and the test process; specs branch
+# on it too.
+LAUNCHED=""
+PW_ARGS=()
+for a in "$@"; do
+  if [ "$a" = "--launched" ]; then LAUNCHED="true"; else PW_ARGS+=("$a"); fi
+done
 
 if [ ! -d .next ]; then
   echo "test-isolated: no .next build found. Run 'npm run build' first." >&2
@@ -89,7 +105,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "test-isolated: starting a scratch instance on :$PORT"
+echo "test-isolated: starting a scratch instance on :$PORT${LAUNCHED:+ (SITE_LAUNCHED=true)}"
 echo "  atlas DB      $REPO/data/mapsofbharat.db (read-only)"
 echo "  corrections   $SCRATCH_DB (throwaway)"
 
@@ -98,6 +114,7 @@ CORRECTIONS_DB_PATH="$SCRATCH_DB" \
 CORRECTIONS_ADMIN_TOKEN="$TOKEN" \
 LOG_PATH="/tmp/mob-scratch-app-$STAMP.log" \
 NODE_ENV=production \
+SITE_LAUNCHED="$LAUNCHED" \
 PORT="$PORT" HOSTNAME="127.0.0.1" \
   node "$STANDALONE/server.js" >"$SCRATCH_LOG" 2>&1 &
 SERVER_PID=$!
@@ -129,4 +146,5 @@ echo
 BASE_URL="http://127.0.0.1:$PORT" \
 CORRECTIONS_ADMIN_TOKEN="$TOKEN" \
 CORRECTIONS_SCRATCH_DB="$SCRATCH_DB" \
-  npx playwright test "$@"
+SITE_LAUNCHED="$LAUNCHED" \
+  npx playwright test ${PW_ARGS+"${PW_ARGS[@]}"}
