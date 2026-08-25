@@ -102,7 +102,7 @@ test.describe("#580 — every indexing signal agrees", () => {
       expect(metas.length, `${path} emitted no meta robots at all`).toBeGreaterThan(0);
       expect(
         metas.length,
-        `${path} emitted ${metas.length} robots metas (${metas.join(" | ")}); a page that says two different things says nothing`
+        `${path} emitted ${metas.length} robots metas (${metas.join(" | ")}); exactly one is expected, whether or not they agree — a crawler should never have to reconcile them`
       ).toBe(1);
 
       const headerSaysNo = header.includes("noindex");

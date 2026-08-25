@@ -60,18 +60,12 @@ function fingerprint(path, idProp) {
     // Deterministic regardless of key order in the source file.
     //
     // THIS FILE USES TWO LITERAL CONTROL BYTES AS SEPARATORS, AND BOTH ARE
-    // DELIBERATE: 0x01 (SOH) joins key=value pairs within a row, just below, and
-    // 0x02 (STX) joins the rows themselves further down. They nest, which is the
-    // whole point — a row separator that could appear inside a row would let two
-    // different property sets fingerprint identically.
-    // It joins property key=value pairs into one fingerprint row, and it is
-    // chosen precisely because no district name, state name or code can contain
-    // it — a printable separator like "|" or "," could collide with real data
-    // and make two different property sets fingerprint identically, which in
-    // this file means a changed boundary passing the gate.
-    //
-    // Neither can occur in a district name, a state name or a code, which is
-    // exactly why they were chosen over "|" or ",".
+    // DELIBERATE. 0x01 (SOH) joins key=value pairs into one fingerprint row, just
+    // below; 0x02 (STX) joins those rows into the blob further down. They nest,
+    // which is the point: a row separator that could occur inside a row would let
+    // two different property sets fingerprint identically — and here that means a
+    // changed boundary passing the gate. Neither byte can appear in a district
+    // name, a state name or a code, which is why they were chosen over "|" or ",".
     //
     // Flagged here because iter-43 found the 0x01 used by ACCIDENT in
     // scripts/backup-offbox.sh and scripts/restore-drill.sh, where a sed

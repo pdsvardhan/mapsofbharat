@@ -21,8 +21,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-adr-refs.sh
+      # NODE 20, NOT 22, AND IT IS LOAD-BEARING (iter-43).
+      #
+      # Dockerfile builds and runs on node:20-slim and the production container
+      # reports v20.20.2, so 22 here meant CI was the only place this project ever
+      # ran on 22 — testing a runtime that never ships. It was not merely
+      # unrepresentative, it was BROKEN: under 22, Playwright's transform of the
+      # .mjs scripts that tests/centroid-containment.spec.ts and
+      # tests/family-paths.spec.ts import emits CommonJS into a file Node then
+      # loads as ESM, and every run died with
+      #   ReferenceError: exports is not defined in ES module scope
+      # The same specs pass on 20 locally (34 tests). CI had been red on main for
+      # this reason before this branch existed, which is why nothing here had ever
+      # been seen to run green.
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 20, cache: npm }
 
       # Survey-of-India boundary gate (#405): checksum + geometry + property
       # fingerprint (vs scripts/boundary-fingerprint.json) + always-on extent
@@ -66,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 20, cache: npm }
 
       # test-isolated.sh resolves a free port from the kernel socket table rather
       # than guessing; the playwright image ships without iproute2.
