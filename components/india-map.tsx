@@ -1507,6 +1507,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // socialOpen IS LOAD-BEARING IN THIS ARRAY, not incidental. Without it the
+    // effect does not re-run when the export dialog opens, so this listener is
+    // still the one registered before the dialog existed — and on Escape the
+    // dialog's own window handler runs first, onClose flushes, and this effect's
+    // cleanup removes the listener mid-dispatch, so the guard above never
+    // executes. Dropping it from the deps re-opens the defect with the condition
+    // still in place, which is why tests/a11y.spec.ts only goes red on a complete
+    // revert of both.
   }, [minimal, searchOpen, chooserOpen, scaleOpen, socialOpen]);
 
   // ── breadcrumb model ────────────────────────────────────────────────────

@@ -153,10 +153,30 @@ test.describe("what axe cannot see", () => {
     // So axe cannot be the only guard here. This asserts what a reader actually
     // sees: the line itself. Without it, a future tidy-up that drops
     // `text-decoration-line` ships a green suite and an invisible affordance.
-    await page.goto("/methodology");
-    await page.waitForSelector("main", { timeout: 30_000 });
+    // EVERY TEXT-BEARING ROUTE, not just /methodology. Scoped to one page, the
+    // same over-exemption shipped green anywhere else: the code verifier put
+    // `no-underline` on a textbook in-text link in app/terms/page.tsx and the
+    // suite stayed 40/40, with the link visibly plain beside an identical sibling
+    // four lines later. One route cannot police a site-wide rule.
+    const PROSE_ROUTES = [
+      "/methodology",
+      "/terms",
+      "/privacy",
+      "/coverage",
+      "/metric/literacy_rate",
+      "/family",
+      "/corrections",
+      "/does-not-exist",
+    ];
 
-    const links = await page.evaluate(() => {
+    const bare: { route: string; text: string; deco: string }[] = [];
+    let judged = 0;
+
+    for (const route of PROSE_ROUTES) {
+      await page.goto(route);
+      await page.waitForSelector("main", { timeout: 30_000 });
+
+      const links = await page.evaluate(() => {
       const out: { text: string; deco: string }[] = [];
       for (const a of Array.from(document.querySelectorAll<HTMLElement>("main a[href]"))) {
         // WHETHER A LINK IS "IN A TEXT BLOCK" IS DECIDED FROM THE DOM, NEVER FROM
@@ -183,10 +203,27 @@ test.describe("what axe cannot see", () => {
         // The iter-44 feature verifier did exactly that to the real "coverage
         // table" link inside its real sentence — decoration gone, this test green,
         // axe green. An easy accident, and invisible.
+        // `nav` FIRST, and it is load-bearing. Without it the 404 recovery cards
+        // resolve their block to <main>, whose heading and intro clear the 12-char
+        // margin, so four composed card links would be judged as prose and this
+        // test would demand underlines on them. Measured by the iter-44 code
+        // verifier before this rule was extended past /methodology: 4 false
+        // positives on /does-not-exist, 0 elsewhere. The card exemption lives in
+        // the CSS as `main nav a[href]`, so the test has to agree with it.
+        // A BUTTON-SHAPED LINK IS NOT AN IN-TEXT LINK. An in-text link is inline
+        // by definition; one laid out as flex or grid is a container styled as a
+        // control — "↓ Download raw source" and "Open in the interactive atlas →"
+        // on /metric/[slug] are both `inline-flex` with an accent fill, and
+        // underlining them would look like damage. Widening this rule past
+        // /methodology surfaced them immediately. `block` is deliberately still
+        // judged: the site footer's links are block-level and axe DOES flag them.
+        const display = getComputedStyle(a).display;
+        if (display.includes("flex") || display.includes("grid")) continue;
+
         const block = a.closest(
-          "p,li,dd,dt,td,th,figcaption,blockquote,footer,div,section,article,main"
+          "nav,p,li,dd,dt,td,th,figcaption,blockquote,footer,div,section,article,main"
         );
-        if (!block) continue;
+        if (!block || block.tagName === "NAV") continue;
         const blockText = (block.textContent || "").trim().length;
         const linkTextInBlock = Array.from(block.querySelectorAll("a[href]")).reduce(
           (n, el) => n + (el.textContent || "").trim().length,
@@ -199,16 +236,27 @@ test.describe("what axe cannot see", () => {
         });
       }
       return out;
-    });
+      });
 
-    // Fixture power: /methodology carries many in-text source links. If this ever
-    // drops to nothing the page changed shape and the test proves nothing.
-    expect(links.length, "found no in-text links to check — fixture lost its power").toBeGreaterThan(5);
+      judged += links.length;
+      for (const l of links.filter((x) => !x.deco.includes("underline"))) {
+        bare.push({ route, ...l });
+      }
+    }
 
-    const bare = links.filter((l) => !l.deco.includes("underline"));
+    // Fixture power, across the whole set. /methodology alone yields ~65 judged
+    // links; a floor of 40 catches the page changing shape without being so tight
+    // that ordinary copy edits break it.
+    expect(
+      judged,
+      `only ${judged} in-text links were judged across ${PROSE_ROUTES.length} routes — the fixture lost its power`
+    ).toBeGreaterThan(40);
+
     expect(
       bare,
-      `in-text links with no underline:\n  ${bare.map((b) => `"${b.text}" -> ${b.deco}`).join("\n  ")}`
+      `in-text links with no underline:\n  ${bare
+        .map((b) => `${b.route}  "${b.text}" -> ${b.deco}`)
+        .join("\n  ")}`
     ).toEqual([]);
   });
 
@@ -387,13 +435,25 @@ test.describe("focus cannot be left outside an open dialog", () => {
     const dialog = page.locator('[role="dialog"]').first();
     await dialog.waitFor({ timeout: 10_000 });
 
-    const stillThere = await page.evaluate(() => {
+    const stole = await page.evaluate(() => {
       const el = document.querySelector<HTMLElement>("[data-a11y-steal]");
-      if (!el) return false;
+      if (!el) return { present: false, stealable: false };
+      // The steal must be POSSIBLE, or the outcome below proves nothing. Today it
+      // is; if this app ever marks the background `inert` while a dialog is open —
+      // a genuine modal-a11y improvement it does not yet have — .focus() becomes a
+      // no-op and this test would pass with the backstop removed. Asserting
+      // stealability makes that change fail loudly here instead of silently
+      // disarming the guard.
+      const inert = !!el.closest("[inert]") || el.hasAttribute("inert");
+      const disabled = (el as HTMLButtonElement).disabled === true;
       el.focus();
-      return true;
+      return { present: true, stealable: !inert && !disabled && el.offsetParent !== null };
     });
-    expect(stillThere, "the marked element vanished when the dialog opened").toBe(true);
+    expect(stole.present, "the marked element vanished when the dialog opened").toBe(true);
+    expect(
+      stole.stealable,
+      "the marked element can no longer take focus (inert/disabled background?) — the steal is a no-op and this test would pass even with the backstop removed"
+    ).toBe(true);
 
     await expect
       .poll(() => dialog.evaluate((d) => d.contains(document.activeElement)), { timeout: 4_000 })
@@ -426,21 +486,23 @@ test.describe("Escape closes an overlay without taking anything else with it", (
     // `else if (selectedRef.current || focusRef.current)` branch was a no-op, and
     // it passed against the UNFIXED build.
     //
-    // READ THIS BEFORE TRUSTING THIS TEST AS A REGRESSION GUARD. Adding the drill
-    // was necessary and is not sufficient: I could not construct a mutation that
-    // makes this test fail. Reverting the fix — dropping `socialOpen` from
-    // india-map's Escape guard — leaves it GREEN, because a drill performed by
-    // clicking the map does not reach the state that triggered the original
-    // defect. The feature verifier reproduced that defect on production
-    // (`accad4a`) where Escape was the odd one out among the three close paths,
-    // and confirmed on this commit that all three now agree; that measurement,
-    // not this test, is the evidence the fix works.
+    // THIS TEST DOES CATCH THE DEFECT — corrected after a wrong conclusion of my
+    // own, which is worth recording because the mistake is easy to repeat.
     //
-    // So what this asserts is the INVARIANT — Escape must close the dialog without
-    // disturbing the map behind it — and it would catch a future regression that
-    // does reach this path. It is NOT proven to catch the specific bug it was
-    // written for, and it is labelled that way rather than left to look stronger
-    // than it is.
+    // I first reported it as unable to fail, having reverted only the guard
+    // CONDITION in india-map. That revert cannot reproduce the bug: `socialOpen`
+    // is also in that effect's DEPENDENCY ARRAY, and that is part of the fix. With
+    // it there, opening the dialog re-runs the effect, so when Escape fires the
+    // dialog's own window listener runs first, `onClose` flushes synchronously,
+    // and india-map's cleanup removes its listener MID-DISPATCH — the guard is
+    // unreachable whatever the condition says. Instrumented, the map's handler
+    // simply never ran on the first Escape.
+    //
+    // Reverted COMPLETELY — condition and deps — the defect returns on every path
+    // (chooser-pick + rail-drill, search-pick + rail-drill, chooser-pick +
+    // map-click) and this test goes red. So the dependency array is load-bearing:
+    // a future tidy-up that drops `socialOpen` from the deps re-opens the defect
+    // with the condition still in place, and india-map says so at the guard.
     const trail = page.locator('nav[aria-label="Drill trail"]');
     await trail.waitFor({ timeout: 15_000 });
     const atNational = (await trail.innerText()).trim();
