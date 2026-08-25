@@ -84,3 +84,55 @@ pages:
     mobile_handling: responsive
     entry_points: []
     components: []
+  - id: page-mob-coverage
+    title: "Coverage"
+    route: /coverage
+    purpose: "Every indicator ranked by the share directly measured rather than inherited, re-aggregated or projected - the provenance differentiator made browsable."
+    layout_type: list
+    empty_state: "Renders a plain line when coverage data is unavailable."
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
+  - id: page-family-index
+    title: "Indicator families"
+    route: /family
+    purpose: "Index of the nine declared metric families, each drawn as one grid of district choropleths (feat-metric-families)."
+    layout_type: list
+    empty_state: "Families are declared in lib/metric-families.ts, so the list is never empty."
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
+  - id: page-family-detail
+    title: "Family small multiples"
+    route: /family/[id]
+    purpose: "One family as a panel grid, shared or free axis per the family declaration. Zero bytes of route JavaScript."
+    layout_type: detail
+    empty_state: "An unknown id calls notFound(); status 404, body needs JS - see adr-037."
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
+  - id: page-metric-index
+    title: "All indicators"
+    route: /metric
+    purpose: "The full indicator list grouped by topic - the organic-search entry point and the index every 404 recovery link points at."
+    layout_type: list
+    empty_state: "Never empty in practice; the store always holds metrics."
+    error_state: "Server-rendered from the DB; a read failure surfaces as a 500, not a blank list."
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
+  - id: page-metric-detail
+    title: "Metric detail"
+    route: /metric/[slug]
+    purpose: "One indicator in full: map, rank table, citation, methodology, coverage, and the metric-to-metric transition (feat-metric-shift). The primary SEO surface."
+    layout_type: detail
+    empty_state: "An unknown slug calls notFound(); status 404, body needs JS - see adr-037."
+    error_state: "force-dynamic; a DB read failure surfaces as a 500."
+    permissions: anonymous
+    mobile_handling: responsive
+    entry_points: []
+    components: []
