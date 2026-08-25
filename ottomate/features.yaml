@@ -467,3 +467,49 @@ features:
         test_status: not-tested
         linked_test: null
     dependencies: []
+  - id: feat-metric-shift
+    title: Metric-to-metric transition
+    short_description: Pick a second metric on any well-covered metric page and
+      watch every district keep its identity while the ranking re-sorts - a
+      Gapminder-style re-rank needing zero time points. Reduced motion gets the
+      static two-axis scatter instead.
+    type: ui
+    status: done
+    priority: P2
+    size: M
+    test_status: partial
+    notes: "Roadmap #547 phase C, per research/2026-08-20-455-animation-recheck.md
+      (R1). Built in Ottomate iteration 42 (items 977-982). Stack decision at
+      the gate: no new runtime dependency - CSS-staged SVG, adr-032 intact.
+      Floors: >=690/735 districts, >=30/36 states; the MGNREGA family (678-683)
+      sits under the district floor by design - lowering it is a deliberate
+      future decision. URL state ?vs= makes comparisons shareable. The standing
+      R1 rule holds by construction: nothing animates a fill across TIME."
+    acceptance_criteria:
+      - content: A metric page whose metric meets its level's coverage floor offers a
+          picker of eligible partners derived from the store (never a
+          hand-written list); a metric under the floor gets no section at all.
+        test_status: not-tested
+        linked_test: null
+      - content: Picking a partner draws exactly one dot per region in the two metrics'
+          SHARED set - never the base metric's whole set - and the comparison is
+          shareable via ?vs= in the URL, restored on load.
+        test_status: not-tested
+        linked_test: null
+      - content: "Re-sorting preserves each region's identity (stable keys, stable
+          value-then-code tie-break) and stages the change: ~1s on position,
+          colour following after the move settles."
+        test_status: not-tested
+        linked_test: null
+      - content: Dot colours class the sorting metric through lib/breaks' own selector,
+          edges and palettes (adr-033) - one definition per visual fact, never a
+          second scheme.
+        test_status: not-tested
+        linked_test: null
+      - content: Under prefers-reduced-motion the animation is replaced by the static
+          two-axis scatter (both metrics at once, no motion controls); re-sorts
+          announce via a scoped aria-live region and the picker is
+          keyboard-operable.
+        test_status: not-tested
+        linked_test: null
+    dependencies: []

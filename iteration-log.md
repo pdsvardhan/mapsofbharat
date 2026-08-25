@@ -1021,3 +1021,70 @@ comparable time points). Then **#408** phase 2, which still needs a written plan
 wants a current rclone touching four other backup jobs; `#499` go-live parts, which now also carry two
 site-wide findings from this session — 404 bodies that live only in the RSC payload (#579) and
 contradictory robots signals (#580).
+
+## Session 2026-08-23/25 — #547 phase C shipped
+
+**Stage:** Stage 4 iterate — Ottomate iteration 42 (items 977-982), integrated.
+**Deployed:** `0f35c07`, health reports it. GIT_SHA passed.
+
+**What shipped:** the metric-to-metric transition, the half of the #547 plan that R1 kept and
+766 called "the real beyond-choropleth answer". On any metric page whose metric clears its
+level's coverage floor, a picker offers every eligible partner; picking one draws a rank grid
+of dots — one per region on the two metrics' shared set — and re-sorting swims them to new
+cells with each region keeping its identity. Position moves over ~1s, colour follows *after*
+the move settles (Heer & Robertson 2007's staging). `?vs=` makes the comparison shareable.
+District and state both ship from one component. Zero new dependencies.
+
+**Decisions:** stack (no runtime D3 — CSS-staged SVG, adr-032 intact as written) and entry
+point (metric-page section, #575's metric-first door) were both owner calls at the lock-in
+gate, recorded in the item bodies and commits rather than as new ADRs, since nothing
+contradicted an existing decision.
+
+**The floor has a visible consequence, stated rather than discovered:** the whole MGNREGA
+family sits at 678-683 districts, just under the 690 floor, and gets no transition at all.
+That is the floor working — a pair is only as good as its shared set — but it is an absence a
+reader could notice, and lowering it is a deliberate decision for whoever wants it.
+
+**WHAT VERIFICATION EARNED, in four rounds.** This is the entry worth re-reading:
+
+1. *Code round 1* — my class edges were computed over ALL shared values while the caption
+   underneath claimed "colours class the metric the way the map does". The map filters copies
+   out (adr-022): an inherited value duplicates a real district already counted. Measured: 20
+   of 74 eligible metrics have copy-sensitive edges and two flip the classification *method*.
+   Phase B's `lib/family-data.ts` already had this right; I did not carry it over.
+2. *Code round 2* — after the fix, it disconnected the filter **at its call site** (statsValues
+   intact, empty metadata passed), proved the mutation in the served bytes, and watched all 12
+   tests stay green. The node-side kill proved the pure function; nothing proved the component
+   fed it. Third instance this month of *defined but not wired*.
+3. *Feature round 2* — found the fix **observationally inert** on the obvious fixtures
+   (equal-interval edges hang on min/max, so interior copies change nothing), probed all 33
+   copy-carrying partners to find where it bites, and proved it pixel-live where the method
+   flips: pre-fix model mismatches 308 dots, fixed page matches the filtered model 710/710.
+   It said so plainly rather than banking a green that had no power.
+4. *Code round 3* — APPROVE, having re-run its own killer mutation against the new test and
+   confirmed the vacuity guard is structurally load-bearing.
+
+The lesson in one line: **a green test over a correct pure function says nothing about whether
+anything calls it.**
+
+**Friction:**
+*process* — I wrote a fill assertion that read the partner's `category` from the DETAIL
+endpoint, which does not carry it: undefined, silent fallback to the default ramp, red against
+a correctly-painted page. Wrong door, quietly. The list endpoint is the source the component's
+own props are built from.
+*process* — two of my own tests were structurally weak and caught by mutation, not by review:
+a grid test that verified capacity and arithmetic but never *shape* (a one-column grid 513,100px
+tall passed), and a dot-count test using a 733-complete partner, against which intersection and
+union are indistinguishable.
+*tooling* — the mutation harness refused to measure when I dropped BASE_URL and it hit the live
+container on a red baseline. Exactly the #557 design, working.
+*tooling* — a nested heredoc through ssh mangled a patch script; patches go via scp as files.
+*env* — both verifier sub-agents were killed mid-run by a session limit and resumed cleanly from
+transcript two days later. Context survives; only wall time is lost.
+
+**Next session context:** **#408 phase 2** — symbol maps beyond the 9 COUNT metrics phase 1
+shipped; needs a written plan first (`research/531`). Remaining forms per R1: categorical, VSUP,
+bivariate; hex is state-level only and cartograms are DO-NOT-BUILD (758). **Owner:** `#574`
+wants a current rclone shared with four other backup jobs; `#499` go-live, still carrying `#579`
+(404 bodies live only in the RSC payload) and `#580` (contradictory robots signals). Also open
+from this session: `#581`, the page registry is a partial index.

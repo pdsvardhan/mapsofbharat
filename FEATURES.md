@@ -1,11 +1,11 @@
-<!-- generated from registry @ HEAD on 2026-08-23 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
+<!-- generated from registry @ HEAD on 2026-08-25 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
 # mapsofbharat — Features & Flows (generated reference)
 
 > Generated from the Ottomate registry (the single source of truth). To change anything here, edit the feature/flow/acceptance-criteria in the tracker, then re-run `scripts/generation/gen-reference-docs.mjs --project mapsofbharat`.
 
 ## Features
 
-### done (13)
+### done (14)
 
 - **Canonical metric store and schema** `feat-canonical-store` — _backend_, test: `passing`
   - All data lives in one canonical store — region × metric × year × value — with full metadata on every metric.
@@ -53,6 +53,13 @@
   - AC: The ALL INDICATORS disclosure on the selected-region panel reads as a control and exposes its open/closed state via aria-expanded (test: `tests/iter35-controls.spec.ts`)
   - AC: Metrics are grouped by topic category in the selector (demographics, poverty, agriculture, health, …); picking a category filters the list to that topic
   - AC: Selecting a metric applies its per-metric default break method and topic-suggested palette, and the legend reflects the metric's unit and value formatting
+- **Metric-to-metric transition** `feat-metric-shift` — _ui_, test: `partial`
+  - Pick a second metric on any well-covered metric page and watch every district keep its identity while the ranking re-sorts - a Gapminder-style re-rank needing zero time points. Reduced motion gets the static two-axis scatter instead.
+  - AC: A metric page whose metric meets its level's coverage floor offers a picker of eligible partners derived from the store (never a hand-written list); a metric under the floor gets no section at all.
+  - AC: Picking a partner draws exactly one dot per region in the two metrics' SHARED set - never the base metric's whole set - and the comparison is shareable via ?vs= in the URL, restored on load.
+  - AC: Re-sorting preserves each region's identity (stable keys, stable value-then-code tie-break) and stages the change: ~1s on position, colour following after the move settles.
+  - AC: Dot colours class the sorting metric through lib/breaks' own selector, edges and palettes (adr-033) - one definition per visual fact, never a second scheme.
+  - AC: Under prefers-reduced-motion the animation is replaced by the static two-axis scatter (both metrics at once, no motion controls); re-sorts announce via a scoped aria-live region and the picker is keyboard-operable.
 - **Rankings, percentile, and vs-average** `feat-rankings-stats` — _ui_, test: `passing`
   - Auto rank/percentile + vs-average diverging view.
   - AC: Selecting a region shows its rank and percentile for the metric, computed over the districts the source actually surveyed. A district whose value was inherited from its parent (estimated=1) has no rank of its own and reports the inheritance instead (adr-019). (test: `tests/estimates.spec.ts`)
