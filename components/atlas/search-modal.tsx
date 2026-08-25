@@ -4,6 +4,7 @@
 // visible toolbar/chooser in the Atlas layout (iter-51 item 384).
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { Metric } from "./cats";
 import { track } from "@/lib/analytics";
 
@@ -19,6 +20,12 @@ export function SearchModal({
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // This one is always mounted and toggles on `open`, unlike the other two
+  // overlays, so the hook is driven by the prop rather than by mounting.
+  // It already focuses its own input on open; the hook adds the trap and the
+  // hand-back, and defers to whatever holds focus by the time Tab is pressed.
+  useDialogFocus(open, dialogRef);
 
   useEffect(() => {
     if (open) { setQ(""); setActive(0); setTimeout(() => inputRef.current?.focus(), 30); }
@@ -103,7 +110,12 @@ export function SearchModal({
   return (
     <div className="atl-fade fixed inset-0 z-50 flex justify-center pt-[14vh]" style={{ background: "rgba(7,8,11,.72)" }} onClick={onClose}>
       <div
-        role="dialog" aria-label="Search" onClick={(e) => e.stopPropagation()}
+        // aria-modal + the focus contract (iter-44 item 1054). Measured: this
+        // rendered role=dialog while focus stayed on the opener and thirty Tab
+        // presses walked out into the page behind. tabIndex={-1} gives the hook
+        // somewhere to put focus when the dialog has no focusable child yet.
+        ref={dialogRef} tabIndex={-1}
+        role="dialog" aria-modal="true" aria-label="Search" onClick={(e) => e.stopPropagation()}
         className="atl-pop flex h-fit max-h-[66vh] w-[500px] max-w-[92vw] flex-col border border-border bg-panel-solid px-5 pb-4 pt-4"
       >
         <div className="flex flex-none items-center gap-3 border-b border-border pb-2.5">

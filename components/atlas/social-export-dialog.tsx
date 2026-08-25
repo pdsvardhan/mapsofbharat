@@ -5,6 +5,7 @@
 // an editable headline. Download renders full-res (2x) via lib/social-export.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 import {
   renderSocialCard, presetSize, cardClassification, cardShowsTables,
   SocialCardSpec, SocialFeature, SocialPreset, SocialTheme,
@@ -67,6 +68,10 @@ export function SocialExportDialog({
   const [accentSel, setAccentSel] = useState<number[] | null>(null);
   const [busy, setBusy] = useState(false);
   const previewRef = useRef<HTMLCanvasElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Mounted only while open (india-map renders it behind `socialOpen && data &&`).
+  // This one already declared aria-modal; what it lacked was the focus contract.
+  useDialogFocus(true, dialogRef);
   const renderT = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // On-map rank MARKERS only exist on dense cards — a sparse (state) card labels
@@ -160,6 +165,7 @@ export function SocialExportDialog({
       className="atl-fade fixed inset-0 z-[60] grid place-items-center p-2"
       style={{ background: "rgba(8,9,7,.72)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      ref={dialogRef} tabIndex={-1}
       role="dialog" aria-modal="true" aria-label="Export social media card"
     >
       {/* Stacks below lg (to-do 424). The panel was a fixed two-column row with an

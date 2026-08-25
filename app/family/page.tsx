@@ -68,7 +68,7 @@ export default async function FamilyIndexPage() {
       <ul className="mt-8 divide-y divide-border-soft">
         {families.map((f) => (
           <li key={f.id} className="py-4">
-            <Link href={`/family/${f.id}`} className="group block">
+            <Link href={`/family/${f.id}`} className="group block no-underline">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-[15px] font-semibold text-foreground group-hover:text-accent-text group-hover:underline">
                   {f.label}

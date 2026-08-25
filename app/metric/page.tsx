@@ -127,7 +127,7 @@ export default function MetricCatalogue() {
                   href={`/metric/${m.id}`}
                   data-role="category-row"
                   title={`${m.name} — ${m.source}`}
-                  className="grid h-8 items-center gap-x-2 border-b border-border-faint px-2 transition-colors duration-[160ms] hover:bg-elevated"
+                  className="grid h-8 items-center gap-x-2 border-b border-border-faint px-2 no-underline transition-colors duration-[160ms] hover:bg-elevated"
                   style={{ gridTemplateColumns: ROW_COLS }}
                 >
                   <span className="truncate text-[13.5px] font-semibold text-bright">{m.name}</span>
