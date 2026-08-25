@@ -83,7 +83,15 @@ jobs:
 
       # test-isolated.sh resolves a free port from the kernel socket table rather
       # than guessing; the playwright image ships without iproute2.
-      - run: apt-get update -qq && apt-get install -y -qq iproute2
+      # iproute2: test-isolated.sh resolves a free port from the kernel socket
+      # table and the playwright image ships without `ss`.
+      # build-essential: better-sqlite3 is a NATIVE module and there is no
+      # prebuilt binary for this image's Node, so npm ci falls back to node-gyp —
+      # which died with `not found: make` because the image carries no compiler.
+      # This was invisible while CI was pinned to Node 22, where a prebuilt binary
+      # did exist: the pin was hiding a missing toolchain, and correcting the pin
+      # to the Node that actually ships (iter-43) exposed it.
+      - run: apt-get update -qq && apt-get install -y -qq iproute2 build-essential
 
       - run: npm ci
 
