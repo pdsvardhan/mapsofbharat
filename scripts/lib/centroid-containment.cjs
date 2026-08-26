@@ -10,7 +10,8 @@
 // 16 tests and node:20.19.5-slim throws. CI and the production image run 20.20.2 while the
 // VAULT7A host runs 20.19.2, which is the whole reason this was red in CI and green
 // locally — for long enough that "CI is red, pre-existing" became a to-do rather than a
-// bug, and the ci.yml comment above the Node pin still blames Node 22 for it.
+// bug, and the ci.yml comment above the Node pin blamed Node 22 for it until iter-45
+// corrected it in place.
 //
 // The fix is that no spec imports a .mjs at all. The logic lives here, in a file whose
 // module format is unambiguous to both loaders; scripts/check-centroids.mjs is a thin CLI
