@@ -65,14 +65,31 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
   // 825,354 B here, where the static path had been giving it 179,820 B. An
   // optimisation that is a 4.6x regression for part of the audience is worse than no
   // optimisation, so both variants are pre-built and this only chooses between them.
+  // QVALUES ARE HONOURED, because `br;q=0` means NOT acceptable (RFC 9110) and a bare
+  // token match reads that as a request FOR brotli. The first version tested for the
+  // token alone and served brotli to a client that had explicitly refused it. Rare in
+  // the wild; wrong regardless. A lone `*` is honoured too — it means "anything", and
+  // the token approach let it fall through to the 825 KB original.
   const accept = req.headers.get("accept-encoding") ?? "";
-  const rungs: Array<[RegExp, string, string]> = [
-    [/\bbr\b/, "br", `${raw}.br`],
-    [/\bgzip\b/, "gzip", `${raw}.gz`],
+  const acceptable = new Map<string, number>();
+  for (const part of accept.split(",")) {
+    const [token, ...params] = part.trim().split(";");
+    const q = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
+    acceptable.set(token.trim().toLowerCase(), q ? Number(q.slice(2)) : 1);
+  }
+  const wildcard = acceptable.get("*");
+  const wants = (enc: string) => {
+    const q = acceptable.get(enc) ?? wildcard;
+    return q !== undefined && q > 0;
+  };
+
+  const rungs: Array<[string, string]> = [
+    ["br", `${raw}.br`],
+    ["gzip", `${raw}.gz`],
   ];
 
-  for (const [pattern, encoding, path] of rungs) {
-    if (!pattern.test(accept)) continue;
+  for (const [encoding, path] of rungs) {
+    if (!wants(encoding)) continue;
     try {
       await stat(path);
       const body = await readFile(path);

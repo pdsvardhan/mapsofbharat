@@ -156,7 +156,7 @@ export default function CoveragePage() {
                     {/* THE UNIT IS NOT PART OF WHAT TRUNCATES (#630, iter-45).
                         One `truncate` used to sit on a span wrapping rank, name AND
                         unit, so at 320px the ellipsis ate the unit: 21 of these rows
-                        had their unit's right edge 3-77px outside the viewport and
+                        had their unit's right edge 1-96px outside the viewport and
                         simply lost it, which turns "Literacy rate (%)" into a number
                         with no idea what it counts. The row is a flex line now — rank
                         and unit are flex-none, and only the NAME may be shortened,

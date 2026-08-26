@@ -86,6 +86,24 @@ test.describe("#405-F geometry is served pre-compressed", () => {
     expect(String(r.headers["cache-control"])).toContain("max-age=86400");
   });
 
+  test("q=0 is a refusal, and * is an invitation", async () => {
+    // RFC 9110: `br;q=0` means brotli is NOT acceptable. The first version matched the
+    // token and served brotli to a client that had explicitly refused it, and let a
+    // bare `*` fall through to the 825 KB original instead of taking the best rung.
+    // Neither is common in the wild; both are simply wrong, and a header parser that
+    // is right only for the headers you thought of is the shape this iteration keeps
+    // finding.
+    const refused = await fetchRaw(url(`/geodata/${FILE}`), "br;q=0, gzip");
+    expect(refused.encoding, "br;q=0 means do not send me brotli").toBe("gzip");
+
+    const wildcard = await fetchRaw(url(`/geodata/${FILE}`), "*");
+    expect(wildcard.encoding, "* means anything — the best rung, not the raw file").toBe("br");
+    expect(wildcard.body.byteLength).toBeLessThan(140_000);
+
+    const gzipRefused = await fetchRaw(url(`/geodata/${FILE}`), "gzip;q=0, br");
+    expect(gzipRefused.encoding).toBe("br");
+  });
+
   test("the route refuses traversal, unknown files and non-geometry extensions", async () => {
     for (const bad of ["..%2f..%2fpackage.json", "nope.geojson", "mapsofbharat.db", "..%2F..%2F.env"]) {
       const r = await fetchRaw(url(`/geodata/${bad}`), "br, gzip");

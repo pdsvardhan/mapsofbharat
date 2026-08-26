@@ -52,6 +52,17 @@ const RUNS = Number(arg("runs", "3"));
 const LABEL = arg("label", "baseline");
 const OUT = arg("out", "");
 
+// FORCE AN Accept-Encoding, so "before" and "after" can be ONE instance and ONE
+// variable. The first use of this harness compared a production container running a
+// different commit against a scratch instance running this branch, and called the
+// difference the win. It was not like-for-like: the production container proxies
+// /stats/script.js successfully and a scratch instance cannot resolve `umami` at all,
+// so ~2.2 KB of "improvement" on every route was an analytics file the after simply
+// failed to fetch, and routes with NO geometry showed gains they could not have made.
+// With this flag both arms run against the same server on the same build and the only
+// difference is the encoding the browser asks for.
+const ACCEPT_ENCODING = arg("accept-encoding", "");
+
 /** The routes that carry the weight. `/` is the atlas and the reason this file
  *  exists; the rest are the heaviest of what a reader actually opens. Kept in step
  *  with the route list tests/a11y.spec.ts scans, so the two agree on what "every
@@ -95,6 +106,9 @@ async function measure(browser, route) {
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
   await cdp.send("Network.enable");
+  if (ACCEPT_ENCODING) {
+    await cdp.send("Network.setExtraHTTPHeaders", { headers: { "Accept-Encoding": ACCEPT_ENCODING } });
+  }
 
   const byRequestId = new Map();
   const finished = [];
@@ -194,7 +208,13 @@ for (const route of ROUTES) {
       min: Math.min(...runs.map((r) => r.geo_bytes)),
       max: Math.max(...runs.map((r) => r.geo_bytes)),
     },
-    ttfb_ms: { median: median(runs.map((r) => r.nav?.ttfb_ms ?? 0)) },
+    // Spread on TTFB too. It carried a bare median while every other column reported
+    // min and max, which is the one shape that invites reading noise as a result.
+    ttfb_ms: {
+      median: median(runs.map((r) => r.nav?.ttfb_ms ?? 0)),
+      min: Math.min(...runs.map((r) => r.nav?.ttfb_ms ?? 0)),
+      max: Math.max(...runs.map((r) => r.nav?.ttfb_ms ?? 0)),
+    },
     load_ms: {
       median: median(runs.map((r) => r.nav?.load_ms ?? 0)),
       min: Math.min(...runs.map((r) => r.nav?.load_ms ?? 0)),
@@ -206,6 +226,10 @@ for (const route of ROUTES) {
       max: Math.max(...runs.map((r) => r.wall_ms)),
     },
     requests: median(runs.map((r) => r.requests)),
+    // FROM THE LAST RUN, not the median one, and labelled so nobody reads them as
+    // medians. They are a breakdown for orientation — which assets dominate — while
+    // every number used for comparison above is a median across all runs.
+    breakdown_source: "last run",
     by_type: runs[runs.length - 1].by_type,
     heaviest: runs[runs.length - 1].assets,
   };
@@ -223,6 +247,7 @@ const report = {
   label: LABEL,
   measured_at: new Date().toISOString(),
   base_url: BASE_URL,
+  accept_encoding: ACCEPT_ENCODING || "(browser default)",
   runs_per_route: RUNS,
   node: process.version,
   routes: results,

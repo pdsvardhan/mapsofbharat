@@ -50,13 +50,34 @@ Shipped:
 - `components/india-map.tsx` fetches `/geodata/*`. `/geo/*` is unchanged and still
   serves the raw files.
 
-Measured after, same harness, same routes:
+Measured after — **one server, one build, one variable**, the two arms differing only
+in the `Accept-Encoding` the browser sends (`planning/perf-405F-arm-gzip.json`,
+`planning/perf-405F-arm-br.json`):
 
-| route | before | after | Δ |
+| route | gzip arm | brotli arm | Δ |
 |---|---|---|---|
-| `/` | 1088.4 KB | 982.0 KB | **−106.4 KB** |
-| `/metric/[slug]` | 1327.8 KB | 1217.9 KB | **−109.9 KB** |
-| geometry on both | 288.1 KB | 184.5 KB | **−36.0%** |
+| `/` | 1084.0 KB | 982.0 KB | **−102.0 KB** |
+| `/metric/[slug]` | 1319.9 KB | 1217.8 KB | **−102.1 KB** |
+| geometry on both | 286.6 KB | 184.5 KB | **−35.6%** |
+| `/metric`, `/family`, `/family/religion`, `/coverage` | — | — | **0, byte-identical** |
+
+The last row is the control, and it is the reason to trust the rest: routes that fetch
+no geometry come out identical to the byte across both arms.
+
+> **Correction, 2026-08-27, before this ADR was acted on.** The first version of this
+> table read −106.4 KB and −109.9 KB, from a comparison that was not like-for-like: the
+> "before" was the production container on a different commit (1a35430) and the "after"
+> a scratch standalone of this branch. The two differ in more than the encoding — the
+> production container proxies `/stats/script.js` successfully while a scratch instance
+> cannot resolve `umami` at all, so ~2.2 KB of "win" on every route was an analytics
+> file the after simply failed to fetch. It showed plainly in the artefacts and was not
+> read: routes with **zero geometry** all "improved" by 1.7–3.5 KB, which brotli on the
+> geometry cannot do. An independent verifier caught it. Every discrepancy ran in the
+> flattering direction, which is the direction that does not get questioned.
+>
+> The harness now takes `--accept-encoding`, so a before and an after can be one
+> instance and one variable. The −36.0% file-level figure was always exact and is
+> unchanged; the page-level deltas are 4–8 KB smaller than first published.
 
 ## Three things this cost, all found by measuring rather than reasoning
 

@@ -174,8 +174,8 @@ test.describe("iter-131 item 830 — export card control parity", () => {
 // #630 — the unit label survives the narrowest viewport we support (iter-45).
 //
 // Found by the iter-44 feature verifier, pre-existing: one `truncate` covered rank,
-// name AND unit, so at 320px the ellipsis ate the unit on 21 rows — right edges 3 to
-// 77px outside the viewport — and a coverage figure lost the thing it is a figure OF.
+// name AND unit, so at 320px the ellipsis ate the unit on 22 rows — right edges 1 to
+// 96px outside the viewport — and a coverage figure lost the thing it is a figure OF.
 // Document scroll was unaffected, so the reflow test could not see it either: nothing
 // overflowed the PAGE, the text was clipped inside its own row.
 //

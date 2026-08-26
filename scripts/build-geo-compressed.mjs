@@ -16,7 +16,7 @@
 //
 // WHY THE FILES STAY IN public/. Measured too: an app route and a public file that
 // claim the same URL are not a race, public wins outright. A probe handler at
-// /geo/districts.geojson never ran — the static 825,354 B answered. Rather than move
+// /geo/districts.geojson never ran — the static file answered (825,354 B identity, 179,820 B gzipped). Rather than move
 // 2.8 MB of geometry out of public/ and rewire the boundary fingerprint, the centroid
 // guard, the family-paths artefact and the build trace with it, the .br siblings live
 // beside their originals and app/geodata/[file] serves them. /geo/* keeps working

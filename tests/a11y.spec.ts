@@ -326,14 +326,22 @@ test.describe("what axe cannot see", () => {
       // on it does nothing. The test was measuring a control that cannot receive
       // focus and calling the absence of a focus ring a defect. Every enabled
       // control on the atlas passes.
-      // `iframe` IS IN THIS LIST BECAUSE IT IS A TAB STOP (#632). It was not, so the
-      // one control on the site with no focus ring was also the one control this
-      // query could not return. Measured on /metric/[slug]: Tab reaches the frame at
-      // stop 5, and `:focus-visible` does not match it — the ring now comes from an
-      // `iframe:focus` rule in globals.css, which this test is what proves.
+      // `iframe` IS DELIBERATELY NOT IN THIS LIST, and the reason is measured (#632,
+      // iter-45). It WAS added here, together with an `iframe:focus-within` rule, and
+      // both were wrong: Tab reaches the frame at stop 5 on /metric/[slug], but focus
+      // is then delegated INTO the frame's content document, so the frame element
+      // matches neither :focus nor :focus-visible nor :focus-within, and its computed
+      // outline after a real Tab is `none` — byte-identical to the unfocused control.
+      // The rule matched only under programmatic element.focus(), which is the one
+      // path a keyboard user never takes, so the test that "proved" it was measuring
+      // its own fixture.
+      //
+      // What a keyboard user actually gets is asserted below, on the element that
+      // really holds focus. Putting `iframe` back here without that would reinstate a
+      // control this query can never see satisfied.
       const els = [
         ...document.querySelectorAll<HTMLElement>(
-          "a[href],button,select,input,iframe,[tabindex]:not([tabindex='-1'])"
+          "a[href],button,select,input,[tabindex]:not([tabindex='-1'])"
         ),
       ].filter(
         (e) =>
@@ -370,50 +378,64 @@ test.describe("what axe cannot see", () => {
   });
   }
 
-  test("the frame on a metric page is a tab stop, and it is one this suite can see", async ({ page }) => {
-    // The guard on the guard. The test above only catches a bare iframe while an
-    // iframe is in its query AND a route with one is in its list; both were absent,
-    // which is exactly how the defect survived iter-44's audit. This asserts the
-    // fixture's reach directly, so deleting either would fail here rather than
-    // quietly shrink what the suite covers.
+  test("tabbing into the embedded map lands on something with a visible focus ring", async ({ page }) => {
+    // #632 RE-MEASURED (iter-45). The to-do reported "two iframe tab stops with no
+    // focus ring". Measured on /metric/[slug] at 1280x900 there is ONE iframe tab stop,
+    // and the report was reading the wrong element: the frame element never shows a
+    // ring because it never holds focus in its own document — Tab delegates focus into
+    // the embedded page, and the thing that actually has focus is the map canvas
+    // inside, which already takes the app's ring from the :focus-visible rule that
+    // predates this iteration.
+    //
+    // So this asserts the user-visible property rather than a selector: Tab until the
+    // parent's activeElement is the frame, then look INSIDE it at whatever holds focus
+    // and require a real indicator. That is the assertion an `iframe:focus-within`
+    // rule could not make, and the one a future regression in the embed would break.
     await page.goto("/metric/literacy_rate");
-    await page.waitForSelector("main", { timeout: 30_000 });
+    await page.waitForSelector("main iframe", { timeout: 30_000 });
+    await page.waitForTimeout(1500);
 
-    const frames = await page.locator("main iframe").count();
-    expect(frames, "no iframe on /metric/[slug] — the #632 fixture has lost its subject").toBeGreaterThan(0);
+    expect(
+      await page.locator("main iframe").count(),
+      "no iframe on /metric/[slug] — this fixture has lost its subject",
+    ).toBeGreaterThan(0);
 
-    const ring = await page.evaluate(() => {
-      const f = document.querySelector<HTMLIFrameElement>("main iframe");
-      if (!f) return null;
-      const before = getComputedStyle(f).outlineStyle;
-      f.focus();
+    let reachedFrame = false;
+    for (let i = 0; i < 12 && !reachedFrame; i++) {
+      await page.keyboard.press("Tab");
+      reachedFrame = await page.evaluate(() => document.activeElement?.tagName === "IFRAME");
+    }
+    expect(reachedFrame, "Tab never reached the embedded map — it must stay a tab stop").toBe(true);
+
+    const inner = page.frames().find((f) => f !== page.mainFrame());
+    expect(inner, "the embed frame did not attach").toBeTruthy();
+
+    const focused = await inner!.evaluate(() => {
+      const e = document.activeElement as HTMLElement | null;
+      if (!e) return null;
+      const cs = getComputedStyle(e);
       return {
-        before,
-        after: getComputedStyle(f).outlineStyle,
-        focused: document.activeElement === f,
-        // Recorded because it is counter-intuitive and it cost a wrong fix: focusing a
-        // frame delegates focus into its content document, so the element is
-        // activeElement while matching NEITHER :focus NOR :focus-visible. An
-        // `iframe:focus` rule is dead CSS. If a future change keys the ring on either
-        // of these, this line is what says why the ring vanished.
-        matches: {
-          focus: f.matches(":focus"),
-          focusVisible: f.matches(":focus-visible"),
-          focusWithin: f.matches(":focus-within"),
-        },
+        tag: e.tagName,
+        hasFocus: document.hasFocus(),
+        outlineStyle: cs.outlineStyle,
+        outlineWidth: cs.outlineWidth,
+        boxShadow: cs.boxShadow,
       };
     });
 
-    expect(ring?.focused, "the iframe did not take focus — measure it, do not assume it").toBe(true);
+    expect(focused?.hasFocus, "the embedded document did not receive focus").toBe(true);
     expect(
-      ring?.matches.focusWithin,
-      "a focused frame must match :focus-within — if this flips, the ring's selector is wrong, not the ring",
+      focused?.tag,
+      "nothing inside the frame took focus — the map canvas should",
+    ).not.toBe("BODY");
+
+    const ringed =
+      (focused?.outlineStyle !== "none" && parseFloat(focused?.outlineWidth ?? "0") >= 2) ||
+      (focused?.boxShadow ?? "none") !== "none";
+    expect(
+      ringed,
+      `the focused element inside the embed has no visible indicator: ${JSON.stringify(focused)}`,
     ).toBe(true);
-    expect(
-      ring?.after,
-      `focusing the frame did not change its outline (${ring?.before} -> ${ring?.after}). ` +
-        `matches: ${JSON.stringify(ring?.matches)} — neither :focus nor :focus-visible matches an iframe, so the ring has to come from iframe:focus-within`,
-    ).not.toBe(ring?.before);
   });
 
   test("an open dialog keeps the keyboard inside it and gives focus back", async ({ page }) => {
