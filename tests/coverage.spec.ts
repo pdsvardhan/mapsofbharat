@@ -170,3 +170,72 @@ test.describe("iter-131 item 830 — export card control parity", () => {
     ).toBeTruthy();
   });
 });
+
+// #630 — the unit label survives the narrowest viewport we support (iter-45).
+//
+// Found by the iter-44 feature verifier, pre-existing: one `truncate` covered rank,
+// name AND unit, so at 320px the ellipsis ate the unit on 21 rows — right edges 3 to
+// 77px outside the viewport — and a coverage figure lost the thing it is a figure OF.
+// Document scroll was unaffected, so the reflow test could not see it either: nothing
+// overflowed the PAGE, the text was clipped inside its own row.
+//
+// This measures the unit's box rather than the row's, which is the distinction the
+// earlier guards missed.
+test.describe("#630 /coverage at 320px", () => {
+  test.use({ viewport: { width: 320, height: 720 } });
+
+  test("no unit label is clipped out of the viewport", async ({ page }) => {
+    await page.goto("/coverage");
+    await page.waitForSelector("[data-coverage-row]", { timeout: 30_000 });
+
+    const units = page.locator("[data-coverage-unit]");
+    const n = await units.count();
+    // FIXTURE POWER FIRST. Every assertion below is vacuously true over an empty set,
+    // and "no clipped units" reads identically whether the units are fine or absent.
+    expect(n, "no unit labels found — the fixture cannot see what it claims to check").toBeGreaterThan(10);
+
+    const clipped: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const box = await units.nth(i).boundingBox();
+      const text = (await units.nth(i).textContent())?.trim() ?? "";
+      if (!box) {
+        clipped.push(`${text} (no box — not rendered)`);
+        continue;
+      }
+      const right = box.x + box.width;
+      if (right > 320 || box.x < 0) clipped.push(`${text} spans ${Math.round(box.x)}..${Math.round(right)}`);
+    }
+
+    expect(
+      clipped,
+      `unit labels outside a 320px viewport:\n  ${clipped.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
+  test("the unit is still legible text, not an ellipsis", async ({ page }) => {
+    await page.goto("/coverage");
+    await page.waitForSelector("[data-coverage-row]", { timeout: 30_000 });
+
+    // A unit clipped by `truncate` keeps its box and loses its glyphs, so the box test
+    // above is necessary and not sufficient. This asserts the element renders the text
+    // it holds: scrollWidth beyond clientWidth means the browser is hiding some of it.
+    const { seen, overflowing } = await page.evaluate(() => {
+      const els = Array.from(document.querySelectorAll<HTMLElement>("[data-coverage-unit]"));
+      return {
+        seen: els.length,
+        overflowing: els
+          .filter((el) => el.scrollWidth > el.clientWidth + 1)
+          .map((el) => `${el.textContent?.trim()} (${el.scrollWidth} > ${el.clientWidth})`),
+      };
+    });
+
+    // THE SAME FLOOR AS THE TEST ABOVE, AND IT IS NOT DUPLICATION. Written without it,
+    // this test passed against the pre-fix page — the selector matched nothing, the
+    // filter ran over an empty array, and "no unit is cut" was reported over no units.
+    // Its sibling caught the same emptiness only because it happened to assert a count.
+    // Every assertion over a queried set needs its own reason to believe the set is real.
+    expect(seen, "no unit labels found — this test would pass over an empty page").toBeGreaterThan(10);
+
+    expect(overflowing, `unit labels whose text is cut inside their own box:\n  ${overflowing.join("\n  ")}`).toEqual([]);
+  });
+});

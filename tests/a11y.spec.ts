@@ -158,13 +158,29 @@ test.describe("what axe cannot see", () => {
     // `no-underline` on a textbook in-text link in app/terms/page.tsx and the
     // suite stayed 40/40, with the link visibly plain beside an identical sibling
     // four lines later. One route cannot police a site-wide rule.
+    // TWO TEXT-BEARING ROUTES WERE OUTSIDE THIS LIST (#636, iter-45): /metric and
+    // /family/religion, both already in the axe ROUTES list above — so the suite
+    // visited them and this rule did not, and an opt-out on an in-text link there
+    // would have shipped green. A list that names most of the site reads like it
+    // names the site. Measured after adding them: /metric contributes 2 judged
+    // links, /family/religion 8.
+    //
+    // `/` IS DELIBERATELY NOT HERE, and the to-do that asked for it was wrong.
+    // #636 named three routes and credited `/` with 2 judged links. Measured: the
+    // atlas renders NO <main> element at all, this rule is scoped to `main a[href]`,
+    // and `/` therefore contributes 0 links and 0 judged — adding it only made the
+    // test time out waiting for a `main` that never arrives. The 2 belongs to
+    // /metric. Recorded rather than quietly dropped, because the next person to read
+    // #636 will otherwise re-add it.
     const PROSE_ROUTES = [
       "/methodology",
       "/terms",
       "/privacy",
       "/coverage",
+      "/metric",
       "/metric/literacy_rate",
       "/family",
+      "/family/religion",
       "/corrections",
       "/does-not-exist",
     ];
@@ -217,8 +233,34 @@ test.describe("what axe cannot see", () => {
         // underlining them would look like damage. Widening this rule past
         // /methodology surfaced them immediately. `block` is deliberately still
         // judged: the site footer's links are block-level and axe DOES flag them.
-        const display = getComputedStyle(a).display;
-        if (display.includes("flex") || display.includes("grid")) continue;
+        // DISPLAY ALONE IS NOT A CONTROL SIGNAL (#635, iter-45). The exclusion used
+        // to be `display is flex or grid -> skip`, and it was too generous by exactly
+        // the amount that matters: `inline-flex` plus `no-underline` on a genuine
+        // in-text link produced accent-orange text, mid-sentence, with no underline,
+        // and this rule skipped it while axe stayed blind for its own reason. The
+        // opt-out was back, wearing a layout property instead of a class.
+        //
+        // A control has a SURFACE — a fill, a border, real padding, or an explicit
+        // role. The two real cases this exclusion exists for, "↓ Download raw source"
+        // and "Open in the interactive atlas →" on /metric/[slug], are inline-flex
+        // with an accent fill and are still skipped. A link that is merely laid out
+        // as flex is judged like any other prose link, because that is what it is.
+        const cs = getComputedStyle(a);
+        const display = cs.display;
+        if (display.includes("flex") || display.includes("grid")) {
+          const filled =
+            cs.backgroundImage !== "none" ||
+            (cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent");
+          const bordered =
+            parseFloat(cs.borderTopWidth) > 0 ||
+            parseFloat(cs.borderBottomWidth) > 0 ||
+            parseFloat(cs.borderLeftWidth) > 0;
+          const padded =
+            parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) >= 6 ||
+            parseFloat(cs.paddingLeft) >= 8;
+          const roled = a.getAttribute("role") === "button";
+          if (filled || bordered || padded || roled) continue;
+        }
 
         const block = a.closest(
           "nav,p,li,dd,dt,td,th,figcaption,blockquote,footer,div,section,article,main"
@@ -260,9 +302,20 @@ test.describe("what axe cannot see", () => {
     ).toEqual([]);
   });
 
-  test("every interactive control on the atlas shows a visible focus indicator", async ({ page }) => {
-    await page.goto("/");
-    await settle(page, "canvas");
+  // EVERY ROUTE THAT HAS CONTROLS, not just the atlas (#632, iter-45).
+  //
+  // Scoped to `/`, this test structurally could not see the defect it exists to
+  // catch: the embedded map on /metric/[slug] is a tab stop with no focus ring, and
+  // `/` has no iframe. Same shape as the prose rule below, which policed one page
+  // and let an opt-out ship on another — a site-wide claim needs more than one page
+  // under it.
+  const FOCUS_ROUTES = ["/", "/metric/literacy_rate", "/coverage", "/family/religion"];
+
+  for (const route of FOCUS_ROUTES) {
+  test(`every interactive control on ${route} shows a visible focus indicator`, async ({ page }) => {
+    await page.goto(route);
+    if (route === "/") await settle(page, "canvas");
+    else await page.waitForSelector("main", { timeout: 30_000 });
 
     const bare = await page.evaluate(() => {
       // DISABLED CONTROLS ARE EXCLUDED, and that is not a convenience.
@@ -273,9 +326,14 @@ test.describe("what axe cannot see", () => {
       // on it does nothing. The test was measuring a control that cannot receive
       // focus and calling the absence of a focus ring a defect. Every enabled
       // control on the atlas passes.
+      // `iframe` IS IN THIS LIST BECAUSE IT IS A TAB STOP (#632). It was not, so the
+      // one control on the site with no focus ring was also the one control this
+      // query could not return. Measured on /metric/[slug]: Tab reaches the frame at
+      // stop 5, and `:focus-visible` does not match it — the ring now comes from an
+      // `iframe:focus` rule in globals.css, which this test is what proves.
       const els = [
         ...document.querySelectorAll<HTMLElement>(
-          "a[href],button,select,input,[tabindex]:not([tabindex='-1'])"
+          "a[href],button,select,input,iframe,[tabindex]:not([tabindex='-1'])"
         ),
       ].filter(
         (e) =>
@@ -304,9 +362,58 @@ test.describe("what axe cannot see", () => {
       return { total: els.length, bare: out };
     });
 
-    // Would pass on an empty page otherwise — the atlas has ~20 controls.
-    expect(bare.total, "found no interactive controls; the atlas did not mount").toBeGreaterThan(10);
-    expect(bare.bare, `controls with no focus indicator:\n  ${bare.bare.join("\n  ")}`).toEqual([]);
+    // Would pass on an empty page otherwise. The floor is per-route and low, because
+    // /coverage and /family/religion are content pages rather than the atlas; what it
+    // has to rule out is a route that rendered nothing and reported no defects.
+    expect(bare.total, `found no interactive controls on ${route}; the page did not mount`).toBeGreaterThan(3);
+    expect(bare.bare, `controls with no focus indicator on ${route}:\n  ${bare.bare.join("\n  ")}`).toEqual([]);
+  });
+  }
+
+  test("the frame on a metric page is a tab stop, and it is one this suite can see", async ({ page }) => {
+    // The guard on the guard. The test above only catches a bare iframe while an
+    // iframe is in its query AND a route with one is in its list; both were absent,
+    // which is exactly how the defect survived iter-44's audit. This asserts the
+    // fixture's reach directly, so deleting either would fail here rather than
+    // quietly shrink what the suite covers.
+    await page.goto("/metric/literacy_rate");
+    await page.waitForSelector("main", { timeout: 30_000 });
+
+    const frames = await page.locator("main iframe").count();
+    expect(frames, "no iframe on /metric/[slug] — the #632 fixture has lost its subject").toBeGreaterThan(0);
+
+    const ring = await page.evaluate(() => {
+      const f = document.querySelector<HTMLIFrameElement>("main iframe");
+      if (!f) return null;
+      const before = getComputedStyle(f).outlineStyle;
+      f.focus();
+      return {
+        before,
+        after: getComputedStyle(f).outlineStyle,
+        focused: document.activeElement === f,
+        // Recorded because it is counter-intuitive and it cost a wrong fix: focusing a
+        // frame delegates focus into its content document, so the element is
+        // activeElement while matching NEITHER :focus NOR :focus-visible. An
+        // `iframe:focus` rule is dead CSS. If a future change keys the ring on either
+        // of these, this line is what says why the ring vanished.
+        matches: {
+          focus: f.matches(":focus"),
+          focusVisible: f.matches(":focus-visible"),
+          focusWithin: f.matches(":focus-within"),
+        },
+      };
+    });
+
+    expect(ring?.focused, "the iframe did not take focus — measure it, do not assume it").toBe(true);
+    expect(
+      ring?.matches.focusWithin,
+      "a focused frame must match :focus-within — if this flips, the ring's selector is wrong, not the ring",
+    ).toBe(true);
+    expect(
+      ring?.after,
+      `focusing the frame did not change its outline (${ring?.before} -> ${ring?.after}). ` +
+        `matches: ${JSON.stringify(ring?.matches)} — neither :focus nor :focus-visible matches an iframe, so the ring has to come from iframe:focus-within`,
+    ).not.toBe(ring?.before);
   });
 
   test("an open dialog keeps the keyboard inside it and gives focus back", async ({ page }) => {

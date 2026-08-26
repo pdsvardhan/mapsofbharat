@@ -348,6 +348,52 @@ body {
   box-shadow: 0 0 0 4px var(--background);
 }
 
+/* AN IFRAME IS A TAB STOP, AND NEITHER `:focus-visible` NOR `:focus` MATCHES IT
+   (#632, iter-45). MEASURED, and the measurement corrected a first attempt.
+
+   Tabbing through /metric/[slug] in Chromium:
+     stop 4  A       outline solid 2px rgb(224,96,61)   :focus-visible YES
+     stop 5  IFRAME  outline none                       :focus-visible NO
+     stop 6  BUTTON  outline solid 2px rgb(224,96,61)   :focus-visible YES
+
+   The rule above is the app's only focus style and it is keyed on `:focus-visible`,
+   so the embedded map — a real tab stop, and the biggest thing on the page — was the
+   one control a keyboard user could land on with nothing to show for it.
+
+   The obvious repair, keying this on plain `:focus`, is DEAD CSS. Focusing a frame
+   delegates focus into its content document, so the element is `document.activeElement`
+   while matching neither pseudo-class. Measured on the built page:
+
+     f.focus() -> document.activeElement === f : true
+                  f.matches(":focus")          : false
+                  f.matches(":focus-within")   : true
+                  computed outline-style       : none   (with an `iframe:focus` rule live)
+
+   `:focus-within` is therefore not a workaround but the accurate selector: it means
+   the keyboard is inside this frame, which is exactly when the ring should be drawn.
+
+   cascade-exempt: same reason as the rule above. maplibre-gl.css is unlayered and the
+   embed route is exactly where it loads.
+
+   Covered by tests/a11y.spec.ts, which focuses the frame and reads the outline back
+   rather than trusting this comment — the first version of the rule shipped green
+   past a suite that never looked at an iframe. */
+:root iframe:focus-within {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--background);
+}
+
+@media (forced-colors: active) {
+  /* cascade-exempt: the rule it qualifies is unlayered for the maplibre reason above,
+     and a layered override of an unlayered rule cannot win. Layering only this half
+     would drop the high-contrast ring on exactly the routes the map loads on. */
+  :root iframe:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
 /* Forced colours (Windows High Contrast): the plate is gone by definition,
    so the outline carries all of it. Pinned to the system focus colour
    rather than left to be force-mapped from a brand orange.
