@@ -40,9 +40,9 @@ const SPEC_DIR = join(ROOT, "tests");
  *  "run scripts/build-family-paths.mjs" in an expect() message.
  *
  *  THE SIDE-EFFECT AND TEMPLATE FORMS ARE HERE BECAUSE THE FIRST VERSION MISSED THEM.
- *  It modelled three shapes — `from "x"`, `import("x")`, `require("x")` — and the
- *  verifier got a bare `import "../scripts/check-centroids.mjs";` and a backtick
- *  `import(\`…\`)` past it, both of which still die on Node >= 20.19.5. A guard that
+ *  It modelled three shapes — a `from` clause, a call-form dynamic import and a
+ *  require — and the verifier walked a bare side-effect import and a backtick dynamic
+ *  import straight past it, both of which still die on Node >= 20.19.5. A guard that
  *  covers the forms you happened to think of is the same kind of guard as the one that
  *  reported "all inside their polygon" without checking: it passes because it did not
  *  look, and the pass is indistinguishable from a real one.
@@ -54,32 +54,21 @@ const LOADERS = [
   /\brequire\s*\(\s*["'`]([^"'`]+\.mjs)["'`]\s*\)/g,
 ];
 
-/**
- * Blank out comment LINES before matching, keeping the line count intact so an
- * offence still reports the line it is on.
- *
- * WHY LINES AND NOT CHARACTERS. Adding the side-effect form to LOADERS immediately
- * flagged the sentence in tests/spec-import-guard.spec.ts that NAMES the side-effect
- * form — the guard tripping over its own documentation. The obvious fix, stripping
- * from `//` to end of line, can eat a real import that follows a string containing
- * `//` on the same line; that is a false NEGATIVE, and a guard may fail loudly but
- * never quietly. Skipping whole comment lines cannot hide anything, because an import
- * statement is never on a line that begins with `//` or ` * `.
- *
- * The residue is a false POSITIVE: an import written inside a block comment whose
- * lines carry no ` * ` prefix is still reported. That direction is safe — it stops the
- * build and a human rewords a comment — and tests/spec-import-guard.spec.ts pins it so
- * the choice is visible rather than accidental.
- */
-function withoutCommentLines(src) {
-  return src
-    .split("\n")
-    .map((line) => {
-      const t = line.trimStart();
-      return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") ? "" : line;
-    })
-    .join("\n");
-}
+// NO COMMENT STRIPPING, DELIBERATELY — AND THIS IS THE SECOND ANSWER TO THAT QUESTION.
+//
+// Adding the side-effect form to LOADERS made the guard flag one sentence of prose in
+// tests/spec-import-guard.spec.ts that spelled the form out literally. The first fix was
+// to blank comment LINES before matching. It was wrong: blanking any line starting with
+// `*` or `/*` hides a real load, and the verifier proved five of them execute —
+// `/* keep */ import "…mjs";`, a continuation line beginning `*`, `import` with the
+// namespace clause on the next line, and two more. A guard may fail loudly; it may not
+// fail quietly, and that fix bought immunity to prose at the price of a blind spot.
+//
+// The prose was the thing to change, not the matcher. The fixture already knew how —
+// it builds its own specifier at runtime rather than writing one — so the sentence was
+// de-literalised and the mechanism deleted. Anything that LOOKS like a load is now
+// reported, comment or not, and the way to write about an import in a spec is to not
+// write one.
 
 function walk(dir) {
   const found = [];
@@ -97,7 +86,7 @@ function walk(dir) {
 const files = walk(SPEC_DIR);
 const offences = [];
 for (const file of files) {
-  const src = withoutCommentLines(readFileSync(file, "utf-8"));
+  const src = readFileSync(file, "utf-8");
   for (const re of LOADERS) {
     re.lastIndex = 0;
     let m;

@@ -8,10 +8,17 @@ import { join } from "node:path";
 // rather than trusted.
 //
 // WHY THIS FILE EXISTS. The guard's first version modelled three import shapes and
-// missed two: a bare side-effect `import "x.mjs";` and a backtick
-// `import(` + `...` + `)`. Both still die on Node >= 20.19.5, and both walked past a
-// guard that printed OK. The verifier found them by writing probes; nothing would
-// have re-written those probes next iteration.
+// missed two: the bare side-effect form, and a dynamic import whose specifier is a
+// template literal. Both still die on Node >= 20.19.5, and both walked past a guard
+// that printed OK. The verifier found them by writing probes; nothing would have
+// re-written those probes next iteration.
+//
+// NOTE HOW THE FORMS ARE NAMED RATHER THAN SPELLED. This file is scanned by the thing
+// it tests, so writing one out as a literal makes the guard flag its own documentation.
+// That happened, and the first answer was to teach the guard to skip comment lines —
+// which bought immunity to prose at the price of hiding five constructions that really
+// do load a module. The prose was the cheaper thing to change. Every specifier below is
+// assembled at runtime, and any sentence about an import describes it in words.
 //
 // That is this repo's recurring failure in miniature — a check whose passing case was
 // exercised and whose failing case never was — so the guard now has one case per form
@@ -98,26 +105,22 @@ test.describe("#610 the .mjs import guard", () => {
     expect(out).toContain("none imports a .mjs");
   });
 
-  test("a comment naming an import form is not an import", () => {
+  test("comments are NOT exempt — the guard reads text, not syntax", () => {
     const { code, out } = runGuard({
-      "g.spec.ts":
-        `// A bare side-effect import looks like: import "${MJS}";\n` +
-        `/**\n * and the dynamic one like: import("${MJS}")\n */\n` +
-        `export const x = 1;\n`,
+      "g.spec.ts": `/* a note that happens to spell one out */\nconst m = require("${MJS}");\n`,
     });
-    expect(code, "the guard tripped over its own documentation once; this pins the fix").toBe(0);
-    expect(out).toContain("none imports a .mjs");
-  });
-
-  test("an import inside an unprefixed block comment IS still reported — the safe direction", () => {
-    const { code } = runGuard({
-      "h.spec.ts": `/*\nimport "${MJS}";\n*/\nexport const x = 1;\n`,
-    });
-    // Deliberate, not an oversight: only whole comment LINES are skipped, because
-    // stripping from `//` to end-of-line could swallow a real import that follows a
-    // string containing `//`. A false positive stops the build and a human rewords a
-    // comment; a false negative ships the crash. This pins the choice.
+    // The second answer to "should comments be skipped?", and the answer is no.
+    //
+    // Skipping them cost more than it bought: blanking any line starting with `*` or
+    // `/*` hid five constructions the verifier proved actually load the module — a
+    // block comment sharing a line with an import among them. The cheap half of that
+    // trade (`//` lines) could not be kept without the expensive half, because a
+    // guard that is right about the shapes it happened to consider is the guard this
+    // one replaced.
+    //
+    // So prose about imports gets written in words, the way this file's header does.
     expect(code).toBe(1);
+    expect(out).toContain("g.spec.ts:2");
   });
 
   test("a run that scans nothing FAILS rather than reporting OK", () => {
