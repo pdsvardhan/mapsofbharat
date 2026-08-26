@@ -60,6 +60,22 @@ const eslintConfig = [
     ],
     rules: { "mob/no-hex-literals": "off" },
   },
+
+  // ── CommonJS is the POINT of a .cjs (#610, iter-45) ──────────────────────────
+  // scripts/lib/*.cjs holds logic that two different loaders have to agree on: plain
+  // `node` importing it from a .mjs CLI, and Playwright's CommonJS transform importing
+  // it from a spec. A .mjs there is what broke CI — from Node 20.19.5 the ESM loader
+  // claims the file whatever Playwright compiled into it, and the run dies with
+  // "exports is not defined in ES module scope" before any test executes.
+  //
+  // So `require()` in these files is the declared module system doing its job, not a
+  // legacy import style. Scoped to this one directory so the rule keeps biting
+  // everywhere else — the alternative, `check-lint-baseline.mjs --write`, would have
+  // raised the ratchet for the whole repo to excuse two lines.
+  {
+    files: ["scripts/lib/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ];
 
 export default eslintConfig;
