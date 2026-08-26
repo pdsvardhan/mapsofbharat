@@ -83,6 +83,24 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+
+    # SERIALISED BEHIND `quality`, and it is not about ordering preference (iter-45).
+    #
+    # The two jobs used to start in the same second, and both resolve
+    # actions/setup-node@v4 into the runner's shared action cache at
+    # /root/.cache/act/<hash>. When they race, one of them dies three seconds in with
+    #   lstat /root/.cache/act/<hash>/.prettierrc.json: no such file or directory
+    # before npm ci or any project check runs. It hit `quality` on run 832 and `e2e` on
+    # run 833 — same error, different victim, which is what a race looks like. Run 831
+    # happened to stagger them by a minute and was green.
+    #
+    # `needs` makes the stagger deterministic instead of lucky. The runner-level fix
+    # (capacity 1, or a per-job cache path) would help every repo on the box and is
+    # recorded as a to-do; this one is in the repo that needs it, today.
+    #
+    # It also stops burning six minutes of browser tests on a commit that fails tsc.
+    needs: quality
+
     container:
       image: mcr.microsoft.com/playwright:v1.49.0-jammy
       # READ-ONLY. The job reads the real catalogue and the real source files; it
