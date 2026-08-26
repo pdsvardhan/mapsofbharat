@@ -3,37 +3,37 @@
   "mutations": [
     {
       "name": "ray cast always reports inside — the vacuous-guard failure itself",
-      "file": "scripts/check-centroids.mjs",
+      "file": "scripts/lib/centroid-containment.cjs",
       "find": "    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {\n      inside = !inside;\n    }",
       "replace": "    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {\n      inside = true;\n    }"
     },
     {
       "name": "stop excluding holes",
-      "file": "scripts/check-centroids.mjs",
+      "file": "scripts/lib/centroid-containment.cjs",
       "find": "    if (pointInRing(x, y, rings[h])) return false; // in a hole is not inside",
       "replace": "    if (false && pointInRing(x, y, rings[h])) return false;"
     },
     {
       "name": "MultiPolygon requires EVERY part instead of any",
-      "file": "scripts/check-centroids.mjs",
+      "file": "scripts/lib/centroid-containment.cjs",
       "find": "    return geom.coordinates.some((rings) => pointInPolygon(x, y, rings));",
       "replace": "    return geom.coordinates.every((rings) => pointInPolygon(x, y, rings));"
     },
     {
       "name": "an unknown geometry type counts as inside",
-      "file": "scripts/check-centroids.mjs",
+      "file": "scripts/lib/centroid-containment.cjs",
       "find": "  if (geom.type === \"MultiPolygon\") {\n    return geom.coordinates.some((rings) => pointInPolygon(x, y, rings));\n  }\n  return false;",
       "replace": "  if (geom.type === \"MultiPolygon\") {\n    return geom.coordinates.some((rings) => pointInPolygon(x, y, rings));\n  }\n  return true;"
     },
     {
       "name": "checkLayer never records a point as outside",
-      "file": "scripts/check-centroids.mjs",
+      "file": "scripts/lib/centroid-containment.cjs",
       "find": "    if (!pointInGeometry(x, y, geom)) {\n      outside.push({ code, name: f.properties?.name ?? code, lon: x, lat: y });\n    }",
       "replace": "    if (false && !pointInGeometry(x, y, geom)) {\n      outside.push({ code, name: f.properties?.name ?? code, lon: x, lat: y });\n    }"
     },
     {
       "name": "drop a layer from the checked list",
-      "file": "scripts/check-centroids.mjs",
+      "file": "scripts/lib/centroid-containment.cjs",
       "find": "  [\"districts-2011.geojson\", \"centroids-districts-2011.geojson\", \"rid\"],\n",
       "replace": ""
     }

@@ -3,6 +3,11 @@ import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// The checker's pure half. NOT scripts/check-centroids.mjs: Playwright transforms an
+// imported module to CommonJS and Node >= 20.19.5 loads a .mjs as ESM regardless, so
+// importing the .mjs threw "exports is not defined in ES module scope" in CI while
+// passing on the host's older Node (#610, iter-45). scripts/check-spec-imports.mjs
+// fails the build if any spec reaches for a .mjs again.
 import {
   pointInRing,
   pointInPolygon,
@@ -10,7 +15,7 @@ import {
   checkLayer,
   checkAll,
   LAYERS,
-} from "../scripts/check-centroids.mjs";
+} from "../scripts/lib/centroid-containment.cjs";
 
 // #565 — the centroid containment guard, made load-bearing.
 //
