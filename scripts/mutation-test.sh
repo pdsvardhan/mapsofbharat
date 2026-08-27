@@ -186,17 +186,30 @@ is_node_side() {
 run_suite() {
   local tests="$1" label="$2"
   local json; json="$(mktemp)"
+  # Keep the runner's stderr. It used to go to /dev/null alongside stdout, and
+  # then the only thing this function could say about a failed run was "check the
+  # instance" — which in iter-46 sent a reader to inspect a perfectly healthy
+  # server while the real cause, the node-version guard refusing to start the
+  # run at all, had already been printed and discarded. stdout stays dropped:
+  # that is the JSON report's own noise, and the report is the measurement.
+  local err; err="$(mktemp)"
   PLAYWRIGHT_JSON_OUTPUT_NAME="$json" \
-    npx playwright test "$tests" --reporter=json >/dev/null 2>&1
+    npx playwright test "$tests" --reporter=json >/dev/null 2>"$err"
   # Deliberately ignoring playwright's exit code: a non-zero exit is expected
   # when a mutation is killed. The counts are the measurement, not the code.
   if [ ! -s "$json" ]; then
-    rm -f "$json"
     echo "mutation-test: ERROR — no JSON produced for $label." >&2
     echo "  The run could not be measured, so it is not a result." >&2
-    echo "  Check the instance is up at \${BASE_URL:-http://localhost:8610}." >&2
+    if [ -s "$err" ]; then
+      echo "  What the runner said:" >&2
+      sed 's/^/    /' "$err" >&2
+    else
+      echo "  It said nothing. Check the instance is up at \${BASE_URL:-http://localhost:8610}." >&2
+    fi
+    rm -f "$json" "$err"
     exit 2
   fi
+  rm -f "$err"
   local parsed
   parsed="$(python3 - "$json" <<'PY'
 import json, sys
