@@ -132,7 +132,17 @@ test.describe("catalogue + sitemap (item 829)", () => {
   });
 
   test("the home page links to the catalogue", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator('a[href="/metric"]').first()).toBeVisible({ timeout: 20_000 });
+    // `domcontentloaded`, not the default `load` (#608). This asserts that a
+    // crawlable link to the catalogue exists in the document. The default waits for
+    // the LOAD event, which on the explorer means the map's geometry, its tiles and
+    // its fonts — none of which this assertion is about, all of which are slow, and
+    // all of which get slower when the rest of the suite is competing for the CPU.
+    // So what ran out of time was the navigation, not the link.
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const link = page.locator('a[href="/metric"]').first();
+    // Attached first, so a failure says WHICH of the two things went wrong: the link
+    // is missing from the document, or it is present and not visible.
+    await link.waitFor({ state: "attached", timeout: 20_000 });
+    await expect(link).toBeVisible({ timeout: 20_000 });
   });
 });
