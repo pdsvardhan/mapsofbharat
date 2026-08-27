@@ -666,7 +666,35 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           ["boolean", ["feature-state", "hover"], false], 1.1, hairline],
       });
 
-      map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: fillPaint } as any);
+      // EVERY LAYER DECLARES ITS VISIBILITY, INCLUDING THE ONES THAT START ON
+      // (item 1077 round 3). These four used to be added with no `layout` at all,
+      // so MapLibre stored `visibility: undefined` and the level/vintage effect's
+      // first pass — which writes "visible" to all of them unconditionally — was a
+      // REAL change as far as Style.setLayoutProperty's deepEqual guard could tell.
+      // A real change calls _updateLayer, which marks the source 'reload' and
+      // re-parses every tile it has.
+      //
+      // That cost nothing visible until item 1077, and stopped being free the moment
+      // `district-nodata` put a `fill-pattern` on this source. A pattern makes the
+      // worker's tile parse ASYNCHRONOUS — it has to ask the main thread for the
+      // image and await the answer — so the worker yields mid-parse and starts
+      // reading the reload messages queued behind it. MapLibre keeps exactly ONE
+      // copy of the raw tile data for that case (GeoJSONWorkerSource._reloadLoadedTile
+      // consumes it and never puts it back), so the SECOND reload to land during one
+      // parse returns a tile with no rawTileData at all. On the main thread that
+      // leaves tile.latestFeatureIndex.rawTileData undefined, loadVTLayers() returns
+      // {}, and every queryRenderedFeatures / querySourceFeatures against the source
+      // answers with nothing — silently. Measured on the item-1077 build at
+      // /?m=pop_total&lvl=district under load: district-symbol answered 735 features
+      // and district-fill answered 0, so the polygons were still painted and still
+      // unclickable. Nothing errored; the map simply stopped responding to clicks.
+      // Two reloads landed inside one parse there (t+21ms and t+100ms, against a
+      // parse that only returned at t+100ms); with the declaration below it is one.
+      // Declaring the visibility here removes the phantom change, and with it the
+      // first of the two reloads. What is left is one real change per load
+      // (fill-color going neutral when a count opens as circles), which is the case
+      // MapLibre does handle.
+      map.addLayer({ id: "district-fill", type: "fill", source: "districts", layout: { visibility: "visible" }, paint: fillPaint } as any);
       // No estimate hatch here by design (adr-019). The overlay that used to mark
       // inherited districts was measured at 1.09:1 against the dark end of the
       // ramp — below WCAG's 3:1 floor for non-text UI, and its 8px tile at
@@ -675,12 +703,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // would hatch 12% of India, and we render NFHS sampling error perfectly
       // flat. Estimates are disclosed where the number is read instead — rail
       // badge, map hover, region panel, export footnote.
-      map.addLayer({ id: "district-nodata", type: "fill", source: "districts", paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
-      map.addLayer({ id: "district-line", type: "line", source: "districts", paint: linePaint(0.3) as any });
+      map.addLayer({ id: "district-nodata", type: "fill", source: "districts", layout: { visibility: "visible" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
+      map.addLayer({ id: "district-line", type: "line", source: "districts", layout: { visibility: "visible" }, paint: linePaint(0.3) as any });
       map.addLayer({ id: "state-fill", type: "fill", source: "states", layout: { visibility: "none" }, paint: fillPaint } as any);
       map.addLayer({ id: "state-nodata", type: "fill", source: "states", layout: { visibility: "none" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({
-        id: "state-outline", type: "line", source: "states",
+        id: "state-outline", type: "line", source: "states", layout: { visibility: "visible" },
         paint: { "line-color": "rgba(233,227,213,0.26)", "line-width": 0.8 },
       });
       map.addLayer({ id: "state-line", type: "line", source: "states", layout: { visibility: "none" }, paint: linePaint(0.4) as any });
@@ -2041,7 +2069,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 `inset-block`, `top-*` to physical `top`, and a variant of one
                 does not reliably beat the base of the other. Every edge here is
                 one property with one override. */}
-            <div className="pointer-events-none absolute bottom-3.5 left-3.5 top-3.5 z-[5] flex w-[300px] flex-col gap-2.5 max-lg:bottom-2 max-lg:left-2 max-lg:right-2 max-lg:top-2 max-lg:w-auto max-lg:gap-2">
+            {/* max-lg:pb-14 reserves the sheet's DISMISSAL STRIP (to-do 424 /
+                item 1077 round 3). Below lg the dock scrolls as one surface, so
+                without this it would run edge to edge and there would be nowhere
+                left on the plate that belongs to the scrim — "tap off the panel
+                to close it" is the only dismissal a bottom-anchored sheet has on
+                a phone, and it has to be somewhere a thumb can reach. 56px is the
+                same order as the sheet handle below it. */}
+            <div className="pointer-events-none absolute bottom-3.5 left-3.5 top-3.5 z-[5] flex w-[300px] flex-col gap-2.5 max-lg:bottom-2 max-lg:left-2 max-lg:right-2 max-lg:top-2 max-lg:w-auto max-lg:gap-2 max-lg:pb-14">
             {/* MOBILE CONTROLS BAR (to-do 424) — the always-visible head of the
                 controls stack below lg. A 300px column over a 374px plate is the
                 same defect as the rail: it leaves no map. Collapsed, this bar is
@@ -2089,6 +2124,34 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 <span aria-hidden className="flex-none text-[11px] text-muted">{ctrlOpen ? "▲" : "▼"}</span>
               </button>
             )}
+            {/* ONE SHEET BELOW lg, TWO BOXES ABOVE IT (to-do 424 / item 1077 round 3).
+                Desktop keeps what item 1077 found working: the cards scroll inside
+                their own box and the legend is pinned to the bottom of the column,
+                with the slack between them belonging to nobody so the map stays
+                draggable through it.
+                On a phone that arrangement has a cliff. The cards' box shrinks and
+                the legend does not, so every pixel the legend gains comes straight
+                out of the controls' scroll viewport — and item 1077's fade key plus
+                the permanent no-data swatch added enough of them to push the
+                STATES / DISTRICTS row below the fold. Nothing overlapped and nothing
+                errored: the row still reported a box at y=445 and still answered
+                toBeVisible, but it was clipped by the scroll container, so a tap at
+                its centre landed on the legend painted over that spot. A control
+                that is present, sized and unhittable is the defect item 910 named.
+                So below lg the two boxes become ONE scroll surface: the whole dock
+                moves together, the legend stops competing with the controls for a
+                fixed slice, and further legend content costs scroll rather than
+                reach. This wrapper is that surface; above lg it is flex-1 and
+                pointer-events-none, which reproduces the column's own geometry
+                exactly and keeps the drag-through gap.
+                Collapsed sub-desktop = display:none, not opacity or a zero height:
+                the cards must leave the tab order and the a11y tree with the pixels,
+                and this is also what keeps the mobile-only branch out of every
+                desktop-width selector in the suite. It sits on this wrapper now
+                rather than on each box, so one condition hides the whole sheet. */}
+            <div
+              className={`atl-scroll pointer-events-none flex min-h-0 flex-1 flex-col gap-2.5 max-lg:pointer-events-auto max-lg:gap-2 max-lg:overflow-y-auto max-lg:overscroll-contain ${ctrlOpen ? "" : "max-lg:hidden"}`}
+            >
             {/* Content-sized, NOT flex-1. flex-1 stretched this box to the full
                 column even when the cards were short, and since it is the box
                 that carries pointer-events-auto, the empty slack below the last
@@ -2096,12 +2159,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 — 35px tall at 900px viewport height, 235px at 1100px, growing
                 1:1 with the window. The default flex-initial keeps the box on
                 its content while min-h-0 still lets it shrink and scroll when
-                the column is tight. */}
-            {/* Collapsed sub-desktop = display:none, not opacity or a zero
-                height: the cards must leave the tab order and the a11y tree with
-                the pixels, and this is also what keeps the mobile-only branch out
-                of every desktop-width selector in the suite. */}
-            <div className={`atl-scroll pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto max-lg:gap-2 ${ctrlOpen ? "" : "max-lg:hidden"}`}>
+                the column is tight.
+                max-lg:flex-none / max-lg:overflow-visible: below lg the scrolling
+                belongs to the sheet above, and a scroll container nested in a
+                scroll container is two places for the same gesture to go. */}
+            <div className="atl-scroll pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto max-lg:flex-none max-lg:gap-2 max-lg:overflow-visible">
               <Crumbs items={crumbs} hasBack={hasBack} onBack={onBack} />
               <IndicatorCard
                 metricName={meta?.name ?? null}
@@ -2128,9 +2190,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 controls that provably do nothing — the line item 908 already drew
                 when it dropped REVERSE from vs-avg mode. It is pinned to the BOTTOM
                 of the column, so dropping it moves nothing above it: the VIEW
-                toggle keeps its position across the swap. */}
+                toggle keeps its position across the swap.
+                max-lg:mt-0 — on a phone there is no bottom to pin to any more, the
+                legend is simply the last section of the sheet. */}
             {view === "map" && data && meta && (
-              <div className={`pointer-events-auto mt-auto flex-none ${ctrlOpen ? "" : "max-lg:hidden"}`}>
+              <div className="pointer-events-auto mt-auto flex-none max-lg:mt-0">
                 <LegendCard
                   metricName={data.name} unit={data.unit} decimals={data.decimals}
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}
@@ -2198,6 +2262,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 />
               </div>
             )}
+            </div>
             </div>
             {/* Opened from the legend's gear, so it follows the legend out of the
                 table view rather than floating over the table alone. */}
