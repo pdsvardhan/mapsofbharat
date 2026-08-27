@@ -21,7 +21,8 @@
     "postbuild": "node scripts/check-raw-assets.mjs --output",
     "geo:compress": "node scripts/build-geo-compressed.mjs",
     "check:isolation": "./scripts/check-build-isolation.sh",
-    "check:pipes": "node scripts/check-pipefail-grep.mjs"
+    "check:pipes": "node scripts/check-pipefail-grep.mjs",
+    "check:node": "node scripts/check-node-version.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

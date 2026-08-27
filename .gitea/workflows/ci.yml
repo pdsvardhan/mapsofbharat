@@ -43,7 +43,7 @@ jobs:
       # fix. The fix is that no spec imports a .mjs any more (see the
       # check-spec-imports step below), which holds on every Node.
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
 
       # Survey-of-India boundary gate (#405): checksum + geometry + property
       # fingerprint (vs scripts/boundary-fingerprint.json) + always-on extent
@@ -125,7 +125,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
 
       # test-isolated.sh resolves a free port from the kernel socket table rather
       # than guessing; the playwright image ships without iproute2.

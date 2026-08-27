@@ -1,17 +1,21 @@
-FROM node:20-slim AS deps
+# Pinned, not floating (#659). `node:20-slim` moved under us: the host sat on
+# 20.19.2 while this image resolved to 20.20.2, and #610 lived in that gap for
+# weeks — a PATCH-level difference (20.19.4 lists the tests, 20.19.5 throws).
+# This version and .nvmrc are pinned to each other; move them together.
+FROM node:20.20.2-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json* ./
 RUN npm ci
 
-FROM node:20-slim AS builder
+FROM node:20.20.2-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV DB_PATH=/data/mapsofbharat.db
 RUN npm run build
 
-FROM node:20-slim AS runner
+FROM node:20.20.2-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DB_PATH=/data/mapsofbharat.db

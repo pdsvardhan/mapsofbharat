@@ -42,6 +42,11 @@ for a in "$@"; do
   if [ "$a" = "--launched" ]; then LAUNCHED="true"; else PW_ARGS+=("$a"); fi
 done
 
+# The suite must not run on a Node that production does not use (#659). #610 was
+# green here and red in CI for weeks over a PATCH difference, and nothing in the run
+# said so. A green run on the wrong version is not weak evidence, it is none.
+node scripts/check-node-version.mjs || exit 2
+
 if [ ! -d .next ]; then
   echo "test-isolated: no .next build found. Run 'npm run build' first." >&2
   echo "  (Deliberately not built here — a multi-minute build hidden inside a test" >&2
