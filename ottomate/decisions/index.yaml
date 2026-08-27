@@ -427,3 +427,12 @@ decisions:
       - curated
       - cat:system
     body_path: decisions/adr-038-brotli-before-the-cdn.md
+  - id: adr-039-uncertainty-stays-at-point-of-use
+    project_slug: mapsofbharat
+    title: "We will not shade the map by how sure we are, because we are not sure in the way that would require"
+    status: accepted
+    date: 2026-08-27T00:00:00.000Z
+    tags:
+      - curated
+      - cat:product
+    body_path: decisions/adr-039-uncertainty-stays-at-point-of-use.md
