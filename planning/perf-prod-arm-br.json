@@ -1,0 +1,487 @@
+{
+  "label": "PRODUCTION 57581ac, brotli arm",
+  "measured_at": "2026-08-27T07:57:00.163Z",
+  "base_url": "http://127.0.0.1:8610",
+  "accept_encoding": "br, gzip, deflate",
+  "runs_per_route": 3,
+  "node": "v20.19.2",
+  "routes": {
+    "/": {
+      "runs": 3,
+      "total_bytes": {
+        "median": 1008512,
+        "min": 1008512,
+        "max": 1008512
+      },
+      "geo_bytes": {
+        "median": 188943,
+        "min": 188943,
+        "max": 188943
+      },
+      "ttfb_ms": {
+        "median": 8,
+        "min": 6,
+        "max": 10
+      },
+      "load_ms": {
+        "median": 49,
+        "min": 47,
+        "max": 50
+      },
+      "wall_ms": {
+        "median": 961,
+        "min": 958,
+        "max": 983
+      },
+      "requests": 29,
+      "breakdown_source": "last run",
+      "by_type": {
+        "Document": 6550,
+        "Font": 66624,
+        "Stylesheet": 20369,
+        "Script": 474216,
+        "Image": 48104,
+        "Fetch": 392649
+      },
+      "heaviest": [
+        {
+          "url": "/_next/static/chunks/13b5ac28ccb3f458.js",
+          "bytes": 325992,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/api/metrics",
+          "bytes": 132045,
+          "encoding": "identity",
+          "type": "Fetch"
+        },
+        {
+          "url": "/geodata/districts.geojson",
+          "bytes": 119231,
+          "encoding": "br",
+          "type": "Fetch"
+        },
+        {
+          "url": "/api/regions",
+          "bytes": 70986,
+          "encoding": "identity",
+          "type": "Fetch"
+        },
+        {
+          "url": "/_next/static/chunks/ea4f2c5b91d346cb.js",
+          "bytes": 59606,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/geodata/states.geojson",
+          "bytes": 57153,
+          "encoding": "br",
+          "type": "Fetch"
+        },
+        {
+          "url": "/_next/static/media/c47649aa31f9e140-s.p.7e59dfd6.woff2",
+          "bytes": 35096,
+          "encoding": "identity",
+          "type": "Font"
+        },
+        {
+          "url": "/brand/mark.png",
+          "bytes": 24052,
+          "encoding": "identity",
+          "type": "Image"
+        },
+        {
+          "url": "/brand/mark.png",
+          "bytes": 24052,
+          "encoding": "identity",
+          "type": "Image"
+        },
+        {
+          "url": "/_next/static/chunks/d8b92b81a2236c4d.js",
+          "bytes": 21355,
+          "encoding": "gzip",
+          "type": "Script"
+        }
+      ]
+    },
+    "/metric": {
+      "runs": 3,
+      "total_bytes": {
+        "median": 334062,
+        "min": 333363,
+        "max": 334062
+      },
+      "geo_bytes": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "ttfb_ms": {
+        "median": 33,
+        "min": 27,
+        "max": 34
+      },
+      "load_ms": {
+        "median": 104,
+        "min": 98,
+        "max": 112
+      },
+      "wall_ms": {
+        "median": 686,
+        "min": 660,
+        "max": 690
+      },
+      "requests": 19,
+      "breakdown_source": "last run",
+      "by_type": {
+        "Font": 75915,
+        "Stylesheet": 9789,
+        "Image": 24052,
+        "Script": 128629,
+        "Document": 94978,
+        "Fetch": 699
+      },
+      "heaviest": [
+        {
+          "url": "/metric",
+          "bytes": 94978,
+          "encoding": "gzip",
+          "type": "Document"
+        },
+        {
+          "url": "/_next/static/chunks/ea4f2c5b91d346cb.js",
+          "bytes": 59606,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/_next/static/media/c47649aa31f9e140-s.p.7e59dfd6.woff2",
+          "bytes": 35096,
+          "encoding": "identity",
+          "type": "Font"
+        },
+        {
+          "url": "/brand/mark.png",
+          "bytes": 24052,
+          "encoding": "identity",
+          "type": "Image"
+        },
+        {
+          "url": "/_next/static/chunks/d8b92b81a2236c4d.js",
+          "bytes": 21355,
+          "encoding": "gzip",
+          "type": "Script"
+        }
+      ]
+    },
+    "/metric/literacy_rate": {
+      "runs": 3,
+      "total_bytes": {
+        "median": 1253019,
+        "min": 1253019,
+        "max": 1253019
+      },
+      "geo_bytes": {
+        "median": 188943,
+        "min": 188943,
+        "max": 188943
+      },
+      "ttfb_ms": {
+        "median": 56,
+        "min": 55,
+        "max": 59
+      },
+      "load_ms": {
+        "median": 187,
+        "min": 186,
+        "max": 188
+      },
+      "wall_ms": {
+        "median": 988,
+        "min": 984,
+        "max": 995
+      },
+      "requests": 45,
+      "breakdown_source": "last run",
+      "by_type": {
+        "Stylesheet": 30158,
+        "Font": 133248,
+        "Document": 65549,
+        "Image": 72156,
+        "Script": 619977,
+        "Fetch": 331931
+      },
+      "heaviest": [
+        {
+          "url": "/_next/static/chunks/13b5ac28ccb3f458.js",
+          "bytes": 325992,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/api/metrics",
+          "bytes": 132045,
+          "encoding": "identity",
+          "type": "Fetch"
+        },
+        {
+          "url": "/geodata/districts.geojson",
+          "bytes": 119231,
+          "encoding": "br",
+          "type": "Fetch"
+        },
+        {
+          "url": "/metric/literacy_rate",
+          "bytes": 60967,
+          "encoding": "gzip",
+          "type": "Document"
+        },
+        {
+          "url": "/_next/static/chunks/ea4f2c5b91d346cb.js",
+          "bytes": 59606,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/_next/static/chunks/ea4f2c5b91d346cb.js",
+          "bytes": 59606,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/geodata/states.geojson",
+          "bytes": 57153,
+          "encoding": "br",
+          "type": "Fetch"
+        },
+        {
+          "url": "/_next/static/media/c47649aa31f9e140-s.p.7e59dfd6.woff2",
+          "bytes": 35096,
+          "encoding": "identity",
+          "type": "Font"
+        },
+        {
+          "url": "/_next/static/media/c47649aa31f9e140-s.p.7e59dfd6.woff2",
+          "bytes": 35096,
+          "encoding": "identity",
+          "type": "Font"
+        },
+        {
+          "url": "/brand/mark.png",
+          "bytes": 24052,
+          "encoding": "identity",
+          "type": "Image"
+        },
+        {
+          "url": "/brand/mark.png",
+          "bytes": 24052,
+          "encoding": "identity",
+          "type": "Image"
+        },
+        {
+          "url": "/brand/mark.png",
+          "bytes": 24052,
+          "encoding": "identity",
+          "type": "Image"
+        }
+      ]
+    },
+    "/family": {
+      "runs": 3,
+      "total_bytes": {
+        "median": 218143,
+        "min": 217448,
+        "max": 218143
+      },
+      "geo_bytes": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "ttfb_ms": {
+        "median": 8,
+        "min": 7,
+        "max": 10
+      },
+      "load_ms": {
+        "median": 47,
+        "min": 44,
+        "max": 74
+      },
+      "wall_ms": {
+        "median": 587,
+        "min": 582,
+        "max": 627
+      },
+      "requests": 18,
+      "breakdown_source": "last run",
+      "by_type": {
+        "Document": 11713,
+        "Font": 66624,
+        "Stylesheet": 9789,
+        "Script": 128629,
+        "Fetch": 1388
+      },
+      "heaviest": [
+        {
+          "url": "/_next/static/chunks/ea4f2c5b91d346cb.js",
+          "bytes": 59606,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/_next/static/media/c47649aa31f9e140-s.p.7e59dfd6.woff2",
+          "bytes": 35096,
+          "encoding": "identity",
+          "type": "Font"
+        },
+        {
+          "url": "/_next/static/chunks/d8b92b81a2236c4d.js",
+          "bytes": 21355,
+          "encoding": "gzip",
+          "type": "Script"
+        }
+      ]
+    },
+    "/family/religion": {
+      "runs": 3,
+      "total_bytes": {
+        "median": 486542,
+        "min": 485867,
+        "max": 486542
+      },
+      "geo_bytes": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "ttfb_ms": {
+        "median": 83,
+        "min": 83,
+        "max": 87
+      },
+      "load_ms": {
+        "median": 194,
+        "min": 186,
+        "max": 195
+      },
+      "wall_ms": {
+        "median": 729,
+        "min": 725,
+        "max": 730
+      },
+      "requests": 17,
+      "breakdown_source": "last run",
+      "by_type": {
+        "Font": 66624,
+        "Stylesheet": 9789,
+        "Script": 128629,
+        "Document": 280825,
+        "Fetch": 675
+      },
+      "heaviest": [
+        {
+          "url": "/family/religion",
+          "bytes": 280825,
+          "encoding": "gzip",
+          "type": "Document"
+        },
+        {
+          "url": "/_next/static/chunks/ea4f2c5b91d346cb.js",
+          "bytes": 59606,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/_next/static/media/c47649aa31f9e140-s.p.7e59dfd6.woff2",
+          "bytes": 35096,
+          "encoding": "identity",
+          "type": "Font"
+        },
+        {
+          "url": "/_next/static/chunks/d8b92b81a2236c4d.js",
+          "bytes": 21355,
+          "encoding": "gzip",
+          "type": "Script"
+        }
+      ]
+    },
+    "/coverage": {
+      "runs": 3,
+      "total_bytes": {
+        "median": 341435,
+        "min": 341435,
+        "max": 342132
+      },
+      "geo_bytes": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "ttfb_ms": {
+        "median": 93,
+        "min": 91,
+        "max": 117
+      },
+      "load_ms": {
+        "median": 161,
+        "min": 158,
+        "max": 210
+      },
+      "wall_ms": {
+        "median": 704,
+        "min": 701,
+        "max": 754
+      },
+      "requests": 18,
+      "breakdown_source": "last run",
+      "by_type": {
+        "Font": 86628,
+        "Stylesheet": 9789,
+        "Image": 24052,
+        "Script": 128629,
+        "Document": 92337
+      },
+      "heaviest": [
+        {
+          "url": "/coverage",
+          "bytes": 92337,
+          "encoding": "gzip",
+          "type": "Document"
+        },
+        {
+          "url": "/_next/static/chunks/ea4f2c5b91d346cb.js",
+          "bytes": 59606,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/_next/static/media/c47649aa31f9e140-s.p.7e59dfd6.woff2",
+          "bytes": 35096,
+          "encoding": "identity",
+          "type": "Font"
+        },
+        {
+          "url": "/brand/mark.png",
+          "bytes": 24052,
+          "encoding": "identity",
+          "type": "Image"
+        },
+        {
+          "url": "/_next/static/chunks/d8b92b81a2236c4d.js",
+          "bytes": 21355,
+          "encoding": "gzip",
+          "type": "Script"
+        },
+        {
+          "url": "/_next/static/media/8b4ed0a90d903ab5-s.0d21604a.woff2",
+          "bytes": 20004,
+          "encoding": "identity",
+          "type": "Font"
+        }
+      ]
+    }
+  }
+}
