@@ -81,7 +81,10 @@ echo "test-isolated: serving a staged copy at ${STANDALONE#"$REPO"/}"
 # A free port, verified rather than assumed.
 PORT=""
 for candidate in $(seq 8630 8699); do
-  if ! ss -lntH "sport = :$candidate" 2>/dev/null | grep -q .; then PORT="$candidate"; break; fi
+  # No pipe (#609). `ss … | grep -q .` fails OPEN here: grep matching is exactly
+  # what kills the writer early, pipefail reports the writer's 141, `!` inverts
+  # it, and a port that IS in use gets chosen as free.
+  if [ -z "$(ss -lntH "sport = :$candidate" 2>/dev/null)" ]; then PORT="$candidate"; break; fi
 done
 [ -n "$PORT" ] || { echo "test-isolated: no free port in 8630-8699" >&2; exit 3; }
 

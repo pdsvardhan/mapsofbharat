@@ -20,7 +20,8 @@
     "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs && node scripts/build-family-paths.mjs --check && node scripts/build-geo-compressed.mjs",
     "postbuild": "node scripts/check-raw-assets.mjs --output",
     "geo:compress": "node scripts/build-geo-compressed.mjs",
-    "check:isolation": "./scripts/check-build-isolation.sh"
+    "check:isolation": "./scripts/check-build-isolation.sh",
+    "check:pipes": "node scripts/check-pipefail-grep.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

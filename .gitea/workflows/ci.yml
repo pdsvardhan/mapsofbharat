@@ -74,6 +74,13 @@ jobs:
       # build context that may not carry tests/.
       - run: node scripts/check-spec-imports.mjs
 
+      # `cmd | grep -q` under pipefail fails when grep matches EARLY: grep exits,
+      # the writer takes SIGPIPE, and pipefail reports the writer's 141. So the
+      # pipeline's answer inverts under load. It bit restore-drill.sh, was fixed
+      # locally, and came back in setup-backup-remote.sh — hence a rule rather
+      # than a memory (#609).
+      - run: node scripts/check-pipefail-grep.mjs
+
       # Lint as a RATCHET, not a wish. This step used to be
       # `npm run lint || echo "lint warnings (non-blocking)"`, which let a commit
       # add any number of new problems while CI stayed green — a check that could

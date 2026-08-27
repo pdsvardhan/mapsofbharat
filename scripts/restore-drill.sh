@@ -106,7 +106,8 @@ STANDALONE="$(stage_run_tree drill)" || fail "could not stage a run tree"
 
 PORT=""
 for c in $(seq 8700 8760); do
-  if ! ss -lntH "sport = :$c" 2>/dev/null | grep -q .; then PORT="$c"; break; fi
+  # No pipe (#609) — see scripts/test-isolated.sh for why this one failed OPEN.
+  if [ -z "$(ss -lntH "sport = :$c" 2>/dev/null)" ]; then PORT="$c"; break; fi
 done
 [ -n "$PORT" ] || fail "no free port"
 

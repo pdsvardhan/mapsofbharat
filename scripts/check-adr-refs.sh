@@ -24,7 +24,11 @@ refs=$(git grep -hoE 'adr-[0-9]{3}' -- ':!ottomate/decisions' ':!scripts/check-a
 
 missing=""
 for n in $refs; do
-  echo "$valid" | grep -qx "$n" || missing="$missing adr-$n"
+  # A here-string, not a pipe (#609): `echo "$valid" | grep -qx` dies on SIGPIPE
+  # when the match is early in the list, and pipefail turns that into "not found" —
+  # so a valid ADR gets reported as unresolved and the gate goes red for nothing.
+  # -F as well as -x: these are literal ids, and `.` in a regex matches anything.
+  grep -qxF -- "$n" <<<"$valid" || missing="$missing adr-$n"
 done
 
 if [ -n "$missing" ]; then

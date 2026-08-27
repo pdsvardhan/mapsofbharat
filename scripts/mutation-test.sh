@@ -175,7 +175,10 @@ NODE_SIDE="$(node_side_targets)"
 is_node_side() {
   local f="$1"
   f="$(echo "$f" | sed -E 's/\.(ts|tsx|mjs|cjs|js|jsx)$//')"
-  echo "$NODE_SIDE" | grep -qx "$f"
+  # A here-string, not a pipe (#609). Fails CLOSED here: a SIGPIPE'd echo says a
+  # node-side target is browser-side, and the harness then refuses to mutate it
+  # without --rebuilt. -F because these are paths and `.` is not a wildcard.
+  grep -qxF -- "$f" <<<"$NODE_SIDE"
 }
 
 # ------------------------------------------------------------- run the suite
