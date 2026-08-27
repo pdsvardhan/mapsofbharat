@@ -29,7 +29,10 @@ import type { SocialFeature } from "@/lib/social-export";
 import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { floorShare, symbolRadius, type SymbolLevel } from "@/lib/symbols";
-import { regionAreas, alphaWarrant, alphaByRegion, type Warrant } from "@/lib/value-by-alpha";
+import {
+  regionAreas, alphaWarrant, alphaByRegion, alphaBounds,
+  ALPHA_UNFADED, MAP_GROUND, NO_DATA_FILL, noDataHatchTile, type Warrant,
+} from "@/lib/value-by-alpha";
 import { BIVARIATE_K, bivariateColor, sharedRegions, bivariateEligible, type Eligibility } from "@/lib/bivariate";
 // The single resolver for which forms a metric may honestly take (#575).
 import { canRender, preferredViz } from "@/lib/metric-capabilities";
@@ -38,7 +41,44 @@ import { DataTable } from "@/components/atlas/data-table";
 
 const INDIA_BOUNDS: [number, number, number, number] = [67, 6, 98, 37];
 const NEUTRAL = "#26231c"; // no indicator picked. token: --map-neutral (MapLibre paint takes a colour, not a var())
-const NODATA = "#2a271d"; // indicator picked, region missing a value. token: --map-nodata
+// Indicator picked, region missing a value (token: --map-nodata). Imported rather
+// than declared here since item 1077 round 2: the tone, the ground it composites
+// over and the hatch drawn on top are one contract — a faded fill must never be
+// mistakable for a region we have no number for — and that contract is measured in
+// lib/value-by-alpha against these exact values.
+const NODATA = NO_DATA_FILL;
+// ── the no-data hatch (item 1077 round 2) ────────────────────────────────────
+// A region with no number is marked by TEXTURE, not by tone, because tone is exactly
+// what the fade eats: a faded class-5 fill composites to rgb(77,71,37) against a
+// no-data rgb(39,37,28) — contrast 1.64, the same warm olive, where unfaded the two
+// stand 8.64 apart. No opacity can imitate a stripe, so the separation survives every
+// alpha from the 0.28 floor to 0.95. The tile, its measurement and the reason this is
+// not adr-019's dropped estimate hatch are all in lib/value-by-alpha.
+//
+// A PATTERN LAYER over the fill, not a data-driven `fill-pattern`: the pattern is
+// constant and it is the per-region SWITCH that must be data-driven, which
+// fill-opacity does natively from feature-state. Each sits directly above its fill and
+// below the seam, so boundaries stay on top; each honours `dim`, so cohort dimming
+// does not leave a hatch shouting over a dimmed state.
+/** The MapLibre image id for the no-data hatch. */
+const NODATA_HATCH_IMG = "nodata-hatch";
+/** Paint for a hatch layer. A function, because the four of them (two levels x two
+ *  vintages) are added from two places and a shared object literal would be one
+ *  mutable style object handed to four layers. */
+const hatchPaint = () => ({
+  "fill-pattern": NODATA_HATCH_IMG,
+  "fill-opacity": ["case",
+    ["!", ["boolean", ["feature-state", "nodata"], false]], 0,
+    ["boolean", ["feature-state", "dim"], false], 0.15,
+    1],
+});
+/** Every hatch layer, paired with the fill whose visibility and filter it follows. */
+const NODATA_LAYERS: Record<string, string> = {
+  "district-fill": "district-nodata",
+  "state-fill": "state-nodata",
+  "d2011-fill": "d2011-nodata",
+  "s2011-fill": "s2011-nodata",
+};
 
 type MetricData = {
   /** Which metric this payload is for. The previous metric's rows stay painted
@@ -128,8 +168,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   // level, so the fetch happens once and every later metric reuses it.
   const weightRef = useRef<Record<string, { pop: Record<string, number>; area: Record<string, number> }>>({});
   const alphaRef = useRef<Record<string, number>>({});
-  const warrantRef = useRef<Warrant | null>(null);
+  /** Signature of the last published fade verdict — warranted, reason and the two
+   *  population bounds. recolor() runs on every repaint and the legend must not
+   *  re-render unless one of those actually moved. */
+  const warrantSigRef = useRef<string>("");
   const [warrant, setWarrant] = useState<Warrant | null>(null);
+  /** The p5/p95 populations the fade ramp ran between, for the legend's fade key. */
+  const [fadeBounds, setFadeBounds] = useState<{ lo: number; hi: number } | null>(null);
   const estimatedRef = useRef<Record<string, 1>>({});
   const estimateKindRef = useRef<Record<string, string>>({});
   const estimatedFromRef = useRef<Record<string, string>>({});
@@ -493,7 +538,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (!ref.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: ref.current,
-      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0d0f14" /* token: --background */ } }] },
+      // MAP_GROUND, not a repeated literal: this is the colour every faded fill
+      // composites over, so the legend's fade key and the separation measured in
+      // lib/value-by-alpha are only right while they agree with it.
+      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": MAP_GROUND /* token: --background */ } }] },
       bounds: INDIA_BOUNDS, fitBoundsOptions: { padding: 24 },
       attributionControl: false, maxZoom: 12, minZoom: 3, dragRotate: false,
       // MapLibre v5 moved this under canvasContextAttributes — the old
@@ -580,10 +628,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         "fill-opacity": ["case",
           ["boolean", ["feature-state", "dim"], false], 0.15,
           ["boolean", ["feature-state", "hover"], false], 1,
-          ["coalesce", ["feature-state", "alpha"], 0.9]],
+          ["coalesce", ["feature-state", "alpha"], ALPHA_UNFADED]],
         "fill-color-transition": { duration: 400 },
         "fill-opacity-transition": { duration: 160 },
       };
+      map.addImage(NODATA_HATCH_IMG, noDataHatchTile(), { pixelRatio: 1 });
       const linePaint = (hairline: number) => ({
         "line-color": ["case",
           ["boolean", ["feature-state", "selected"], false], "#d1502f", // token: --accent
@@ -611,8 +660,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // would hatch 12% of India, and we render NFHS sampling error perfectly
       // flat. Estimates are disclosed where the number is read instead — rail
       // badge, map hover, region panel, export footnote.
+      map.addLayer({ id: "district-nodata", type: "fill", source: "districts", paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({ id: "district-line", type: "line", source: "districts", paint: linePaint(0.3) as any });
       map.addLayer({ id: "state-fill", type: "fill", source: "states", layout: { visibility: "none" }, paint: fillPaint } as any);
+      map.addLayer({ id: "state-nodata", type: "fill", source: "states", layout: { visibility: "none" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({
         id: "state-outline", type: "line", source: "states",
         paint: { "line-color": "rgba(233,227,213,0.26)", "line-width": 0.8 },
@@ -795,7 +846,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       map.addSource("states2011-pts", { type: "geojson", data: s2011Pts, promoteId: "st_code" });
       const fillPaint = {
         "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
-        "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0.9],
+        "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, ALPHA_UNFADED],
         "fill-color-transition": { duration: 400 },
       };
       const linePaint = (w: number) => ({
@@ -803,8 +854,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.1, w],
       });
       map.addLayer({ id: "d2011-fill", type: "fill", source: "districts2011", layout: { visibility: "none" }, paint: fillPaint } as any);
+      // The hatch travels to the as-reported view too. The fade never runs here (no
+      // density series to recover an area from), so this is not the confusion above —
+      // it is that "no number for this region" must mean one thing on every map in the
+      // atlas, or the mark teaches nothing.
+      map.addLayer({ id: "d2011-nodata", type: "fill", source: "districts2011", layout: { visibility: "none" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({ id: "d2011-line", type: "line", source: "districts2011", layout: { visibility: "none" }, paint: linePaint(0.3) as any });
       map.addLayer({ id: "s2011-fill", type: "fill", source: "states2011", layout: { visibility: "none" }, paint: fillPaint } as any);
+      map.addLayer({ id: "s2011-nodata", type: "fill", source: "states2011", layout: { visibility: "none" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({ id: "s2011-line", type: "line", source: "states2011", layout: { visibility: "none" }, paint: linePaint(0.4) as any });
       const vinSymbolPaint = {
         "circle-radius": ["coalesce", ["feature-state", "r"], 0],
@@ -908,7 +965,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const map = mapRef.current; if (!map) return;
     const f = statesRef.current[String(Number(code))] || statesRef.current[code];
     const flt: any = ["==", ["to-string", ["get", "st_code"]], String(Number(code))];
-    map.setFilter("district-fill", flt); map.setFilter("district-line", flt); map.setFilter("state-outline", flt);
+    // district-nodata rides with district-fill, and must: every district outside the
+    // drilled state is out of scope, so recolor marks it no-data — an unfiltered hatch
+    // would paint the rest of the country while its fills stayed hidden.
+    map.setFilter("district-fill", flt); map.setFilter("district-nodata", flt);
+    map.setFilter("district-line", flt); map.setFilter("state-outline", flt);
     if (f) map.fitBounds(bbox(f.geometry) as any, { padding: 50, duration: 750, essential: true });
     setFocus({ code, name });
     focusRef.current = { code, name };
@@ -926,7 +987,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   }
   function exitFocus(toStates: boolean) {
     const map = mapRef.current; if (!map) return;
-    map.setFilter("district-fill", null); map.setFilter("district-line", null); map.setFilter("state-outline", null);
+    map.setFilter("district-fill", null); map.setFilter("district-nodata", null);
+    map.setFilter("district-line", null); map.setFilter("state-outline", null);
     map.fitBounds(INDIA_BOUNDS, { padding: 24, duration: 750, essential: true });
     setFocus(null);
     focusRef.current = null;
@@ -1079,6 +1141,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     for (const [lyr, on] of [["d2011-fill", vin && !showState], ["d2011-line", vin && !showState],
                              ["s2011-fill", vin && showState], ["s2011-line", vin && showState]] as const) {
       if (map.getLayer(lyr)) map.setLayoutProperty(lyr, "visibility", on ? "visible" : "none");
+    }
+    // Each hatch follows the fill it marks, read off that fill rather than re-derived
+    // — a second copy of this level/vintage logic is a second thing to forget. Last,
+    // so it reads the visibility just set above rather than the previous repaint's.
+    for (const [fill, hatch] of Object.entries(NODATA_LAYERS)) {
+      if (map.getLayer(fill) && map.getLayer(hatch))
+        map.setLayoutProperty(hatch, "visibility", map.getLayoutProperty(fill, "visibility") ?? "visible");
     }
     if (vinChanged) {
       // vintage is view-only: drop every current-day interaction artefact so
@@ -1298,13 +1367,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const warr = (!vin && !symOn && !biOn && modeRef.current === "value" && breaks.length > 0)
       ? alphaWarrant({ values: valuesRef.current, pop: wts.pop, area: wts.area, edges: breaks })
       : null;
-    alphaRef.current = warr?.warranted
-      ? alphaByRegion(wts.pop, codes.filter((c) => wts.pop[c] > 0))
-      : {};
-    if ((warrantRef.current?.warranted ?? null) !== (warr?.warranted ?? null)
-        || warrantRef.current?.reason !== warr?.reason) {
-      warrantRef.current = warr;
+    const fadeCodes = codes.filter((c) => wts.pop[c] > 0);
+    alphaRef.current = warr?.warranted ? alphaByRegion(wts.pop, fadeCodes) : {};
+    // The p5/p95 the ramp actually ran between. Handed to the legend so its fade key
+    // can label the rows with the POPULATIONS that produce those opacities — an
+    // opacity on its own decodes nothing, and a floored district's rendered colour
+    // appeared nowhere in the key before this.
+    const fadeBounds = warr?.warranted ? alphaBounds(wts.pop, fadeCodes) : null;
+    const warrSig = `${warr?.warranted ?? ""}|${warr?.reason ?? ""}|${fadeBounds?.lo ?? ""}|${fadeBounds?.hi ?? ""}`;
+    if (warrantSigRef.current !== warrSig) {
+      warrantSigRef.current = warrSig;
       setWarrant(warr);
+      setFadeBounds(fadeBounds);
     }
 
     const basePal = PALETTES[palRef.current].fn;
@@ -1324,21 +1398,30 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const v = valuesRef.current[code];
       const inScope = scope.has(code);
       if (v == null || !inScope) {
-        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA), r: 0 });
+        // `nodata` switches the hatch layer on for this region. It is written
+        // explicitly rather than inferred from the colour because coverage view mutes
+        // a HIDDEN class to the very same tone, and those regions do have a number —
+        // hatching them would say the opposite of what is true.
+        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA), r: 0, nodata: true });
         continue;
       }
       // COVERAGE view (item 830): shade by DATA PROVENANCE, not value. A class
       // toggled off in the legend recedes to the neutral no-data tone so the
       // classes left on stand out (e.g. inherited-only).
       let color: string;
+      /** Has this region a number for the map AS DRAWN? A paired map asks for two. */
+      let noValue = false;
       if (modeRef.current === "coverage") {
         const cls = provenanceOf(estimatedRef.current[code], estimateKindRef.current[code]);
         color = coverageHiddenRef.current.includes(cls) ? PROVENANCE_MUTED : PROVENANCE_COLOR[cls];
       } else if (biOn) {
         const pv = pairValuesRef.current[code];
         // A region the pair does not cover gets the no-data tone rather than a
-        // corner of the matrix. Painting it low-low would invent a reading.
-        color = pv == null || !Number.isFinite(pv) ? NODATA : bivariateColor(v, biEdgesX, pv, biEdgesY);
+        // corner of the matrix. Painting it low-low would invent a reading. It is
+        // hatched with the rest of the no-data, because on THIS map that is what it
+        // is — the pair needs both numbers and this region has one.
+        noValue = pv == null || !Number.isFinite(pv);
+        color = noValue ? NODATA : bivariateColor(v, biEdgesX, pv, biEdgesY);
       } else if (modeRef.current === "vs_avg") {
         color = interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - mean) / (2 * maxDev))));
       } else {
@@ -1356,7 +1439,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // `alpha` rides the same write as `color` (#408 item 1077). 0.9 is the
       // unfaded default the fill layer used before this existed, so a map with no
       // warrant paints exactly as it always did.
-      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0, alpha: alphaRef.current[code] ?? 0.9 });
+      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0, alpha: alphaRef.current[code] ?? ALPHA_UNFADED, nodata: noValue });
       lumSum += fillLuminance(color);
       lumN++;
     }
@@ -2046,6 +2129,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   // Why this map is faded, in the reader's words (#408 item 1077).
                   // Present only when the fade actually fired.
                   alphaNote={warrant?.warranted ? warrant.reason : null}
+                  // ...and the populations the fade ramp ran between, so the key can
+                  // show what each opacity MEANS. Without it the legend showed only
+                  // full-strength swatches and a floored district's rendered colour
+                  // appeared nowhere in the key at all.
+                  alphaBounds={warrant?.warranted ? fadeBounds : null}
                   // The pair (#408 item 1080): names for the two axes, the
                   // resolver's verdict (shown even when it refuses), and the two
                   // controls. Passing the verdict rather than a boolean is what

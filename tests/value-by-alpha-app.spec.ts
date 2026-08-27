@@ -55,6 +55,83 @@ test.describe("in the running app", () => {
     expect(alphas!.crowded!).toBeGreaterThan(alphas!.empty!);
   });
 
+  test("no data is HATCHED, and the hatch is on the map rather than only in the code", async ({ page }) => {
+    // The round-2 defect: at the 0.28 floor a class-5 fill composites to rgb(77,71,37)
+    // against a no-data rgb(39,37,28) — 1.64:1, the same warm olive — and this very
+    // map carries both, four class-5 districts under a=0.35 alongside the two genuine
+    // no-data ones. Tone could not hold the line, so no-data carries a texture.
+    await page.goto("/?m=pop_density");
+    await expect(page.locator("[data-alpha-note]")).toBeVisible({ timeout: 25_000 });
+
+    const seen = await page.evaluate(() => {
+      const m = (window as unknown as {
+        __mob_map?: {
+          getFeatureState: (t: unknown) => unknown;
+          querySourceFeatures: (s: string) => { id?: string | number }[];
+          hasImage: (id: string) => boolean;
+          getLayer: (id: string) => unknown;
+          getLayoutProperty: (id: string, k: string) => unknown;
+        };
+      }).__mob_map;
+      if (!m) return null;
+      // MapLibre drops falsy values out of feature state (`dim: false` and `r: 0` are
+      // absent here too), and the paint expression reads an absent key as false — so
+      // "marked" is `nodata === true` and everything else is unmarked.
+      const marked = (id: string) =>
+        (m.getFeatureState({ source: "districts", id }) as { nodata?: boolean })?.nodata === true;
+      const ids = new Set<string>();
+      for (const f of m.querySourceFeatures("districts")) if (f.id != null) ids.add(String(f.id));
+      return {
+        image: m.hasImage("nodata-hatch"),
+        layer: !!m.getLayer("district-nodata"),
+        visible: m.getLayoutProperty("district-nodata", "visibility") ?? "visible",
+        seenIds: ids.size,
+        allMarked: [...ids].filter(marked).sort(),
+        // The two districts pop_density has no figure for, and two it does.
+        missing: ["01_991", "01_992"].map(marked),
+        present: ["27_519", "12_257"].map(marked),
+      };
+    });
+
+    expect(seen, "the map did not expose its handle — nothing was measured").not.toBeNull();
+    expect(seen!.image, "the hatch tile was never uploaded").toBe(true);
+    expect(seen!.layer, "there is no layer to draw it").toBe(true);
+    expect(seen!.visible, "the hatch layer is hidden under the district map").toBe("visible");
+    // A layer switched on for nobody communicates as little as no layer.
+    expect(seen!.missing, "the two districts with no figure must be marked").toEqual([true, true]);
+    // ...and switched on for everybody would mark the whole country as unknown. This
+    // is the whole sweep, not a sample: pop_density carries 733 of the 735 polygons,
+    // so EXACTLY the two absentees may be hatched.
+    expect(seen!.seenIds, "the source did not yield its districts — nothing was swept")
+      .toBeGreaterThan(700);
+    expect(seen!.present, "districts that DO have a figure must not be").toEqual([false, false]);
+    expect(seen!.allMarked, "the hatch must mark the absentees and nobody else")
+      .toEqual(["01_991", "01_992"]);
+  });
+
+  test("the legend keys the fade itself — colour across, opacity down", async ({ page }) => {
+    await page.goto("/?m=pop_density");
+    const key = page.locator("[data-alpha-key]");
+    await expect(key, "a faded map must key its own opacities").toBeVisible({ timeout: 25_000 });
+
+    // Three rows of five classes: the whole ramp at three points of the fade, which is
+    // what lets a reader decode a floored district's rendered colour. Before this the
+    // legend showed full-strength swatches only, so that colour appeared nowhere.
+    await expect(page.locator("[data-alpha-key-row]")).toHaveCount(3);
+    await expect(page.locator("[data-alpha-key-cell]")).toHaveCount(15);
+
+    // The rows must actually differ, or the key is three copies of the ramp claiming
+    // to be a fade. Compare the top class at full strength against the same class at
+    // the floor.
+    const [full, floored] = await Promise.all([
+      page.locator('[data-alpha-key-cell="4-0"]').evaluate((el) => getComputedStyle(el).backgroundColor),
+      page.locator('[data-alpha-key-cell="4-2"]').evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    expect(full).not.toBe(floored);
+    // And the no-data mark is keyed too, since the hatch is now on every map.
+    await expect(page.locator("[data-nodata-key]")).toBeVisible();
+  });
+
   test("a metric spread evenly across people is NOT faded", async ({ page }) => {
     // nfhs5_women_anaemia sits near the bottom of the measured distribution: its
     // colour is where the people are, so fading would be a claim the data does not

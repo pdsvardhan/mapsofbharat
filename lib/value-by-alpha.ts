@@ -69,6 +69,12 @@
 export const ALPHA_MIN = 0.28;
 export const ALPHA_MAX = 0.95;
 
+/** The opacity a fill carries when NOTHING is faded — the flat value this layer used
+ *  before value-by-alpha existed. Exported because three things have to agree on it:
+ *  the map's paint expression, the legend's key, and the measurement below of how far
+ *  a faded fill sits from a region we have no number for. */
+export const ALPHA_UNFADED = 0.9;
+
 /** How much of the map's colour has to move before the fade is earned.
  *
  *  0.15, from the measured distribution over 70 district rates (2026-08-27):
@@ -156,8 +162,16 @@ export function alphaWarrant(args: {
   edges: number[];
 }): Warrant {
   const { values, pop, area, edges } = args;
+  // FINITE, not merely positive — on the weights as well as the values. `> 0` admits
+  // Infinity, and one infinite weight makes every share NaN. NaN then fails
+  // `tvd < TVD_THRESHOLD` (every comparison against NaN is false), so the refusal
+  // branch was skipped and the legend told the reader "NaN% of this map's colour is in
+  // a band that does not describe where people live". This module's stated contract is
+  // the opposite: an unanswerable question is reported as such, never rounded down.
   const codes = Object.keys(values).filter(
-    (c) => Number.isFinite(values[c]) && pop[c] > 0 && area[c] > 0,
+    (c) => Number.isFinite(values[c])
+      && Number.isFinite(pop[c]) && pop[c] > 0
+      && Number.isFinite(area[c]) && area[c] > 0,
   );
   const none = (reason: string): Warrant => ({
     warranted: false, reason, tvd: null, areaShare: null, popShare: null, n: codes.length,
@@ -189,6 +203,12 @@ export function alphaWarrant(args: {
   let tvd = 0;
   for (let i = 0; i < k; i += 1) tvd += Math.abs(areaShare[i] - popShare[i]);
   tvd /= 2;
+
+  // A tvd that is not a number is not a "no". The filter above should make this
+  // unreachable, and it is kept anyway because the failure mode it guards is silent:
+  // `tvd < TVD_THRESHOLD` is FALSE for NaN, so an unguarded fall-through lands in the
+  // WARRANTED branch and fades the whole map on a number nobody could compute.
+  if (!Number.isFinite(tvd)) return none("the weights did not produce a comparable share");
 
   if (tvd < TVD_THRESHOLD) {
     return {
@@ -230,7 +250,15 @@ export function alphaWarrant(args: {
  * few people is a reason to be quieter, never a reason to disappear.
  */
 export function alphaFor(pop: number, lo: number, hi: number): number {
-  if (!Number.isFinite(pop) || pop <= 0) return ALPHA_MIN;
+  // AN UNUSABLE POPULATION IS NOT A SMALL ONE. A fade is a claim — "few people live
+  // here" — so the safe answer for a count we could not read (NaN, Infinity) is the
+  // one that claims nothing: no fade. It used to return the floor, which asserted
+  // emptiness about a region on the strength of a broken number. Same answer the
+  // degenerate lo/hi paths below already give, for the same reason.
+  if (!Number.isFinite(pop)) return ALPHA_MAX;
+  // Zero or negative is different: zero people IS the claim the floor makes, and it is
+  // the one the ramp cannot express (log 0 is undefined).
+  if (pop <= 0) return ALPHA_MIN;
   if (!(hi > lo) || lo <= 0) return ALPHA_MAX;
   const t = (Math.log(pop) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
   const c = Math.min(1, Math.max(0, t));
@@ -254,4 +282,153 @@ export function alphaByRegion(
   const out: Record<string, number> = {};
   for (const c of codes) out[c] = alphaFor(pop[c], lo, hi);
   return out;
+}
+
+// ── WHAT THE FADE COSTS, AND WHAT PAYS FOR IT (item 1077 round 2) ────────────
+//
+// The fade is an OPACITY, so what a reader actually sees is the class colour
+// COMPOSITED over the map's background layer. Measured across the ramp, the floor
+// does real damage: adjacent-class contrast on the default navyYellow ramp falls
+// from 1.68/1.78/1.77/1.81 at a=0.95 to 1.11/1.15/1.19/1.27 at a=0.28, and
+// class 1 against class 5 from 9.60 to 1.94. That is the fade working — a region
+// holding 8,004 people is MEANT to recede — and the remedy is not to weaken it but
+// to give the reader a key that decodes it (LegendCard's colour x alpha grid).
+//
+// One consequence is not acceptable and is fixed here. A faded class-5 fill
+// composites to rgb(77,71,37) against a no-data tone of rgb(39,37,28): contrast
+// 1.64, down from 8.64 unfaded. A region we have a HIGH number for and a region we
+// have NO number for became the same warm olive. So no-data stops being a tone at
+// all: it carries a hatch, and a flat fill cannot imitate a texture at any opacity.
+//
+// WHY THIS IS NOT adr-019 WALKING BACK IN. That decision dropped an ambient hatch
+// over ESTIMATED districts, on three grounds — it was invisible (1.09:1, and an 8px
+// tile at pixelRatio 2 that aliased to flat tone), it was disproportionate (2.7% of
+// district data, up to 12% of India hatched), and an estimate's caveat belongs where
+// the number is read. None of the three transfers. This marks the ABSENCE of a
+// number, which no hover can disclose because there is nothing to hover; it is
+// measured rather than assumed (the stripe stands 12.0:1 against its own ground, and
+// no fill in this atlas can sit close to both stripe and ground at once — worst case
+// 3.47:1, above WCAG's 3:1 floor for non-text); and its tile is pixelRatio 1, so it is
+// never downsampled into the flat tone adr-019 measured.
+
+/** The map's background layer — what every fill composites over (india-map's `bg`).
+ *  The map imports it, so the paint and the measurements here cannot drift apart. */
+export const MAP_GROUND = "#0d0f14"; // token: --background
+
+/** "We have no number for this region." */
+export const NO_DATA_FILL = "#2a271d"; // token: --map-nodata
+
+/** The hatch stripe. Full strength on purpose: the separation claimed above holds
+ *  because a fill cannot be close to BOTH the stripe and the ground, and the further
+ *  apart those two are, the wider that guarantee. */
+export const NO_DATA_HATCH = "#e9e3d5"; // token: --foreground
+/** Tile edge in px, and the diagonal period inside it. The tile must be a multiple of
+ *  the period or the pattern seams at every tile edge. 1 stripe pixel in 4 = 25% of
+ *  the patch, enough to read as texture on a district a few pixels across. */
+export const NO_DATA_HATCH_TILE = 8;
+export const NO_DATA_HATCH_PERIOD = 4;
+
+/** Parse "#rrggbb" or "rgb(r,g,b)" / "rgba(...)" — the two forms the ramps emit. */
+function rgbOf(c: string): [number, number, number] {
+  const m = c.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  if (m) return [+m[1], +m[2], +m[3]];
+  const h = c.replace("#", "").trim();
+  if (h.length === 3) {
+    return [0, 1, 2].map((i) => parseInt(h[i] + h[i], 16)) as [number, number, number];
+  }
+  return [
+    parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+/** `fill` painted at `alpha` over `ground`, as "#rrggbb" — the colour the map ends up
+ *  showing, which is the only one worth measuring or keying. */
+export function alphaComposite(fill: string, alpha: number, ground: string = MAP_GROUND): string {
+  const a = Math.max(0, Math.min(1, alpha));
+  const f = rgbOf(fill);
+  const g = rgbOf(ground);
+  const mix = (i: number) => Math.round(f[i] * a + g[i] * (1 - a));
+  return `#${[0, 1, 2].map((i) => mix(i).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** WCAG 2.1 relative luminance.
+ *
+ *  Deliberately not lib/breaks.ts's `luminance()`, which is an ungamma-corrected
+ *  weighted average — fine for the cheap "is this fill pale?" seam decision it was
+ *  written for, wrong for a contrast ratio anyone quotes. */
+export function relativeLuminance(c: string): number {
+  const lin = (v: number) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const [r, g, b] = rgbOf(c);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** Contrast ratio between two OPAQUE colours, 1..21. */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** CIE L*a*b* (D65), for the questions contrast cannot answer.
+ *
+ *  Contrast ratio is LUMINANCE ONLY, and half the ramps in this atlas do not encode in
+ *  luminance: the two ends of the Red–Blue diverging ramp are a dark red and a dark
+ *  blue that measure 1.03:1 apart and are impossible to confuse. Asking "is this fill
+ *  still a colour rather than the background" with a luminance ratio would have
+ *  demanded a different palette rather than measured the fade. */
+function labOf(c: string): [number, number, number] {
+  const lin = (v: number) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const [r, g, b] = rgbOf(c).map(lin);
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+/** Perceptual distance between two opaque colours (CIE76). ~2.3 is the just-noticeable
+ *  difference; 0 means the two are the same colour. */
+export function deltaE(a: string, b: string): number {
+  const p = labOf(a);
+  const q = labOf(b);
+  return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+}
+
+/**
+ * The no-data hatch as a raw RGBA tile, for MapLibre's addImage.
+ *
+ * Built pixel by pixel rather than stroked onto a canvas: an antialiased line has no
+ * exact colour, and the separation this file claims is a claim about a MEASURED one.
+ * Every pixel here is either the stripe at full strength or fully transparent, so what
+ * a test measures is what the GPU uploads.
+ */
+export function noDataHatchTile(): { width: number; height: number; data: Uint8Array } {
+  const s = NO_DATA_HATCH_TILE;
+  const [r, g, b] = rgbOf(NO_DATA_HATCH);
+  const data = new Uint8Array(s * s * 4);
+  for (let y = 0; y < s; y += 1) {
+    for (let x = 0; x < s; x += 1) {
+      if ((x + y) % NO_DATA_HATCH_PERIOD !== 0) continue;
+      const i = (y * s + x) * 4;
+      data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+    }
+  }
+  return { width: s, height: s, data };
+}
+
+/** The same hatch as a CSS background image, for the legend's key.
+ *
+ *  Derived from the same two constants as the tile so the key cannot drift from the
+ *  map. The stripe is a full pixel here rather than the tile's 1/√2 perpendicular
+ *  width: a sub-pixel CSS gradient stop antialiases to a dimmer line, and a key that
+ *  renders fainter than the thing it keys is a key that teaches the wrong mark. */
+export function noDataHatchCss(): string {
+  const gap = (NO_DATA_HATCH_PERIOD / Math.SQRT2).toFixed(2);
+  return `repeating-linear-gradient(45deg, ${NO_DATA_HATCH} 0 1px, transparent 1px ${gap}px)`;
 }

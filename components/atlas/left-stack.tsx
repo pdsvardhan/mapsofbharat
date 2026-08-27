@@ -16,6 +16,9 @@ import {
 import { useDismiss } from "@/lib/use-dismiss";
 import { legendStops, symbolRadius, type SymbolLevel } from "@/lib/symbols";
 import { BIVARIATE_PALETTE } from "@/lib/bivariate";
+import {
+  ALPHA_UNFADED, NO_DATA_FILL, alphaComposite, alphaFor, noDataHatchCss,
+} from "@/lib/value-by-alpha";
 import { SEGMENTED_WIDTH, ViewToggle } from "@/components/atlas/data-table";
 
 /** Legend view mode — shared with india-map's Mode. */
@@ -244,7 +247,7 @@ export function LegendCard({
   mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
-  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor, alphaNote,
+  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor, alphaNote, alphaBounds,
   pairName, baseName, pairElig, pairActive, onOpenPair, onClearPair,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
@@ -278,6 +281,11 @@ export function LegendCard({
   symbolFloor?: { drawn: number; atFloor: number; share: number; threshold: number };
   /** Why this map is faded by population, or null when it is not (#408 item 1077). */
   alphaNote?: string | null;
+  /** The p5/p95 populations the fade ramp ran between. Present exactly when the fade
+   *  fired, and what makes the colour x alpha key readable: a swatch at 0.28 means
+   *  nothing until the reader is told it is the opacity of a district holding this
+   *  many people. */
+  alphaBounds?: { lo: number; hi: number } | null;
   /** The paired metric's name, or null when the map is not paired (#408 item 1080). */
   pairName?: string | null;
   /** The metric on the primary axis, for labelling the matrix. */
@@ -292,6 +300,9 @@ export function LegendCard({
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
+  /** Whole people, Indian grouping. The fade key labels its rows with populations
+   *  rather than opacities — 0.28 is not a fact about anywhere. */
+  const fmtPop = (v: number) => Math.round(v).toLocaleString("en-IN");
   const binned = mode === "value" && method !== "continuous";
   const edges = binned ? mapEdges : [];
   // Occupancy per class, disclosed beside each row. The research brief's remedy for
@@ -551,6 +562,47 @@ export function LegendCard({
           </button>
         </div>
       ) : null}
+      {/* THE FADE KEY (#408 item 1077, round 2) — colour ACROSS, opacity DOWN.
+          The ramp above keys the colours at full strength only, so on a faded map the
+          colour a floored district actually renders appeared nowhere in the legend:
+          measured, 38 of 733 districts sit exactly at the 0.28 floor and 97 below
+          0.35, and adjacent-class contrast there falls to 1.11–1.27 from 1.68–1.81
+          unfaded. That collapse is the fade working as intended — a district holding
+          8,004 people is meant to recede — but a reader cannot be asked to decode a
+          second encoding that is not in the key.
+          Every swatch is the class colour COMPOSITED over the map's own background at
+          that opacity, not a CSS opacity over this panel: the key has to show the
+          colour the map paints, and this panel is not what the map paints over.
+          Rows are labelled with the POPULATIONS that produce them — the p5 and p95 the
+          ramp actually ran between, and their geometric mean, which is the midpoint of
+          a logarithmic ramp. */}
+      {alphaNote && alphaBounds && edges.length ? (
+        <div className="mt-2" data-alpha-key>
+          <div className="text-[9px] font-bold tracking-[.1em] text-faint">FADE · PEOPLE HELD</div>
+          <div className="mt-1 space-y-[2px]">
+            {[alphaBounds.hi, Math.sqrt(alphaBounds.lo * alphaBounds.hi), alphaBounds.lo].map((pop, r) => {
+              const a = alphaFor(pop, alphaBounds.lo, alphaBounds.hi);
+              return (
+                <div key={r} data-alpha-key-row className="flex items-center gap-2">
+                  <span className="flex flex-none">
+                    {Array.from({ length: edges.length + 1 }, (_, i) => (
+                      <span
+                        key={i}
+                        data-alpha-key-cell={`${i}-${r}`}
+                        className="block h-2.5 w-4"
+                        style={{ background: alphaComposite(fn(i / edges.length), a) }}
+                      />
+                    ))}
+                  </span>
+                  <span className="flex-1 font-mono text-[9px] text-faint">
+                    {r === 0 ? `${fmtPop(pop)} or more` : r === 2 ? `${fmtPop(pop)} or fewer` : `around ${fmtPop(pop)}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {/* Why this map is faded (#408 item 1077). The map only sets this when the
           fade actually fired, so its presence IS the disclosure — a reader never
           sees a differently-weighted map without being told it is one. Sits under
@@ -630,6 +682,22 @@ export function LegendCard({
       {cohortNote && (
         <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent-text">{cohortNote}</div>
       )}
+      {/* NO DATA IS A TEXTURE, NOT A TONE (#408 item 1077, round 2), so the key shows
+          the texture. A flat tone was imitable: a faded class-5 fill composites to
+          rgb(77,71,37) against a no-data rgb(39,37,28) — 1.64 contrast, one warm olive
+          for "a lot of it" and "we do not know". Shown in every mode because the hatch
+          is painted in every mode; a mark on the map with no entry in the key is a
+          question the reader has no way to answer. */}
+      <div className="mt-2 flex items-center gap-2" data-nodata-key>
+        <span
+          className="h-2.5 w-4 flex-none rounded-[1px] border"
+          style={{
+            background: `${noDataHatchCss()}, ${alphaComposite(NO_DATA_FILL, ALPHA_UNFADED)}`,
+            borderColor: "var(--border-soft)",
+          }}
+        />
+        <span className="flex-1 text-[9.5px] text-faint">Hatched — no figure for this region</span>
+      </div>
       <div className="mt-2 text-[10.5px] text-faint">{countLabel} · {unit}</div>
       <div className="text-[10px] leading-tight text-faint">
         Source: {source}{license ? ` · ${license}` : ""} ·{" "}
