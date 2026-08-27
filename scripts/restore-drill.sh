@@ -45,6 +45,7 @@ fail() { echo "RESTORE DRILL FAILED: $*" >&2; exit 1; }
 
 WORK="$(mktemp -d /tmp/mob-restore-drill.XXXXXX)"
 SERVER_PID=""
+STANDALONE=""
 cleanup() {
   local code=$?
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -53,6 +54,7 @@ cleanup() {
     kill -0 "$SERVER_PID" 2>/dev/null && kill -9 "$SERVER_PID" 2>/dev/null
   fi
   rm -rf "$WORK"
+  release_run_tree "${STANDALONE:-}"
   exit "$code"
 }
 trap cleanup EXIT INT TERM
@@ -93,12 +95,14 @@ log "restored DB intact — $R_METRICS metrics, $R_VALUES values"
 # Serve the STANDALONE build, as production does. `next start` is unsupported with
 # output:"standalone" and comes up without a client bundle — a drill run that way
 # would report a healthy restore from a server no user could actually use.
-STANDALONE="$REPO/.next/standalone"
-[ -f "$STANDALONE/server.js" ] || fail "$STANDALONE/server.js missing — rebuild"
-mkdir -p "$STANDALONE/.next"
-rm -rf "$STANDALONE/.next/static"
-cp -a "$REPO/.next/static" "$STANDALONE/.next/static" || fail "could not stage .next/static"
-[ -d "$STANDALONE/public" ] || cp -a "$REPO/public" "$STANDALONE/public"
+# A PER-RUN copy, not .next itself (#607): a drill that takes nine minutes is
+# exactly long enough for someone to start a build, and a build wipes .next out
+# from under the instance this drill is asking questions of. The drill would then
+# report a restore that could not serve — a false red on the one measurement whose
+# whole job is to be trusted. See scripts/lib/stage-run-tree.sh.
+# shellcheck source=lib/stage-run-tree.sh
+. "$REPO/scripts/lib/stage-run-tree.sh"
+STANDALONE="$(stage_run_tree drill)" || fail "could not stage a run tree"
 
 PORT=""
 for c in $(seq 8700 8760); do

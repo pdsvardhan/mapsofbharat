@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "./scripts/with-build-lock.sh next build --turbopack",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -19,7 +19,8 @@
     "geo:paths": "node scripts/build-family-paths.mjs",
     "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs && node scripts/build-family-paths.mjs --check && node scripts/build-geo-compressed.mjs",
     "postbuild": "node scripts/check-raw-assets.mjs --output",
-    "geo:compress": "node scripts/build-geo-compressed.mjs"
+    "geo:compress": "node scripts/build-geo-compressed.mjs",
+    "check:isolation": "./scripts/check-build-isolation.sh"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

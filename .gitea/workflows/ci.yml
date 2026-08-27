@@ -189,6 +189,17 @@ jobs:
       - name: Assert the standalone build can actually serve its raw downloads
         run: node scripts/check-raw-assets.mjs --output
 
+      # A running instance must survive .next going away under it (#607). A build
+      # in another terminal wipes .next as its first act, and an instance serving
+      # out of .next/standalone loses server.js and every chunk while keeping its
+      # PID — so the suite reports twenty-second timeouts that read as map
+      # regressions and are a build. Both harnesses now serve a per-run hardlink
+      # copy instead. This guard carries its own control: it also stands up the
+      # OLD arrangement and requires it to break, and exits ERROR if it does not,
+      # because at that point the guard has stopped measuring anything.
+      - name: A concurrent build must not void a running instance
+        run: bash scripts/check-build-isolation.sh
+
       # The full suite against a scratch instance of the STANDALONE build — never
       # the production container. The harness proves the instance writes to a
       # throwaway corrections store before it hands it to the suite (#481).

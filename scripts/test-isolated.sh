@@ -65,12 +65,18 @@ fi
 # The Dockerfile is the reference: copy `.next/static` and `public` into the
 # standalone tree, then `node server.js`. `public` is already traced into standalone
 # by the build; `.next/static` is not, and that is exactly what was missing.
-STANDALONE=".next/standalone"
-[ -f "$STANDALONE/server.js" ] || { echo "test-isolated: $STANDALONE/server.js missing — rebuild." >&2; exit 2; }
-mkdir -p "$STANDALONE/.next"
-rm -rf "$STANDALONE/.next/static"
-cp -a .next/static "$STANDALONE/.next/static" || { echo "test-isolated: could not stage .next/static" >&2; exit 2; }
-[ -d "$STANDALONE/public" ] || cp -a public "$STANDALONE/public"
+# ...and serve a PER-RUN copy of it, never .next itself (#607).
+#
+# `next build` wipes .next as its first act. An instance serving out of
+# .next/standalone loses server.js and every chunk at that moment while keeping its
+# PID and its socket, so nothing announces itself as broken — the suite just reports
+# a page of 20s timeouts that read as map regressions. They are a build in another
+# terminal. scripts/lib/stage-run-tree.sh hardlinks the tree aside so that build
+# cannot reach it; scripts/check-build-isolation.sh is the guard, with a control.
+# shellcheck source=lib/stage-run-tree.sh
+. "$REPO/scripts/lib/stage-run-tree.sh"
+STANDALONE="$(stage_run_tree tests)" || exit 2
+echo "test-isolated: serving a staged copy at ${STANDALONE#"$REPO"/}"
 
 # A free port, verified rather than assumed.
 PORT=""
@@ -87,6 +93,7 @@ TOKEN="scratch-$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 SERVER_PID=""
 cleanup() {
   local code=$?
+  release_run_tree "${STANDALONE:-}"
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
     # Kill by PID. `next start` renames itself to `next-server (vX)` once serving, so
     # a pkill on the launch command misses it — and a pkill pattern containing the
