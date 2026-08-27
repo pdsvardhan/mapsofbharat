@@ -25,15 +25,23 @@ jobs:
       #
       # Dockerfile builds and runs on node:20-slim and the production container
       # reports v20.20.2, so 22 here meant CI was the only place this project ever
-      # ran on 22 — testing a runtime that never ships. It was not merely
-      # unrepresentative, it was BROKEN: under 22, Playwright's transform of the
-      # .mjs scripts that tests/centroid-containment.spec.ts and
-      # tests/family-paths.spec.ts import emits CommonJS into a file Node then
-      # loads as ESM, and every run died with
-      #   ReferenceError: exports is not defined in ES module scope
-      # The same specs pass on 20 locally (34 tests). CI had been red on main for
-      # this reason before this branch existed, which is why nothing here had ever
-      # been seen to run green.
+      # ran on 22 — testing a runtime that never ships.
+      #
+      # CORRECTED IN ITER-45 (#610). This comment used to go on to blame Node 22 for
+      # the "ReferenceError: exports is not defined in ES module scope" that killed
+      # the e2e job, and to say the same specs "pass on 20". Both halves were wrong,
+      # and correcting the pin to 20 did not turn the job green — it stayed red for
+      # three more weeks. The real boundary is a Node PATCH release: with everything
+      # else held constant (this repo, Playwright 1.60.0), node:20.19.4-slim lists
+      # the tests and node:20.19.5-slim throws. From 20.19.5 Node routes a .mjs
+      # through the ESM loader regardless of the CommonJS Playwright compiled into
+      # it. "Passes on 20 locally" was true only because the VAULT7A host runs
+      # 20.19.2, one side of that boundary, while this container and production both
+      # run 20.20.2 on the other.
+      #
+      # The pin stays at 20 because production is 20 — but the pin was never the
+      # fix. The fix is that no spec imports a .mjs any more (see the
+      # check-spec-imports step below), which holds on every Node.
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
 
@@ -53,6 +61,19 @@ jobs:
       # outranks every Tailwind utility, app-wide and silently.
       - run: node scripts/check-globals-layers.mjs
 
+      # No spec may import a .mjs (#610, iter-45). Playwright compiles what a spec
+      # imports to CommonJS; from Node 20.19.5 Node loads a .mjs through the ESM
+      # loader anyway, so the run dies with "exports is not defined in ES module
+      # scope" before any test executes. That is what made `e2e` red on main for
+      # weeks while the same specs passed on the box — the host is 20.19.2 and this
+      # container is 20.20.2, so the box sat on the other side of the boundary.
+      # Measured: node:20.19.4-slim lists the tests, node:20.19.5-slim throws.
+      #
+      # It lives HERE and not in prebuild deliberately: the guard fails when it
+      # scans no spec files, which is right for a repo checkout and wrong for a
+      # build context that may not carry tests/.
+      - run: node scripts/check-spec-imports.mjs
+
       # Lint as a RATCHET, not a wish. This step used to be
       # `npm run lint || echo "lint warnings (non-blocking)"`, which let a commit
       # add any number of new problems while CI stayed green — a check that could
@@ -62,6 +83,24 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+
+    # SERIALISED BEHIND `quality`, and it is not about ordering preference (iter-45).
+    #
+    # The two jobs used to start in the same second, and both resolve
+    # actions/setup-node@v4 into the runner's shared action cache at
+    # /root/.cache/act/<hash>. When they race, one of them dies three seconds in with
+    #   lstat /root/.cache/act/<hash>/.prettierrc.json: no such file or directory
+    # before npm ci or any project check runs. It hit `quality` on run 832 and `e2e` on
+    # run 833 — same error, different victim, which is what a race looks like. Run 831
+    # happened to stagger them by a minute and was green.
+    #
+    # `needs` makes the stagger deterministic instead of lucky. The runner-level fix
+    # (capacity 1, or a per-job cache path) would help every repo on the box and is
+    # recorded as a to-do; this one is in the repo that needs it, today.
+    #
+    # It also stops burning six minutes of browser tests on a commit that fails tsc.
+    needs: quality
+
     container:
       image: mcr.microsoft.com/playwright:v1.49.0-jammy
       # READ-ONLY. The job reads the real catalogue and the real source files; it

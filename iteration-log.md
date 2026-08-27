@@ -1223,3 +1223,140 @@ the fix: with it there, opening the dialog re-runs the effect, so india-map's
 cleanup removes its listener mid-dispatch and the guard is unreachable whatever
 the condition says. Reverted completely, the defect returns and the test goes red.
 A partial revert answers a different question than the one being asked.
+
+## Iteration 45 — 2026-08-27
+
+**Asked for:** *"fix CI red first, then complete Wave 2, a11y — iter-44 filed-not-fixed,
+Correctness"*. Ten items locked at the 4.3 gate; eight built, one deferred with reason,
+one logged as an observation.
+
+### #610 — CI was red at a Node PATCH boundary, not at Node 22
+
+The `e2e` job died before a single test ran, on `ReferenceError: exports is not defined
+in ES module scope` at `../scripts/check-centroids.mjs:30`. Playwright compiles what a
+spec imports to CommonJS; from Node **20.19.5** onward Node routes a `.mjs` through the
+ESM loader regardless, so that CommonJS lands in an ESM scope.
+
+Bisected with everything else held constant — this repo, Playwright 1.60.0:
+
+| | result |
+|---|---|
+| `node:20.19.4-slim` | 34 tests listed |
+| `node:20.19.5-slim` | ReferenceError, 0 tests |
+| `node:20.20.2` (CI + production) | ReferenceError |
+| host `20.19.2` | 34 tests, green |
+
+"The same specs pass on 20 locally" was true and meaningless: the box sits on the
+pre-regression side of a patch boundary. iter-43 corrected the pin from 22 to 20 for a
+good reason and CI stayed red for three more weeks, because the pin was never the fix.
+
+**Fix:** no spec imports a `.mjs`. The pure logic moved to `scripts/lib/*.cjs`, whose
+format is unambiguous to both loaders, and the `.mjs` scripts became thin CLIs.
+`scripts/check-spec-imports.mjs` makes the rule mechanical. The `ci.yml` comment blaming
+Node 22 was corrected in place — it was the record of a diagnosis, and the record was
+wrong.
+
+**Three of my own defects, each caught by a check rather than by review:**
+
+1. The lint ratchet went 42 → 44 on the new `require()` calls, so the commit that fixed
+   the red `e2e` job would have left `quality` red. I only saw it because I re-read the
+   exit code without a pipe — `node … | tail -6; echo exit=$?` reports **tail's** status.
+   That is to-do #609's shape, produced inside the session that was fixing false greens.
+2. The guard had the hole it was written to prevent: the verifier walked a bare
+   side-effect import and a backtick dynamic import straight past it.
+3. Teaching the guard to skip comment lines then hid five constructions the verifier
+   **executed** to prove they load. The prose was the cheaper thing to change.
+
+CI also lost a job on two consecutive runs to an act runner race — both jobs starting the
+same second, sharing one action-cache path. `needs: quality` makes the stagger
+deterministic; the runner-level fix is to-do 654.
+
+### Wave 2 — the baseline changed the plan
+
+TEC-20 first, and it contradicted #405-F's premise. The origin **already gzips**
+(825,354 B → 179,820 B), so the available win was brotli over gzip — **−36.0%** across
+`public/geo` — not origin-versus-edge. And the half R2 adds that brotli cannot, edge
+distribution, cannot be measured while the site is unlaunched. Owner ruling on those
+numbers: take the 36% at the origin now, file R2 for launch. Recorded as **adr-038**.
+
+Three costs, none predicted:
+
+- **The files could not move.** An app route and a `public/` file claiming one URL is not
+  a race — public wins. A probe handler at `/geo/districts.geojson` never ran.
+- **`force-static` compiled the negotiation away**, so every reader got identity.
+- **Next does not compress a route handler's response.** Brotli-only gave a
+  gzip-but-not-brotli client the raw 825,354 B where the static path gave 179,820 — a
+  4.6× regression *inside* an optimisation.
+
+**And the published delta was overstated.** The "before" was the production container on
+a different commit with a working analytics proxy; the "after" a scratch instance that
+cannot resolve `umami`. ~2.2 KB of "win" per route was a file the after failed to fetch,
+and it was visible in my own artefacts — routes with **zero geometry** showed 1.7–3.5 KB
+gains, which brotli on geometry cannot produce. The harness now takes
+`--accept-encoding`, so before and after are one instance and one variable:
+
+| | gzip arm | brotli arm | Δ |
+|---|---|---|---|
+| `/` | 1084.0 KB | 982.0 KB | −102.0 KB |
+| `/metric/[slug]` | 1319.9 KB | 1217.8 KB | −102.1 KB |
+| geometry | 286.6 KB | 184.5 KB | −35.6% |
+| the four zero-geometry routes | — | — | byte-identical |
+
+### a11y — and two to-dos corrected by measurement
+
+- **#630** reproduced claim-blind before anything was touched: 22 of 125 unit spans on
+  `/coverage` clipped at 320px. Fixed by making the row a flex line where only the *name*
+  may shorten.
+- **#635** — the prose rule excluded button-shaped links on computed display alone, so
+  `inline-flex` + `no-underline` on a genuine in-text link survived. Exclusion now needs
+  display **plus** a control signal. Mutation-proven with a differential: the same defect
+  ships green under the old rule and red under the new one, on one build.
+- **#636 was partly wrong.** It named three routes; `/` renders no `<main>` at all, so a
+  rule scoped to `main a[href]` yields nothing there — adding it only timed the test out.
+  The "judged 2" it credited to `/` belongs to `/metric`.
+- **#632 was wrong, and so was my fix.** `:focus-visible` never matches an iframe; keying
+  the ring on `:focus` was dead CSS; keying it on `:focus-within` was dead the same way,
+  one commit later — it matches under programmatic `.focus()` and not under Tab, so both
+  tests were green over a path no user takes. Re-measured: there is **one** iframe tab
+  stop, not two, and the frame is not what a reader sees. Focus delegates *into* the
+  frame, and the canvas inside holds it and already carries the app's ring. The rule is
+  removed; the test now tabs in and asserts the indicator on whatever actually holds
+  focus, and goes red when that ring is flattened.
+
+### Correctness
+
+**#579 deferred with reason** by the owner, against adr-037. Re-measured rather than
+re-argued: route-miss 404s carry 680 visible characters, `notFound()` 404s carry 41. The
+status code is correct in every case, so there is no SEO exposure; the cost is a
+JavaScript-disabled reader on two route families, and a characterization test is written
+to fail the day a Next upgrade fixes it.
+
+### Verification
+
+Two independent verifier passes. The first rejected item 1063 outright and found the
+overstated perf delta; both were accepted in full and reworked. Every guard added this
+iteration was mutation-proven able to fail — 11/11 on the repointed manifests, 4/4 on the
+spec-import guard, both #635 branches with a differential, four ways on the geometry
+route, and the new focus test against a flattened ring.
+
+### Two items this iteration did not simply build
+
+**#631 was missed at build time.** It was locked at the 4.3 gate with the other nine and
+absent from every status block until integrate prep. The gate held the record; the
+coder did not read it. Measuring it then moved it from "review" to defect: 23,339px of
+ranked districts in a 638px viewport, three focusable elements all within the first
+44px, 0.2% reachable by keyboard. The guard written for it caught two further things —
+a first fix applied to the wrong element, and its own acceptance of a bare `tabIndex`
+with no accessible name.
+
+**#579 was deferred by the owner**, against adr-037, after re-measuring rather than
+re-arguing.
+
+### Verification note
+
+Seven verifier dispatches were attempted; five died mid-run on API errors or a stall,
+and the surviving two carried the load. That is recorded because "the verifier passed"
+and "the verifier ran" are different claims, and the second one nearly did not hold.
+Every item that says `verified` here has an independent pass behind it with command
+output; the one hard failure the final pass reported was traced to a standalone tree one
+file older than HEAD and cleared by a rebuild.

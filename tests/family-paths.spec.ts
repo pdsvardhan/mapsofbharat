@@ -2,18 +2,30 @@ import { test, expect } from "@playwright/test";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-// The script is plain .mjs (it runs in prebuild, before any TS step), so its
-// exports arrive untyped and are narrowed here at the boundary.
+// The projection's pure half. It is plain JS (the CLI that uses it runs in prebuild,
+// before any TS step), so its exports arrive untyped and are narrowed here at the
+// boundary.
+//
+// NOT scripts/build-family-paths.mjs: Playwright transforms an imported module to
+// CommonJS and Node >= 20.19.5 loads a .mjs as ESM regardless, so importing the .mjs
+// threw "exports is not defined in ES module scope" in CI while passing on the host's
+// older Node (#610, iter-45). scripts/check-spec-imports.mjs fails the build if any
+// spec reaches for a .mjs again.
+import { geoMercator, geoPath } from "d3-geo";
 import {
   LAYERS,
   PANEL,
   SNAP,
   extentOf,
   flattenedIn,
-  projectCollection,
+  makeProjectCollection,
   rewind,
   round,
-} from "../scripts/build-family-paths.mjs";
+} from "../scripts/lib/family-path-projection.cjs";
+
+// d3-geo is injected rather than imported by the pure half, so the spec wires it the
+// same way the CLI does — same factory, same functions, one code path under test.
+const projectCollection = makeProjectCollection({ geoMercator, geoPath });
 
 type Paths = Record<string, string>;
 type Layer = { src: string; key: string; out: string };

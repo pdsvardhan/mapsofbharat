@@ -153,10 +153,19 @@ export default function CoveragePage() {
                   style={{ background: "var(--panel)" }}
                 >
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 truncate text-[13.5px] font-semibold text-bright">
-                      <span className="mr-1.5 font-mono text-[10px] text-faint">{i + 1}.</span>
-                      {m.name}
-                      {m.unit ? <span className="ml-1.5 text-[11px] font-normal text-faint">({m.unit})</span> : null}
+                    {/* THE UNIT IS NOT PART OF WHAT TRUNCATES (#630, iter-45).
+                        One `truncate` used to sit on a span wrapping rank, name AND
+                        unit, so at 320px the ellipsis ate the unit: 21 of these rows
+                        had their unit's right edge 1-96px outside the viewport and
+                        simply lost it, which turns "Literacy rate (%)" into a number
+                        with no idea what it counts. The row is a flex line now — rank
+                        and unit are flex-none, and only the NAME may be shortened,
+                        because the name is the part a reader can still recognise from
+                        its first few words. */}
+                    <span className="flex min-w-0 items-baseline gap-1.5 text-[13.5px] font-semibold text-bright">
+                      <span className="flex-none font-mono text-[10px] text-faint">{i + 1}.</span>
+                      <span className="truncate">{m.name}</span>
+                      {m.unit ? <span data-coverage-unit className="flex-none text-[11px] font-normal text-faint">({m.unit})</span> : null}
                     </span>
                     <span className="flex-none font-mono text-[13px] font-bold text-bright" data-measured-pct>
                       {pct(m.measuredShare)}

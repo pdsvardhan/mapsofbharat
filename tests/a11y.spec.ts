@@ -158,13 +158,29 @@ test.describe("what axe cannot see", () => {
     // `no-underline` on a textbook in-text link in app/terms/page.tsx and the
     // suite stayed 40/40, with the link visibly plain beside an identical sibling
     // four lines later. One route cannot police a site-wide rule.
+    // TWO TEXT-BEARING ROUTES WERE OUTSIDE THIS LIST (#636, iter-45): /metric and
+    // /family/religion, both already in the axe ROUTES list above — so the suite
+    // visited them and this rule did not, and an opt-out on an in-text link there
+    // would have shipped green. A list that names most of the site reads like it
+    // names the site. Measured after adding them: /metric contributes 2 judged
+    // links, /family/religion 8.
+    //
+    // `/` IS DELIBERATELY NOT HERE, and the to-do that asked for it was wrong.
+    // #636 named three routes and credited `/` with 2 judged links. Measured: the
+    // atlas renders NO <main> element at all, this rule is scoped to `main a[href]`,
+    // and `/` therefore contributes 0 links and 0 judged — adding it only made the
+    // test time out waiting for a `main` that never arrives. The 2 belongs to
+    // /metric. Recorded rather than quietly dropped, because the next person to read
+    // #636 will otherwise re-add it.
     const PROSE_ROUTES = [
       "/methodology",
       "/terms",
       "/privacy",
       "/coverage",
+      "/metric",
       "/metric/literacy_rate",
       "/family",
+      "/family/religion",
       "/corrections",
       "/does-not-exist",
     ];
@@ -217,8 +233,34 @@ test.describe("what axe cannot see", () => {
         // underlining them would look like damage. Widening this rule past
         // /methodology surfaced them immediately. `block` is deliberately still
         // judged: the site footer's links are block-level and axe DOES flag them.
-        const display = getComputedStyle(a).display;
-        if (display.includes("flex") || display.includes("grid")) continue;
+        // DISPLAY ALONE IS NOT A CONTROL SIGNAL (#635, iter-45). The exclusion used
+        // to be `display is flex or grid -> skip`, and it was too generous by exactly
+        // the amount that matters: `inline-flex` plus `no-underline` on a genuine
+        // in-text link produced accent-orange text, mid-sentence, with no underline,
+        // and this rule skipped it while axe stayed blind for its own reason. The
+        // opt-out was back, wearing a layout property instead of a class.
+        //
+        // A control has a SURFACE — a fill, a border, real padding, or an explicit
+        // role. The two real cases this exclusion exists for, "↓ Download raw source"
+        // and "Open in the interactive atlas →" on /metric/[slug], are inline-flex
+        // with an accent fill and are still skipped. A link that is merely laid out
+        // as flex is judged like any other prose link, because that is what it is.
+        const cs = getComputedStyle(a);
+        const display = cs.display;
+        if (display.includes("flex") || display.includes("grid")) {
+          const filled =
+            cs.backgroundImage !== "none" ||
+            (cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent");
+          const bordered =
+            parseFloat(cs.borderTopWidth) > 0 ||
+            parseFloat(cs.borderBottomWidth) > 0 ||
+            parseFloat(cs.borderLeftWidth) > 0;
+          const padded =
+            parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) >= 6 ||
+            parseFloat(cs.paddingLeft) >= 8;
+          const roled = a.getAttribute("role") === "button";
+          if (filled || bordered || padded || roled) continue;
+        }
 
         const block = a.closest(
           "nav,p,li,dd,dt,td,th,figcaption,blockquote,footer,div,section,article,main"
@@ -260,9 +302,20 @@ test.describe("what axe cannot see", () => {
     ).toEqual([]);
   });
 
-  test("every interactive control on the atlas shows a visible focus indicator", async ({ page }) => {
-    await page.goto("/");
-    await settle(page, "canvas");
+  // EVERY ROUTE THAT HAS CONTROLS, not just the atlas (#632, iter-45).
+  //
+  // Scoped to `/`, this test structurally could not see the defect it exists to
+  // catch: the embedded map on /metric/[slug] is a tab stop with no focus ring, and
+  // `/` has no iframe. Same shape as the prose rule below, which policed one page
+  // and let an opt-out ship on another — a site-wide claim needs more than one page
+  // under it.
+  const FOCUS_ROUTES = ["/", "/metric/literacy_rate", "/coverage", "/family/religion"];
+
+  for (const route of FOCUS_ROUTES) {
+  test(`every interactive control on ${route} shows a visible focus indicator`, async ({ page }) => {
+    await page.goto(route);
+    if (route === "/") await settle(page, "canvas");
+    else await page.waitForSelector("main", { timeout: 30_000 });
 
     const bare = await page.evaluate(() => {
       // DISABLED CONTROLS ARE EXCLUDED, and that is not a convenience.
@@ -273,6 +326,19 @@ test.describe("what axe cannot see", () => {
       // on it does nothing. The test was measuring a control that cannot receive
       // focus and calling the absence of a focus ring a defect. Every enabled
       // control on the atlas passes.
+      // `iframe` IS DELIBERATELY NOT IN THIS LIST, and the reason is measured (#632,
+      // iter-45). It WAS added here, together with an `iframe:focus-within` rule, and
+      // both were wrong: Tab reaches the frame at stop 5 on /metric/[slug], but focus
+      // is then delegated INTO the frame's content document, so the frame element
+      // matches neither :focus nor :focus-visible nor :focus-within, and its computed
+      // outline after a real Tab is `none` — byte-identical to the unfocused control.
+      // The rule matched only under programmatic element.focus(), which is the one
+      // path a keyboard user never takes, so the test that "proved" it was measuring
+      // its own fixture.
+      //
+      // What a keyboard user actually gets is asserted below, on the element that
+      // really holds focus. Putting `iframe` back here without that would reinstate a
+      // control this query can never see satisfied.
       const els = [
         ...document.querySelectorAll<HTMLElement>(
           "a[href],button,select,input,[tabindex]:not([tabindex='-1'])"
@@ -304,9 +370,168 @@ test.describe("what axe cannot see", () => {
       return { total: els.length, bare: out };
     });
 
-    // Would pass on an empty page otherwise — the atlas has ~20 controls.
-    expect(bare.total, "found no interactive controls; the atlas did not mount").toBeGreaterThan(10);
-    expect(bare.bare, `controls with no focus indicator:\n  ${bare.bare.join("\n  ")}`).toEqual([]);
+    // Would pass on an empty page otherwise. The floor is per-route and low, because
+    // /coverage and /family/religion are content pages rather than the atlas; what it
+    // has to rule out is a route that rendered nothing and reported no defects.
+    expect(bare.total, `found no interactive controls on ${route}; the page did not mount`).toBeGreaterThan(3);
+    expect(bare.bare, `controls with no focus indicator on ${route}:\n  ${bare.bare.join("\n  ")}`).toEqual([]);
+  });
+  }
+
+  test("tabbing into the embedded map lands on something with a visible focus ring", async ({ page }) => {
+    // #632 RE-MEASURED (iter-45). The to-do reported "two iframe tab stops with no
+    // focus ring". Measured on /metric/[slug] at 1280x900 there is ONE iframe tab stop,
+    // and the report was reading the wrong element: the frame element never shows a
+    // ring because it never holds focus in its own document — Tab delegates focus into
+    // the embedded page, and the thing that actually has focus is the map canvas
+    // inside, which already takes the app's ring from the :focus-visible rule that
+    // predates this iteration.
+    //
+    // So this asserts the user-visible property rather than a selector: Tab until the
+    // parent's activeElement is the frame, then look INSIDE it at whatever holds focus
+    // and require a real indicator. That is the assertion an `iframe:focus-within`
+    // rule could not make, and the one a future regression in the embed would break.
+    await page.goto("/metric/literacy_rate");
+    await page.waitForSelector("main iframe", { timeout: 30_000 });
+    await page.waitForTimeout(1500);
+
+    expect(
+      await page.locator("main iframe").count(),
+      "no iframe on /metric/[slug] — this fixture has lost its subject",
+    ).toBeGreaterThan(0);
+
+    let reachedFrame = false;
+    for (let i = 0; i < 12 && !reachedFrame; i++) {
+      await page.keyboard.press("Tab");
+      reachedFrame = await page.evaluate(() => document.activeElement?.tagName === "IFRAME");
+    }
+    expect(reachedFrame, "Tab never reached the embedded map — it must stay a tab stop").toBe(true);
+
+    const inner = page.frames().find((f) => f !== page.mainFrame());
+    expect(inner, "the embed frame did not attach").toBeTruthy();
+
+    const focused = await inner!.evaluate(() => {
+      const e = document.activeElement as HTMLElement | null;
+      if (!e) return null;
+      const cs = getComputedStyle(e);
+      return {
+        tag: e.tagName,
+        hasFocus: document.hasFocus(),
+        outlineStyle: cs.outlineStyle,
+        outlineWidth: cs.outlineWidth,
+        boxShadow: cs.boxShadow,
+      };
+    });
+
+    expect(focused?.hasFocus, "the embedded document did not receive focus").toBe(true);
+    expect(
+      focused?.tag,
+      "nothing inside the frame took focus — the map canvas should",
+    ).not.toBe("BODY");
+
+    const ringed =
+      (focused?.outlineStyle !== "none" && parseFloat(focused?.outlineWidth ?? "0") >= 2) ||
+      (focused?.boxShadow ?? "none") !== "none";
+    expect(
+      ringed,
+      `the focused element inside the embed has no visible indicator: ${JSON.stringify(focused)}`,
+    ).toBe(true);
+  });
+
+
+  // #631 — a scrollable region a keyboard cannot scroll (iter-45).
+  //
+  // axe's scrollable-region-focusable is satisfied by ANY focusable descendant, and the
+  // rank table on /metric/[slug] has three: the sort buttons in its header. Measured on
+  // the real page, that box is 23,339px of ranked districts inside a 638px viewport —
+  // 36 screens — and the deepest thing a Tab can reach sits 44px down. A keyboard user
+  // could reach 0.2% of it. The rule passed; the content was unreachable.
+  //
+  // The embed snippet next to it was fixed in iter-44 for exactly this, and got
+  // tabIndex=0 + role=region. The to-do filed the difference as "an odd asymmetry -
+  // review". It was not asymmetry, it was the same defect with a different disguise:
+  // one box had no focusable children at all so axe caught it, and the other had three
+  // in its header so axe did not.
+  //
+  // STATIC ANALYSIS OF THE FOCUS MODEL, not synthetic key presses - the verifier was
+  // right that the first name for this test oversold its mechanism. It asks the question
+  // axe cannot: can focus alone drive this box to its bottom?
+  // A region is reachable if it is focusable ITSELF, or if its focusable descendants
+  // extend past the point where scrolling stops mattering. Anything else hides content
+  // from a keyboard.
+  test("every scrollable region is reachable by focus, and named if it is a tab stop", async ({ page }) => {
+    const findings: string[] = [];
+    let examined = 0;
+
+    for (const route of ["/metric/literacy_rate", "/coverage", "/family/religion"]) {
+      await page.goto(route);
+      await page.waitForSelector("main", { timeout: 30_000 });
+      await page.waitForTimeout(600);
+
+      const boxes = await page.evaluate(() => {
+        const out: { route: string; cls: string; scrollH: number; clientH: number; focusable: boolean; named: boolean; deepest: number | null; n: number }[] = [];
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>("main *"))) {
+          const scrollsVertically = el.scrollHeight > el.clientHeight * 1.5 && el.clientHeight > 80;
+          if (!scrollsVertically) continue;
+          const style = getComputedStyle(el);
+          if (!/auto|scroll/.test(style.overflowY)) continue;
+
+          const focusable = el.tabIndex >= 0;
+          const named =
+            !!el.getAttribute("role") &&
+            !!(el.getAttribute("aria-label") || el.getAttribute("aria-labelledby"));
+          const kids = Array.from(
+            el.querySelectorAll<HTMLElement>('a[href],button,select,input,textarea,[tabindex]:not([tabindex="-1"])'),
+          ).filter((k) => !(k as HTMLButtonElement).disabled);
+          const top = el.getBoundingClientRect().top;
+          const tops = kids.map((k) => k.getBoundingClientRect().top - top + el.scrollTop);
+          out.push({
+            route: location.pathname,
+            cls: el.className.toString().slice(0, 50),
+            scrollH: el.scrollHeight,
+            clientH: el.clientHeight,
+            focusable,
+            named,
+            deepest: tops.length ? Math.round(Math.max(...tops)) : null,
+            n: kids.length,
+          });
+        }
+        return out;
+      });
+
+      examined += boxes.length;
+      for (const b of boxes) {
+        if (b.focusable) {
+          // A BARE tabIndex IS NOT THE FIX. Making a scroll box focusable without naming
+          // it just adds an unlabelled tab stop, which is the trade metric-share.tsx
+          // documents and the reason #631's fix carries role + aria-label. The first
+          // version of this guard was satisfied by tabIndex alone, so it would have gone
+          // green on half the fix - caught by the verifier, not by me.
+          if (!b.named) {
+            findings.push(
+              `${b.route} .${b.cls}: focusable but unnamed - a scroll box that is a tab ` +
+                `stop needs a role and an accessible name, or it is an anonymous stop`,
+            );
+          }
+          continue;
+        }
+        // Focus can only drive the scroll as far as its deepest focusable child. Past
+        // that point the remaining content is mouse-only.
+        const reachable = b.deepest !== null && b.deepest >= b.scrollH - b.clientH;
+        if (!reachable) {
+          findings.push(
+            `${b.route} .${b.cls}: ${b.scrollH}px of content in ${b.clientH}px, ` +
+              `deepest focusable at ${b.deepest ?? "none"} — not focusable itself, so ` +
+              `${b.deepest === null ? "no" : "most"} of it is unreachable by keyboard`,
+          );
+        }
+      }
+    }
+
+    // FIXTURE POWER. Zero scrollable regions found means the pages did not render, and
+    // "nothing unreachable" would then be true and worthless.
+    expect(examined, "found no scrollable regions at all — the fixture lost its subject").toBeGreaterThan(0);
+    expect(findings, `scrollable regions a keyboard cannot scroll:\n  ${findings.join("\n  ")}`).toEqual([]);
   });
 
   test("an open dialog keeps the keyboard inside it and gives focus back", async ({ page }) => {

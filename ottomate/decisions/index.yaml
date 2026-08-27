@@ -418,3 +418,12 @@ decisions:
       - curated
       - cat:reliability
     body_path: decisions/adr-037-two-kinds-of-404.md
+  - id: adr-038-brotli-before-the-cdn
+    project_slug: mapsofbharat
+    title: "The measurement changed the plan: brotli before the CDN"
+    status: accepted
+    date: 2026-08-27T00:00:00.000Z
+    tags:
+      - curated
+      - cat:system
+    body_path: decisions/adr-038-brotli-before-the-cdn.md

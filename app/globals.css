@@ -348,6 +348,25 @@ body {
   box-shadow: 0 0 0 4px var(--background);
 }
 
+/* NO `iframe` FOCUS RULE HERE, AND THAT IS THE MEASUREMENT (#632, iter-45).
+   One was added and removed in the same iteration. Both forms are dead CSS:
+
+     f.focus()      -> activeElement === f : true   :focus false  :focus-within TRUE
+     real Tab to it -> activeElement === f : true   :focus false  :focus-within FALSE
+                       computed outline: none 3px   (identical to unfocused)
+                       inside the frame: CANVAS has focus, outline solid 2px accent
+
+   Tab delegates focus INTO the frame's content document, so the frame element never
+   matches a focus pseudo-class on the path a keyboard user takes; `:focus-within`
+   matches only under programmatic element.focus(), which nobody does. A rule keyed on
+   either one draws nothing and tests green, which is how it shipped for one commit.
+
+   Nothing is missing: the map canvas inside the embed holds the focus and takes the
+   :focus-visible ring above, same origin, same stylesheet. tests/a11y.spec.ts tabs in
+   and asserts THAT, rather than asserting a selector. If a frame element itself ever
+   needs a ring, it needs a focus/blur listener or a postMessage from the embed — not
+   CSS. */
+
 /* Forced colours (Windows High Contrast): the plate is gone by definition,
    so the outline carries all of it. Pinned to the system focus colour
    rather than left to be force-mapped from a brand orange.

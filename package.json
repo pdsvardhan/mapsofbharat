@@ -14,10 +14,12 @@
     "test:e2e": "playwright test",
     "test:mutation": "./scripts/mutation-test.sh",
     "check:css": "node scripts/check-globals-layers.mjs",
+    "check:specs": "node scripts/check-spec-imports.mjs",
     "check:centroids": "node scripts/check-centroids.mjs",
     "geo:paths": "node scripts/build-family-paths.mjs",
-    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs && node scripts/build-family-paths.mjs --check",
-    "postbuild": "node scripts/check-raw-assets.mjs --output"
+    "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs && node scripts/build-family-paths.mjs --check && node scripts/build-geo-compressed.mjs",
+    "postbuild": "node scripts/check-raw-assets.mjs --output",
+    "geo:compress": "node scripts/build-geo-compressed.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

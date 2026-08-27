@@ -527,8 +527,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     map.on("load", async () => {
       map.resize();
       const [districts, states] = await Promise.all([
-        fetch("/geo/districts.geojson").then((r) => r.json()),
-        fetch("/geo/states.geojson").then((r) => r.json()),
+        fetch("/geodata/districts.geojson").then((r) => r.json()),
+        fetch("/geodata/states.geojson").then((r) => r.json()),
       ]);
       districtsFCRef.current = districts;
       statesFCRef.current = states;
@@ -543,8 +543,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // quantity in the sea or on top of its neighbour). promoteId matches the
       // polygon source so the mirrored feature-state lands on the same ids.
       const [dPts, sPts] = await Promise.all([
-        fetch("/geo/centroids-districts.geojson").then((r) => r.json()),
-        fetch("/geo/centroids-states.geojson").then((r) => r.json()),
+        fetch("/geodata/centroids-districts.geojson").then((r) => r.json()),
+        fetch("/geodata/centroids-states.geojson").then((r) => r.json()),
       ]);
       map.addSource("districts-pts", { type: "geojson", data: dPts, promoteId: "rid" });
       map.addSource("states-pts", { type: "geojson", data: sPts, promoteId: "st_code" });
@@ -735,8 +735,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     let cancelled = false;
     (async () => {
       const [d2011, s2011] = await Promise.all([
-        fetch("/geo/districts-2011.geojson").then((r) => r.json()),
-        fetch("/geo/states-2011.geojson").then((r) => r.json()),
+        fetch("/geodata/districts-2011.geojson").then((r) => r.json()),
+        fetch("/geodata/states-2011.geojson").then((r) => r.json()),
       ]);
       if (cancelled || vintageLoadedRef.current) return;
       d2011FCRef.current = d2011;
@@ -761,8 +761,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // would show the same number honestly in one view and with area bias in the
       // other, the worst of both.
       const [d2011Pts, s2011Pts] = await Promise.all([
-        fetch("/geo/centroids-districts-2011.geojson").then((r) => r.json()),
-        fetch("/geo/centroids-states-2011.geojson").then((r) => r.json()),
+        fetch("/geodata/centroids-districts-2011.geojson").then((r) => r.json()),
+        fetch("/geodata/centroids-states-2011.geojson").then((r) => r.json()),
       ]);
       map.addSource("districts2011-pts", { type: "geojson", data: d2011Pts, promoteId: "rid" });
       map.addSource("states2011-pts", { type: "geojson", data: s2011Pts, promoteId: "st_code" });
