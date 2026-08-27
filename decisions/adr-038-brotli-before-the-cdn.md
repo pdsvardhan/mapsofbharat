@@ -56,13 +56,17 @@ in the `Accept-Encoding` the browser sends (`planning/perf-405F-arm-gzip.json`,
 
 | route | gzip arm | brotli arm | Δ |
 |---|---|---|---|
-| `/` | 1084.0 KB | 982.0 KB | **−102.0 KB** |
+| `/` | 1084.0 KB | 982.0 KB | **−102.1 KB** |
 | `/metric/[slug]` | 1319.9 KB | 1217.8 KB | **−102.1 KB** |
 | geometry on both | 286.6 KB | 184.5 KB | **−35.6%** |
 | `/metric`, `/family`, `/family/religion`, `/coverage` | — | — | **0, byte-identical** |
 
 The last row is the control, and it is the reason to trust the rest: routes that fetch
 no geometry come out identical to the byte across both arms.
+
+Both deltas are the same 104,519 bytes — it is one payload, fetched by two routes. An
+earlier draft rendered them as −102.0 and −102.1 by subtracting the already-rounded KB
+figures, which made one number out of two look like two findings.
 
 > **Correction, 2026-08-27, before this ADR was acted on.** The first version of this
 > table read −106.4 KB and −109.9 KB, from a comparison that was not like-for-like: the
