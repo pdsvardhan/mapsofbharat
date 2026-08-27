@@ -248,6 +248,7 @@ export function LegendCard({
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
   symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor, alphaNote, alphaBounds,
+  nodataCount,
   pairName, baseName, pairElig, pairActive, pairEdgesX, pairEdgesY, pairDecimals, pairUnit,
   onOpenPair, onClearPair,
 }: {
@@ -287,6 +288,13 @@ export function LegendCard({
    *  nothing until the reader is told it is the opacity of a district holding this
    *  many people. */
   alphaBounds?: { lo: number; hi: number } | null;
+  /** How many regions the map is currently HATCHING, straight from the paint
+   *  (iter-46 polish, N3). The no-data key below renders only above zero: the hatch
+   *  is drawn in every mode and on both vintages and stays that way, but a key for a
+   *  mark this map does not carry is item 1080's defect with the sign flipped — a
+   *  legend describing something the reader cannot find. Measured: crime_ipc_rate at
+   *  state level marks 0 of 36 regions and still keyed the hatch. */
+  nodataCount?: number;
   /** The paired metric's name, or null when the map is not paired (#408 item 1080). */
   pairName?: string | null;
   /** The metric on the primary axis, for labelling the matrix. */
@@ -739,9 +747,21 @@ export function LegendCard({
       {/* NO DATA IS A TEXTURE, NOT A TONE (#408 item 1077, round 2), so the key shows
           the texture. A flat tone was imitable: a faded class-5 fill composites to
           rgb(77,71,37) against a no-data rgb(39,37,28) — 1.64 contrast, one warm olive
-          for "a lot of it" and "we do not know". Shown in every mode because the hatch
+          for "a lot of it" and "we do not know". Kept in every MODE, because the hatch
           is painted in every mode; a mark on the map with no entry in the key is a
-          question the reader has no way to answer. */}
+          question the reader has no way to answer.
+          GATED ON THE MARK BEING THERE (iter-46 polish, N3). This rendered
+          unconditionally, so a map with no absentees keyed a texture it never draws —
+          crime_ipc_rate at state level, 0 of 36 regions marked, and the line still
+          read "Hatched — no figure for this region". That is item 1080's defect with
+          the sign flipped: there it was a matrix key over a map painted from no
+          matrix, here a hatch key over a map with nothing hatched, and both teach the
+          reader to look for something that is not on screen.
+          THE HATCH ITSELF IS NOT CONDITIONAL and must not become so — "no number
+          here" means one thing on every map and both vintages, which is the whole
+          point of using a texture. Only the KEY stands down, and only when the count
+          the paint published is zero, so the mark's meaning never moves. */}
+      {(nodataCount ?? 0) > 0 && (
       <div className="mt-2 flex items-center gap-2" data-nodata-key>
         <span
           className="h-2.5 w-4 flex-none rounded-[1px] border"
@@ -752,6 +772,7 @@ export function LegendCard({
         />
         <span className="flex-1 text-[9.5px] text-faint">Hatched — no figure for this region</span>
       </div>
+      )}
       <div className="mt-2 text-[10.5px] text-faint">{countLabel} · {unit}</div>
       <div className="text-[10px] leading-tight text-faint">
         Source: {source}{license ? ` · ${license}` : ""} ·{" "}

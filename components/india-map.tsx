@@ -178,6 +178,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [warrant, setWarrant] = useState<Warrant | null>(null);
   /** The p5/p95 populations the fade ramp ran between, for the legend's fade key. */
   const [fadeBounds, setFadeBounds] = useState<{ lo: number; hi: number } | null>(null);
+  /** How many regions this paint HATCHED and actually drew. Published for the
+   *  legend, which keys the hatch, so the key can stand down on a map that has no
+   *  absentees (iter-46 polish, N3). Signature-guarded like the warrant above:
+   *  recolor() runs on every repaint and the legend must not re-render unless the
+   *  number moved. */
+  const [hatchedCount, setHatchedCount] = useState(0);
+  const hatchedSigRef = useRef<number>(-1);
   const estimatedRef = useRef<Record<string, 1>>({});
   const estimateKindRef = useRef<Record<string, string>>({});
   const estimatedFromRef = useRef<Record<string, string>>({});
@@ -1463,6 +1470,27 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       ? (ck === "pop" ? cs.pop : ck === "nsdp" ? cs.nsdp : cs.area)
       : null;
 
+    // ── how many hatches this map actually DRAWS (iter-46 polish, N3) ─────────
+    // Marked is not the same as drawn. Drilling into a state marks every district
+    // outside it no-data — that is what keeps the rest of the country from painting
+    // over the drill — but applyFocus also FILTERS those polygons off the map, so
+    // they are marks nobody can see. The legend keys the hatch, and a key is owed the
+    // marks on screen, so the count below is over the drawn ones only.
+    //
+    // The drill test accepts BOTH the padded and the unpadded state prefix, which is
+    // the tolerance scopeCodes() already has. Not defensive vagueness: applyFocus
+    // builds its MapLibre filter from String(Number(code)) while the geojson's
+    // st_code — and so the rid prefix — is zero-padded, so for the nine states coded
+    // 01..09 that filter matches nothing at all. Measured on this build: drilling
+    // Maharashtra passes 35 district polygons, Uttar Pradesh and Jammu & Kashmir pass
+    // 0. That mismatch is a separate defect and is deliberately NOT fixed here; this
+    // rule simply stays on the correct side of it, counting the marks the drill is
+    // meant to draw rather than inheriting a filter bug into the legend.
+    const drill = levelRef.current === "district" ? focusRef.current : null;
+    const drawnHere = (code: string) =>
+      !drill || code.startsWith(String(Number(drill.code)) + "_") || code.startsWith(drill.code + "_");
+    let hatched = 0;
+
     for (const code of allCodes(source)) {
       const v = valuesRef.current[code];
       const inScope = scope.has(code);
@@ -1471,7 +1499,28 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         // explicitly rather than inferred from the colour because coverage view mutes
         // a HIDDEN class to the very same tone, and those regions do have a number —
         // hatching them would say the opposite of what is true.
-        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA), r: 0, nodata: true });
+        //
+        // `alpha` IS WRITTEN HERE, and the omission it replaces was a real defect
+        // (iter-46 polish, N2). setFeatureState MERGES; it does not replace. The wipe
+        // at the top of recolor() queues a whole-source delete, and MapLibre's
+        // SourceFeatureState.updateState converts that queued delete into a per-feature
+        // one on the FIRST write that follows — excluding the feature being written.
+        // So the first region painted after every wipe keeps whatever state it already
+        // carried for any key the new write does not mention. Measured on the pre-fix
+        // build: open /?m=pop_density&lvl=district (the fade fires), then change to
+        // Forest cover in the chooser. 35_639 North and Middle Andaman is the first
+        // feature in districts.geojson, has no forest figure, and came back
+        // {nodata: true, alpha: 0.3299} — its pop_density fade, on a no-data region.
+        // The tone then composites to rgb(23,23,23) where the no-data tone is
+        // rgb(39,37,28), and the whole sweep found exactly one such region, which is
+        // the first-write exemption and nothing else.
+        //
+        // ALPHA_UNFADED and not the region's own fade weight: a region with no figure
+        // has nothing to weigh, and left-stack's no-data key draws its swatch as
+        // NO_DATA_FILL composited at exactly this opacity. Writing it here is what
+        // makes the key and the map the same colour.
+        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA), r: 0, alpha: ALPHA_UNFADED, nodata: true });
+        if (drawnHere(code)) hatched++;
         continue;
       }
       // COVERAGE view (item 830): shade by DATA PROVENANCE, not value. A class
@@ -1509,8 +1558,26 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // unfaded default the fill layer used before this existed, so a map with no
       // warrant paints exactly as it always did.
       map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0, alpha: alphaRef.current[code] ?? ALPHA_UNFADED, nodata: noValue });
+      // A paired map hatches the regions the SECOND metric misses (`noValue` above).
+      // Those are in scope by construction, so they are always drawn.
+      if (noValue) hatched++;
       lumSum += fillLuminance(color);
       lumN++;
+    }
+
+    // Published for the legend's no-data key, the same way the paint publishes its
+    // pair verdict and its fade warrant: ONE condition for the mark and for the key.
+    // Deriving "does this map hatch anything" in the legend instead would be the same
+    // shape as item 1080's D1 — a key describing a mark the paint is not making.
+    //
+    // A stale count can only ever be too HIGH, never too low: the transient this
+    // component has is the previous metric's values against the next metric's source
+    // (the state -> district swap holds them for a frame), and codes the values do not
+    // cover are exactly what counts as no-data. So the key can appear a frame early on
+    // a map that has no absentees; it cannot vanish from a map that is hatching.
+    if (hatchedSigRef.current !== hatched) {
+      hatchedSigRef.current = hatched;
+      setHatchedCount(hatched);
     }
 
     // to-do 348 — the state-outline overlay. District boundaries have been adaptive
@@ -2239,6 +2306,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   // full-strength swatches and a floored district's rendered colour
                   // appeared nowhere in the key at all.
                   alphaBounds={warrant?.warranted ? fadeBounds : null}
+                  // How many regions this map is HATCHING (iter-46 polish, N3). The
+                  // hatch itself is unconditional and stays that way — "no number
+                  // here" has to mean one thing on every map — but the KEY for it was
+                  // drawn even where the map marks nobody: crime_ipc_rate at state
+                  // level hatches 0 of 36 and still carried the line. Straight from
+                  // the paint, so the key can never describe a mark that is not there.
+                  nodataCount={hatchedCount}
                   // The pair (#408 item 1080): names for the two axes, the
                   // resolver's verdict (shown even when it refuses), and the two
                   // controls. Passing the verdict rather than a boolean is what

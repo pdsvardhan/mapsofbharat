@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 // #408 item 1077 — value-by-alpha, driven in the real app.
 //
@@ -12,6 +12,58 @@ import { test, expect } from "@playwright/test";
 // Run them against a scratch instance of the CURRENT build, never the production
 // container:
 //   bash scripts/test-isolated.sh tests/value-by-alpha-app.spec.ts
+
+/** The opacity a region is drawn at when nothing is fading it — lib/value-by-alpha's
+ *  ALPHA_UNFADED. Spelled out rather than imported: this file drives the BUILT bundle,
+ *  and importing the source here would let a source edit change the expectation and
+ *  the subject in one move. */
+const UNFADED = 0.9;
+
+/**
+ * Change the indicator IN PAGE, through the chooser.
+ *
+ * A URL navigation remounts the map, which is exactly what the stale-state case below
+ * must not do: a fresh MapLibre instance has no feature-state to carry over, so the
+ * defect cannot exist there and the test would pass whatever the code did. This is the
+ * same helper shape tests/symbol-maps.spec.ts uses for the same reason.
+ *
+ * The chooser is topic-first and its topics switch on HOVER — and hover only counts
+ * once the pointer has moved inside the dialog (chooser.tsx's `hoverArmed`, added so a
+ * modal opening under the cursor cannot retune itself). Hence the hover on the dialog
+ * before the hover on the topic.
+ */
+async function pickIndicator(page: Page, topic: RegExp, name: RegExp) {
+  await page.getByRole("button", { name: /CHANGE INDICATOR|BROWSE INDICATORS/i }).click();
+  const chooser = page.getByRole("dialog", { name: /Choose an indicator/i });
+  await expect(chooser).toBeVisible();
+  await chooser.hover();
+  await chooser.getByRole("button").filter({ hasText: topic }).first().hover();
+  await chooser.getByRole("button").filter({ hasText: name }).first().click();
+  await expect(chooser).toBeHidden();
+}
+
+/** Every region the paint has marked no-data, and the alpha each one carries. */
+const hatchSweep = (page: Page, source: "districts" | "states") =>
+  page.evaluate((src) => {
+    const m = (window as unknown as {
+      __mob_map?: {
+        getFeatureState: (t: unknown) => unknown;
+        querySourceFeatures: (s: string) => { id?: string | number }[];
+      };
+    }).__mob_map;
+    if (!m) return null;
+    const ids = new Set<string>();
+    for (const f of m.querySourceFeatures(src)) if (f.id != null) ids.add(String(f.id));
+    const marked: string[] = [];
+    const carryingAlpha: string[] = [];
+    for (const id of ids) {
+      const s = m.getFeatureState({ source: src, id }) as { nodata?: boolean; alpha?: number };
+      if (s?.nodata !== true) continue;
+      marked.push(id);
+      if (s.alpha !== undefined) carryingAlpha.push(`${id}=${s.alpha}`);
+    }
+    return { swept: ids.size, marked: marked.sort(), carryingAlpha: carryingAlpha.sort() };
+  }, source);
 
 test.describe("in the running app", () => {
   // A module that decides correctly and is never consulted is the stub this project
@@ -146,5 +198,90 @@ test.describe("in the running app", () => {
     await page.goto("/?m=pop_total");
     await expect(page.locator("[data-symbol-legend]")).toBeVisible({ timeout: 25_000 });
     await expect(page.locator("[data-alpha-note]")).toHaveCount(0);
+  });
+
+  test("a fade cannot survive onto a region the NEXT metric has no figure for", async ({ page }) => {
+    // setFeatureState MERGES. recolor() wipes the whole source first, but MapLibre's
+    // SourceFeatureState turns that queued whole-source delete into a per-feature one
+    // on the first write that follows AND EXEMPTS THE FEATURE BEING WRITTEN — so the
+    // first region painted after every wipe keeps any key the new write does not
+    // mention. The no-data branch used to omit `alpha`, so that one region carried the
+    // previous metric's fade into a no-data fill: measured on the pre-fix build,
+    // 35_639 North and Middle Andaman came back {nodata: true, alpha: 0.3299} after
+    // this exact sequence, compositing to rgb(23,23,23) where the no-data tone is
+    // rgb(39,37,28).
+    //
+    // Swept over every district rather than checked on 35_639 alone. Which region the
+    // exemption lands on is an accident of geojson order and of MapLibre's internals;
+    // the INVARIANT is that no hatched region anywhere carries a fade, and that is
+    // what has to survive both.
+    await page.goto("/?m=pop_density&lvl=district");
+    await expect(page.locator("[data-alpha-note]"), "the setup needs a map that fades")
+      .toBeVisible({ timeout: 25_000 });
+
+    const read = (id: string) =>
+      page.evaluate((rid) => {
+        const m = (window as unknown as { __mob_map?: { getFeatureState: (t: unknown) => unknown } }).__mob_map;
+        return m ? (m.getFeatureState({ source: "districts", id: rid }) as { nodata?: boolean; alpha?: number }) : null;
+      }, id);
+
+    const before = await read("35_639");
+    expect(before, "the map did not expose its handle — nothing was measured").not.toBeNull();
+    expect(before!.nodata ?? false, "pop_density does have a figure for 35_639").toBe(false);
+    // A real fade, not the unfaded default: without this the transition below would
+    // prove nothing, because there would be no stale value to leak.
+    expect(before!.alpha, "no alpha written for 35_639").not.toBeUndefined();
+    expect(before!.alpha!, "35_639 must be genuinely faded before the switch")
+      .toBeLessThan(UNFADED);
+
+    // Forest cover is a rate (so it stays a choropleth) and has no figure for 35_639.
+    await pickIndicator(page, /Environment/i, /Forest cover(?! change)/i);
+    await expect
+      .poll(async () => (await read("35_639"))?.nodata === true, {
+        message: "the next metric never marked 35_639 no-data — the transition did not happen",
+        timeout: 20_000,
+      })
+      .toBe(true);
+
+    const sweep = await hatchSweep(page, "districts");
+    expect(sweep, "the map did not expose its handle — nothing was measured").not.toBeNull();
+    expect(sweep!.swept, "the source did not yield its districts — nothing was swept")
+      .toBeGreaterThan(700);
+    expect(sweep!.marked.length, "forest cover must be missing figures for this to test anything")
+      .toBeGreaterThan(1);
+    // The whole point: a hatched region is drawn at the no-data tone's own opacity,
+    // never at whatever the last metric faded it to.
+    const wrong = sweep!.carryingAlpha.filter((s) => !s.endsWith(`=${UNFADED}`));
+    expect(wrong, "a hatched region is still carrying the previous metric's fade").toEqual([]);
+  });
+
+  test("the hatch key stands down on a map that hatches nobody", async ({ page }) => {
+    // The inverse of item 1080's defect, at lower stakes: a key for a mark the map is
+    // not making. crime_ipc_rate at state level covers all 36 regions, so nothing is
+    // hatched — and the legend still carried "Hatched — no figure for this region",
+    // pointing at a texture that appears nowhere on screen.
+    await page.goto("/?m=crime_ipc_rate&lvl=state");
+    // The legend is up: the absence below is the key standing down, not the card
+    // failing to render.
+    await expect(page.locator("[data-legend-method-line]")).toBeVisible({ timeout: 25_000 });
+
+    const sweep = await hatchSweep(page, "states");
+    expect(sweep, "the map did not expose its handle — nothing was measured").not.toBeNull();
+    expect(sweep!.swept, "the source did not yield its states — nothing was swept")
+      .toBeGreaterThan(30);
+    expect(sweep!.marked, "the premise: this map marks nobody no-data").toEqual([]);
+    await expect(page.locator("[data-nodata-key]"), "a key for a mark this map never draws")
+      .toHaveCount(0);
+  });
+
+  test("...and comes back the moment the map does hatch someone", async ({ page }) => {
+    // The other half, so the gate cannot be satisfied by deleting the key outright.
+    // pop_density hatches exactly two districts, and they are the reason the key exists.
+    await page.goto("/?m=pop_density&lvl=district");
+    await expect(page.locator("[data-alpha-note]")).toBeVisible({ timeout: 25_000 });
+    const sweep = await hatchSweep(page, "districts");
+    expect(sweep!.marked, "the premise: this map hatches exactly its two absentees")
+      .toEqual(["01_991", "01_992"]);
+    await expect(page.locator("[data-nodata-key]")).toBeVisible();
   });
 });
