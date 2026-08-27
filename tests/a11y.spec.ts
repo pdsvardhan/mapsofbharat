@@ -438,6 +438,83 @@ test.describe("what axe cannot see", () => {
     ).toBe(true);
   });
 
+
+  // #631 — a scrollable region a keyboard cannot scroll (iter-45).
+  //
+  // axe's scrollable-region-focusable is satisfied by ANY focusable descendant, and the
+  // rank table on /metric/[slug] has three: the sort buttons in its header. Measured on
+  // the real page, that box is 23,339px of ranked districts inside a 638px viewport —
+  // 36 screens — and the deepest thing a Tab can reach sits 44px down. A keyboard user
+  // could reach 0.2% of it. The rule passed; the content was unreachable.
+  //
+  // The embed snippet next to it was fixed in iter-44 for exactly this, and got
+  // tabIndex=0 + role=region. The to-do filed the difference as "an odd asymmetry -
+  // review". It was not asymmetry, it was the same defect with a different disguise:
+  // one box had no focusable children at all so axe caught it, and the other had three
+  // in its header so axe did not.
+  //
+  // So this asks the question axe cannot: can focus alone drive this box to its bottom?
+  // A region is reachable if it is focusable ITSELF, or if its focusable descendants
+  // extend past the point where scrolling stops mattering. Anything else hides content
+  // from a keyboard.
+  test("every scrollable region can actually be scrolled by keyboard", async ({ page }) => {
+    const findings: string[] = [];
+    let examined = 0;
+
+    for (const route of ["/metric/literacy_rate", "/coverage", "/family/religion"]) {
+      await page.goto(route);
+      await page.waitForSelector("main", { timeout: 30_000 });
+      await page.waitForTimeout(600);
+
+      const boxes = await page.evaluate(() => {
+        const out: { route: string; cls: string; scrollH: number; clientH: number; focusable: boolean; deepest: number | null; n: number }[] = [];
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>("main *"))) {
+          const scrollsVertically = el.scrollHeight > el.clientHeight * 1.5 && el.clientHeight > 80;
+          if (!scrollsVertically) continue;
+          const style = getComputedStyle(el);
+          if (!/auto|scroll/.test(style.overflowY)) continue;
+
+          const focusable = el.tabIndex >= 0;
+          const kids = Array.from(
+            el.querySelectorAll<HTMLElement>('a[href],button,select,input,textarea,[tabindex]:not([tabindex="-1"])'),
+          ).filter((k) => !(k as HTMLButtonElement).disabled);
+          const top = el.getBoundingClientRect().top;
+          const tops = kids.map((k) => k.getBoundingClientRect().top - top + el.scrollTop);
+          out.push({
+            route: location.pathname,
+            cls: el.className.toString().slice(0, 50),
+            scrollH: el.scrollHeight,
+            clientH: el.clientHeight,
+            focusable,
+            deepest: tops.length ? Math.round(Math.max(...tops)) : null,
+            n: kids.length,
+          });
+        }
+        return out;
+      });
+
+      examined += boxes.length;
+      for (const b of boxes) {
+        if (b.focusable) continue;
+        // Focus can only drive the scroll as far as its deepest focusable child. Past
+        // that point the remaining content is mouse-only.
+        const reachable = b.deepest !== null && b.deepest >= b.scrollH - b.clientH;
+        if (!reachable) {
+          findings.push(
+            `${b.route} .${b.cls}: ${b.scrollH}px of content in ${b.clientH}px, ` +
+              `deepest focusable at ${b.deepest ?? "none"} — not focusable itself, so ` +
+              `${b.deepest === null ? "no" : "most"} of it is unreachable by keyboard`,
+          );
+        }
+      }
+    }
+
+    // FIXTURE POWER. Zero scrollable regions found means the pages did not render, and
+    // "nothing unreachable" would then be true and worthless.
+    expect(examined, "found no scrollable regions at all — the fixture lost its subject").toBeGreaterThan(0);
+    expect(findings, `scrollable regions a keyboard cannot scroll:\n  ${findings.join("\n  ")}`).toEqual([]);
+  });
+
   test("an open dialog keeps the keyboard inside it and gives focus back", async ({ page }) => {
     await page.goto("/");
     await settle(page, "canvas");

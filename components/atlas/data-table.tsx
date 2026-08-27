@@ -195,7 +195,28 @@ export function DataTable({
     // govern it, which is why it needs a round of its own (to-do 428 item 913).
     // The component mounts twice — the /metric/<id> detail page and the atlas
     // table view — so a change here lands on both.
-    <div data-oid="metric-rank-table" className="atl-scroll min-h-0 flex-1 overflow-auto">
+    // FOCUSABLE, because a keyboard has no other way to scroll this (#631, iter-45).
+    // Measured on /metric/[slug]: 23,339px of ranked districts inside a 638px viewport -
+    // 36 screens - with exactly three focusable elements, all within the first 44px,
+    // which are the sort buttons in the header. A keyboard user could reach 0.2% of it.
+    //
+    // axe passed it the whole time: scrollable-region-focusable is satisfied by ANY
+    // focusable descendant, and three header buttons qualify. The embed snippet in
+    // metric-share.tsx got tabIndex + role=region in iter-44 for exactly this reason,
+    // and only because it had NO focusable children for axe to find. The to-do filed the
+    // difference as "an odd asymmetry - review"; it was the same defect with a better
+    // disguise, and tests/a11y.spec.ts now asks the question axe cannot - whether focus
+    // alone can drive the box to its bottom.
+    //
+    // role=region + a name, not a bare tabIndex: focusable without a name is just an
+    // unlabelled tab stop, which is the trade metric-share.tsx already documents.
+    <div
+      data-oid="metric-rank-table"
+      tabIndex={0}
+      role="region"
+      aria-label={`${metricLabel} rankings, scrollable`}
+      className="atl-scroll min-h-0 flex-1 overflow-auto"
+    >
       {/* Five columns — rank, region, state, value, estimate — do not fit a 374px
           plate at a readable size. Below lg the table keeps a real minimum and
           SCROLLS inside this box rather than compressing; the scroll is contained
