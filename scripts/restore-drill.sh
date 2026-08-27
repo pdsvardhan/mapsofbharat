@@ -46,6 +46,20 @@ fail() { echo "RESTORE DRILL FAILED: $*" >&2; exit 1; }
 WORK="$(mktemp -d /tmp/mob-restore-drill.XXXXXX)"
 SERVER_PID=""
 STANDALONE=""
+
+# SOURCED HERE, BEFORE THE TRAP, and that is the whole reason it moved (iter-46 item
+# 1073). The trap calls release_run_tree; the library that defines it was not read
+# until step 2, some forty lines further down. Every exit before that point — no
+# snapshot under the source root, a DB that fails integrity_check, --from-remote
+# without MOB_BACKUP_REMOTE — fired the trap and printed
+#     scripts/restore-drill.sh: line 57: release_run_tree: command not found
+# on the way out. The exit code was right, so nothing failed; but that line lands on
+# stderr immediately after the FAILED message a human is meant to read, and a
+# failure path that also prints an internal error trains people to skim it. A trap
+# may only call what is already defined when the trap is installed.
+# shellcheck source=lib/stage-run-tree.sh
+. "$REPO/scripts/lib/stage-run-tree.sh"
+
 cleanup() {
   local code=$?
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -103,9 +117,8 @@ log "restored DB intact — $R_METRICS metrics, $R_VALUES values"
 # exactly long enough for someone to start a build, and a build wipes .next out
 # from under the instance this drill is asking questions of. The drill would then
 # report a restore that could not serve — a false red on the one measurement whose
-# whole job is to be trusted. See scripts/lib/stage-run-tree.sh.
-# shellcheck source=lib/stage-run-tree.sh
-. "$REPO/scripts/lib/stage-run-tree.sh"
+# whole job is to be trusted. See scripts/lib/stage-run-tree.sh, which is sourced up
+# beside the trap that needs its release_run_tree.
 STANDALONE="$(stage_run_tree drill)" || fail "could not stage a run tree"
 
 PORT=""

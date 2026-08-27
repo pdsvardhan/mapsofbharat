@@ -54,6 +54,31 @@ stop() {
   kill -9 "$pid" 2>/dev/null
 }
 
+# THE MOVE WINDOW IS HELD UNDER THE BUILD LOCK (iter-46 item 1073).
+#
+# Taking .next away and putting it back is the same act `next build` performs as its
+# first step, and the reason this script exists is that the two at once destroy a
+# tree. Unlocked, `npm run check:isolation` during a build IS the collision it was
+# written to prevent: the build wipes .next while ours is parked at
+# .next.isolation-check, writes a fresh one, and restore_next then rm -rf's the
+# build's output and moves the old tree back over it. The build reports success and
+# ships chunks that 404 — #607 exactly, caused by its own guard.
+#
+# Same .buildlock scripts/with-build-lock.sh takes for a build and
+# scripts/lib/stage-run-tree.sh takes SHARED for a copy; a second mechanism here
+# would serialise against nothing. EXCLUSIVE, because for the length of the window
+# there must be no build at all — not even another reader's staging copy, which
+# would find .next gone.
+#
+# fd 8, not 9: stage_run_tree uses 9 and this script calls it.
+BUILD_LOCK="$REPO/.buildlock"
+lock_next() {
+  exec 8>>"$BUILD_LOCK" || err "cannot open $BUILD_LOCK — refusing to move .next unserialised"
+  flock -x -w "${ISOLATION_LOCK_WAIT:-1800}" 8 \
+    || err "a build has held $BUILD_LOCK for ${ISOLATION_LOCK_WAIT:-1800}s; .next was not moved and nothing was tested"
+}
+unlock_next() { exec 8>&-; }
+
 # .next must come back whatever happens here, including a Ctrl-C between the two mvs.
 restore_next() {
   if [ -d "$ASIDE" ]; then
@@ -133,6 +158,7 @@ log "  healthy on :$PORT_A, testing against $CHUNK_A"
 [ "$(http_code "http://127.0.0.1:$PORT_A$CHUNK_A")" = "200" ] \
   || err "the chunk did not serve BEFORE .next was moved; nothing was tested"
 
+lock_next
 mv "$NEXT" "$ASIDE" || err "could not move .next aside"
 log "  .next moved aside — this is the moment a concurrent build creates"
 
@@ -146,6 +172,7 @@ code_chunk="$(http_code "http://127.0.0.1:$PORT_A$CHUNK_A")"
 [ "$FAILED" -eq 0 ] && log "  PASS — health $code_health, page $code_home, chunk $code_chunk"
 
 restore_next
+unlock_next
 stop "$PID_A"; PID_A=""
 
 # ── PART B — the control: in-place must break ────────────────────────────────
@@ -168,9 +195,11 @@ CHUNK_B="$(first_chunk "$PORT_B")"
 [ "$(http_code "http://127.0.0.1:$PORT_B$CHUNK_B")" = "200" ] \
   || err "the control's chunk did not serve before the move; the control did not run"
 
+lock_next
 mv "$NEXT" "$ASIDE" || err "could not move .next aside for the control"
 ctrl_chunk="$(http_code "http://127.0.0.1:$PORT_B$CHUNK_B")"
 restore_next
+unlock_next
 stop "$PID_B"; PID_B=""
 
 if [ "$ctrl_chunk" = "200" ]; then

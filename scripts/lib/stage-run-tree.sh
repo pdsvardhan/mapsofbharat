@@ -66,11 +66,6 @@ stage_run_tree() {
   local runs="$repo/.next-runs"
   local tree="$runs/$tag-$(date +%s)-$$"
 
-  if [ ! -f "$repo/.next/standalone/server.js" ]; then
-    echo "stage-run-tree: $repo/.next/standalone/server.js missing — run 'npm run build' first." >&2
-    return 2
-  fi
-
   mkdir -p "$runs" || return 2
   prune_run_trees
 
@@ -83,6 +78,21 @@ stage_run_tree() {
   fi
   if ! flock -s -w "${STAGE_LOCK_WAIT:-600}" 9; then
     echo "stage-run-tree: a build has held the lock for ${STAGE_LOCK_WAIT:-600}s. Not staging." >&2
+    exec 9>&-
+    return 2
+  fi
+
+  # THE PRECONDITION IS CHECKED UNDER THE LOCK, and the ORDER is the fix (iter-46
+  # item 1073). This test used to run first, before the flock above — so a drill or a
+  # test run that started while a build was in progress looked at the .next that
+  # `next build` had already wiped, and returned 2 straight away with
+  #     run 'npm run build' first
+  # which is the one piece of advice that is wrong at that moment. A build WAS
+  # running; waiting for it is exactly what the lock below was put here to do, and
+  # the check jumped the queue and answered from a tree in mid-demolition. Under the
+  # lock, "server.js is missing" means what the message says it means.
+  if [ ! -f "$repo/.next/standalone/server.js" ]; then
+    echo "stage-run-tree: $repo/.next/standalone/server.js missing — run 'npm run build' first." >&2
     exec 9>&-
     return 2
   fi
