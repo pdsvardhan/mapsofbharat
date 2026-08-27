@@ -104,6 +104,23 @@ test.describe("#405-F geometry is served pre-compressed", () => {
     expect(gzipRefused.encoding).toBe("br");
   });
 
+  test("a stated preference is honoured, not just a non-zero qvalue", async () => {
+    // `br;q=0.5, gzip;q=0.9` names gzip as the preference. The first version served
+    // brotli anyway, because it only asked whether each rung was non-zero. Serving the
+    // smaller file is not a licence to ignore what was asked for, and the day one of
+    // these encodings is refused for a reason invisible from here - a proxy that mangles
+    // it, a client that decodes it badly - the qvalue is the only signal saying so.
+    const prefersGzip = await fetchRaw(url(`/geodata/${FILE}`), "br;q=0.5, gzip;q=0.9");
+    expect(prefersGzip.encoding, "gzip was preferred by qvalue and should have been served").toBe("gzip");
+
+    // The header every real browser actually sends carries no qvalues at all. Ties keep
+    // source order, so this must still get brotli - a preference fix that cost the
+    // common case would be a bad trade.
+    const browserDefault = await fetchRaw(url(`/geodata/${FILE}`), "gzip, deflate, br");
+    expect(browserDefault.encoding, "the unweighted browser header must still get brotli").toBe("br");
+    expect(browserDefault.body.byteLength).toBeLessThan(140_000);
+  });
+
   test("the route refuses traversal, unknown files and non-geometry extensions", async () => {
     for (const bad of ["..%2f..%2fpackage.json", "nope.geojson", "mapsofbharat.db", "..%2F..%2F.env"]) {
       const r = await fetchRaw(url(`/geodata/${bad}`), "br, gzip");

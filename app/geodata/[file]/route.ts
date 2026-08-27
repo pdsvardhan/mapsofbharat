@@ -83,13 +83,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
     return q !== undefined && q > 0;
   };
 
+  // PREFERENCE, not merely acceptability. `br;q=0.5, gzip;q=0.9` names gzip as the
+  // client's preference, and the first version served brotli anyway because it only
+  // asked whether each rung was non-zero. Serving the smaller file is not a licence to
+  // ignore what was asked for - and the day one of these encodings is refused for a
+  // reason we cannot see from here (a proxy that mangles it, a client that decodes it
+  // badly), the qvalue is the only signal saying so.
+  //
+  // Ties keep source order, so a browser sending the usual unweighted
+  // `gzip, deflate, br` still gets brotli.
   const rungs: Array<[string, string]> = [
     ["br", `${raw}.br`],
     ["gzip", `${raw}.gz`],
   ];
+  const preferred = rungs
+    .filter(([encoding]) => wants(encoding))
+    .sort((a, b) => (acceptable.get(b[0]) ?? wildcard ?? 0) - (acceptable.get(a[0]) ?? wildcard ?? 0));
 
-  for (const [encoding, path] of rungs) {
-    if (!wants(encoding)) continue;
+  for (const [encoding, path] of preferred) {
     try {
       await stat(path);
       const body = await readFile(path);
