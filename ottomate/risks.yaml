@@ -89,8 +89,26 @@ risks:
   - id: 57
     project_slug: mapsofbharat
     risk_type_id: a11y-missing
-    status: accepted
-    hidden_by_default: false
+    status: resolved
+    resolved_at: 2026-08-26T23:44:32.000Z
+    resolution_summary: "Resolved 2026-08-27 (iter-45). The deferral condition is
+      gone: the full live audit this risk was waiting on RAN in iter-44 -
+      axe-core 4.13.0, WCAG 2.1 AA tags only, 12 routes x 2 viewports, 4 rules
+      and 78 failing nodes, all fixed - plus a keyboard probe covering what axe
+      cannot see (modal contract, focus visibility, reflow at 320px). iter-45
+      added the guards that keep it: the prose-underline rule now needs display
+      PLUS a control signal and reaches 10 routes rather than 1 (125 judged
+      links), /coverage no longer clips its unit labels at 320px, and the
+      focus-visibility test runs on four routes. Two claims in the original
+      deferral were also corrected by measurement rather than inherited: #632
+      (two iframe tab stops with no focus ring) is REFUTED - there is one, and
+      the canvas inside the frame already carries the ring - and #636 was wrong
+      about / contributing judged links, since the atlas renders no <main>.
+      Residual, filed as to-do 656 rather than hidden here: three narrow
+      exemptions remain in the prose rule (py-1 counts as padded, borderRight
+      ignored, border-b as a control surface). tests/a11y.spec.ts is 44 tests
+      and every guard added this iteration was mutation-proven able to fail."
+    hidden_by_default: true
     notes: "Deferred 2026-06-10. Cheap code-level a11y shipped: aria-label on all
       map controls (PNG/Link/Locate/metric select), aria-pressed on
       Value/vs-avg/compare toggles, colour-vision-safe viridis/RdBu ramps.
