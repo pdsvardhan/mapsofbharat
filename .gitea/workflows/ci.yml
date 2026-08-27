@@ -21,14 +21,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-adr-refs.sh
-      # ONE NODE VERSION, NAMED IN ONE PLACE, AND IT IS LOAD-BEARING (#610, #659).
+      # ONE NODE VERSION, NAMED IN FOUR PLACES, AND IT IS LOAD-BEARING (#610, #659).
       #
-      # .nvmrc says 20.20.2 and is the only place that says so. This step reads it, the
-      # Dockerfile's three FROMs name node:20.20.2-slim, package.json pins the same
-      # version in `engines`, and scripts/check-node-version.mjs compares the running
-      # Node against it — from playwright.config.ts, from scripts/test-isolated.sh, and
-      # from `npm run check:node`. Moving Node is now a one-line change to .nvmrc that
-      # somebody makes on purpose.
+      # .nvmrc says 20.20.2 and is the AUTHORITY — not the only place that says so.
+      # The version is written out four times: .nvmrc, the Dockerfile's three FROMs
+      # (node:20.20.2-slim), and package.json `engines`. Two checks hold that together.
+      # scripts/check-node-version.mjs compares the RUNNING Node to .nvmrc — from
+      # playwright.config.ts, from scripts/test-isolated.sh and from `npm run
+      # check:node`. scripts/check-node-pins.mjs, the step below, compares the other
+      # three declarations to .nvmrc. With both, moving Node is a one-line change to
+      # .nvmrc plus three failures telling you exactly where you have not carried it
+      # through.
+      #
+      # THE SECOND CHECK EXISTS BECAUSE THIS PARAGRAPH USED TO BE WRONG (iter-46 item
+      # 1084). It said .nvmrc was "the only place that says so" — contradicted two
+      # lines later by its own list — and that moving Node was ALREADY a one-line
+      # change. A verifier changed .nvmrc to 20.19.2 and nothing noticed: the
+      # Dockerfile still built 20.20.2 three times, `engines` still said 20.20.2,
+      # check-node-version passed, and all five other check scripts exited 0. The
+      # duplication was real and unguarded, and the comment was the reason nobody
+      # would go looking for the comparison — it said the comparison already existed.
+      # That is the same defect as item 1074: a comment that stops the next reader
+      # writing the check they believe is already there.
       #
       # THIS USED TO READ `node-version: 20`, AND THE WORD "20" WAS THE BUG. It floated,
       # as did the Dockerfile's `node:20-slim`. The two agreed the day they were written
@@ -53,10 +67,18 @@ jobs:
       #
       # The pin is still not the fix. The fix is that no spec imports a .mjs any more
       # (the check-spec-imports step below), which holds on every Node. The pin, and the
-      # check that enforces it, are what stop the next patch-level divergence from being
-      # invisible for weeks.
+      # two checks that enforce it, are what stop the next patch-level divergence from
+      # being invisible for weeks.
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: npm }
+
+      # The four declarations named above must agree with each other. Runs here, right
+      # after the step that consumes .nvmrc, and before `npm ci`: it needs nothing but
+      # the repo and any Node at all. It also fails when it MEASURED nothing — no node
+      # FROM in the Dockerfile, no `engines`, no setup-node in any workflow — because a
+      # cross-check with nothing to cross-check would otherwise print the same OK as a
+      # repo that agrees with itself.
+      - run: node scripts/check-node-pins.mjs
 
       # Survey-of-India boundary gate (#405): checksum + geometry + property
       # fingerprint (vs scripts/boundary-fingerprint.json) + always-on extent

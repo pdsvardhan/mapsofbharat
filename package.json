@@ -22,7 +22,8 @@
     "geo:compress": "node scripts/build-geo-compressed.mjs",
     "check:isolation": "./scripts/check-build-isolation.sh",
     "check:pipes": "node scripts/check-pipefail-grep.mjs",
-    "check:node": "node scripts/check-node-version.mjs"
+    "check:node": "node scripts/check-node-version.mjs",
+    "check:pins": "node scripts/check-node-pins.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

@@ -17,8 +17,14 @@
 // WHY EVERYTHING IS PINNED NOW. `node:20-slim` and `node-version: 20` both FLOAT.
 // They agreed on the day they were written and drifted apart afterwards, which is how
 // the gap opened without anyone deciding to open it. The Dockerfile names
-// node:20.20.2-slim, CI reads .nvmrc, and .nvmrc is this file's authority — so moving
-// Node is now a one-line change somebody makes on purpose.
+// node:20.20.2-slim, CI reads .nvmrc, and .nvmrc is this file's authority.
+//
+// PINNING FOUR COPIES IS NOT THE SAME AS HAVING ONE. This paragraph used to end "so
+// moving Node is now a one-line change somebody makes on purpose", and it was not:
+// a verifier changed .nvmrc alone and nothing anywhere noticed, because this file
+// compares the RUNNING Node to .nvmrc and nothing compared .nvmrc to the Dockerfile
+// or to `engines` (iter-46 item 1084). scripts/check-node-pins.mjs is that missing
+// comparison; the two checks together are what finally make the one-line change true.
 //
 //   node scripts/check-node-version.mjs
 
@@ -60,8 +66,9 @@ if (have !== want) {
   console.error(`    export PATH="$HOME/.local/bin:$PATH"; eval "$(fnm env)"; fnm use`);
   console.error(`    (fnm install ${want} first, if it is not there yet)`);
   console.error("");
-  console.error("  If the move is deliberate, change .nvmrc and the Dockerfile together —");
-  console.error("  they are pinned to each other on purpose.");
+  console.error("  If the move is deliberate, change .nvmrc, the Dockerfile and package.json");
+  console.error("  `engines` together — they are pinned to each other on purpose, and");
+  console.error("  `npm run check:pins` names every one that has not moved yet.");
   process.exit(1);
 }
 
