@@ -2,6 +2,26 @@ import { test, expect } from "@playwright/test";
 import { groupByForm, valueExtremes } from "@/lib/browse-by-form";
 import { VISUALIZATIONS } from "@/lib/metric-capabilities";
 import type { MetricListItem } from "@/lib/metric-page-data";
+import Database from "better-sqlite3";
+import { join } from "node:path";
+import { existsSync } from "node:fs";
+
+// THE SPEC OPENS THE STORE, THE PROCESS DOES NOT. Handing DB_PATH to the whole test
+// process would have read the atlas for this file and taken a precondition away from
+// another: tests/family-grid.spec.ts asserts db() is NULL, and says in the file that
+// on a runner where DB_PATH resolves, the mutations it exists to kill stop being
+// killed silently. It went red when that was tried, which is the guard working. So
+// this file opens what it needs, readonly, and nothing else in the suite sees it.
+const ATLAS = join(process.cwd(), "data", "mapsofbharat.db");
+
+function openAtlas() {
+  // Not a silent skip if it is missing — a spec that quietly tests nothing is the
+  // shape #602 spent this iteration removing.
+  if (!existsSync(ATLAS)) return null;
+  const d = new Database(ATLAS, { readonly: true, fileMustExist: true });
+  d.pragma("query_only = true");
+  return d;
+}
 /** A catalogue row with only the fields the grouping reads. */
 function listItem(id: string, unit: string): MetricListItem {
   return {
@@ -20,9 +40,22 @@ function listItem(id: string, unit: string): MetricListItem {
 // resolver's answer rather than a second opinion of its own, and that nothing lands in
 // a group by guesswork.
 
+type Loaded = { metrics: MetricListItem[]; extremes: Map<string, [number, number]> };
+
+/** The real catalogue, assembled without the process-wide store: metadata over HTTP
+ *  from the running instance, extremes from a handle this file opened. */
+async function realCatalogue(request: { get: (u: string) => Promise<{ json: () => Promise<{ metrics: MetricListItem[] }> }> }): Promise<Loaded | null> {
+  const d = openAtlas();
+  if (!d) return null;
+  const { metrics } = await (await request.get("/api/metrics")).json();
+  return { metrics, extremes: valueExtremes(d) };
+}
+
 test.describe("the grouping", () => {
-  test("every metric with values lands in exactly one group", () => {
-    const { groups, omitted } = groupByForm();
+  test("every metric with values lands in exactly one group", async ({ request }) => {
+    const real = await realCatalogue(request);
+    expect(real, "the atlas is not on disk — nothing was measured").not.toBeNull();
+    const { groups, omitted } = groupByForm(real!);
     expect(groups.length, "no groups — the resolver returned nothing").toBeGreaterThan(0);
 
     const ids = groups.flatMap((g) => g.metrics.map((m) => m.metric.id));
@@ -32,8 +65,10 @@ test.describe("the grouping", () => {
     expect(ids.length + omitted).toBeGreaterThan(100);
   });
 
-  test("both shipped forms are represented, and neither swallows the catalogue", () => {
-    const { groups } = groupByForm();
+  test("both shipped forms are represented, and neither swallows the catalogue", async ({ request }) => {
+    const real = await realCatalogue(request);
+    expect(real).not.toBeNull();
+    const { groups } = groupByForm(real!);
     const byViz = Object.fromEntries(groups.map((g) => [g.viz, g.metrics.length]));
 
     // Totals get circles, rates get shading. If either group were empty the page
@@ -47,8 +82,10 @@ test.describe("the grouping", () => {
     }
   });
 
-  test("the names and the wording come from the resolver, not from this page", () => {
-    const { groups } = groupByForm();
+  test("the names and the wording come from the resolver, not from this page", async ({ request }) => {
+    const real = await realCatalogue(request);
+    expect(real).not.toBeNull();
+    const { groups } = groupByForm(real!);
     for (const g of groups) {
       expect(g.name).toBe(VISUALIZATIONS[g.viz].name);
       expect(g.suits).toBe(VISUALIZATIONS[g.viz].suits);
@@ -57,8 +94,10 @@ test.describe("the grouping", () => {
     }
   });
 
-  test("a total is filed under circles and a rate under shading", () => {
-    const { groups } = groupByForm();
+  test("a total is filed under circles and a rate under shading", async ({ request }) => {
+    const real = await realCatalogue(request);
+    expect(real).not.toBeNull();
+    const { groups } = groupByForm(real!);
     const where = (id: string) => groups.find((g) => g.metrics.some((m) => m.metric.id === id))?.viz;
     // pop_total adds up across districts; literacy_rate is already per person. If
     // these two ever swapped, the page would be teaching the opposite of the rule.
@@ -107,11 +146,13 @@ test.describe("the grouping", () => {
   });
 
   test("the extremes are REAL — the query is read, not stubbed", () => {
+    const handle = openAtlas();
+    expect(handle, "the atlas is not on disk — nothing was measured").not.toBeNull();
     // This case exists because a mutation replacing every extreme with a constant
     // survived. It could: the grouping only asks "is anything negative", and no
     // metric in today's catalogue is a signed count, so a constant answered exactly
     // as well as the truth. What the query returns is its own claim.
-    const ex = valueExtremes();
+    const ex = valueExtremes(handle);
     expect(ex.size, "no extremes read at all").toBeGreaterThan(100);
 
     const lit = ex.get("literacy_rate");

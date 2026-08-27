@@ -158,13 +158,14 @@ fi
 echo "test-isolated: verified the instance writes to the scratch store"
 echo
 
-# DB_PATH goes to the TEST PROCESS too, not only to the scratch server.
-# A spec that imports from lib/ runs node-side, in the Playwright worker, and a
-# worker without DB_PATH opens no store — so lib/browse-by-form returned an empty
-# catalogue and the spec read that as the page being broken. It is the same atlas
-# file the server is given and lib/db opens it readonly, so this can only read.
+# NO DB_PATH HERE, AND THAT IS DELIBERATE. It was added so a node-side spec could
+# read the store, and the full suite went red on tests/family-grid.spec.ts:411 —
+# which asserts db() is NULL as a precondition, and explains in the file that on a
+# runner where DB_PATH resolves, the real-store branch runs and the mutations those
+# tests exist to kill stop being killed, silently. The guard did its job. A spec that
+# needs the store opens it for itself (see lib/browse-by-form's optional handle),
+# which is narrower than handing one to every test in the suite.
 BASE_URL="http://127.0.0.1:$PORT" \
-DB_PATH="$REPO/data/mapsofbharat.db" \
 CORRECTIONS_ADMIN_TOKEN="$TOKEN" \
 CORRECTIONS_SCRATCH_DB="$SCRATCH_DB" \
 SITE_LAUNCHED="$LAUNCHED" \

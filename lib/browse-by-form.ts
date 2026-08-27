@@ -19,6 +19,17 @@
 // series would give.
 
 import { db } from "@/lib/db";
+
+/** Exactly what db() returns, minus the null. The caller may hand in a handle it
+ *  opened itself so the process-wide DB_PATH stays out of it —
+ *  tests/family-grid.spec.ts depends on this process having NO store, and one
+ *  spec's convenience must not remove another's precondition.
+ *
+ *  Derived from db() rather than hand-rolled: a structural stand-in was written
+ *  first and better-sqlite3's own Statement would not satisfy it (its `all` is
+ *  typed on the bound parameters), so the narrow type would have forced every
+ *  caller to cast — and a cast is how a handle that is not really a handle gets in. */
+type DbHandle = NonNullable<ReturnType<typeof db>>;
 import { capabilitiesFor, VISUALIZATIONS, type Capability, type VizId } from "@/lib/metric-capabilities";
 import { getAllMetrics, type MetricListItem } from "@/lib/metric-page-data";
 
@@ -38,9 +49,9 @@ export type FormGroup = {
  *  count — so a mutation that replaced every extreme with a constant survived a test
  *  that only looked at the groups. What the query returns is a separate claim from
  *  what the grouping does with it, and it needs its own assertion. */
-export function valueExtremes(): Map<string, [number, number]> {
+export function valueExtremes(handle?: DbHandle | null): Map<string, [number, number]> {
   const out = new Map<string, [number, number]>();
-  const d = db();
+  const d = handle ?? db();
   if (!d) return out;
   const rows = d
     .prepare(
