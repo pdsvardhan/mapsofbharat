@@ -30,6 +30,7 @@ import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { floorShare, symbolRadius, type SymbolLevel } from "@/lib/symbols";
 import { regionAreas, alphaWarrant, alphaByRegion, type Warrant } from "@/lib/value-by-alpha";
+import { BIVARIATE_K, bivariateColor, sharedRegions, bivariateEligible, type Eligibility } from "@/lib/bivariate";
 // The single resolver for which forms a metric may honestly take (#575).
 import { canRender, preferredViz } from "@/lib/metric-capabilities";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
@@ -84,7 +85,7 @@ function bbox(geom: { coordinates: unknown }): [number, number, number, number] 
 
 function readUrl() {
   if (typeof window === "undefined")
-    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false, vin: "current" as Vintage, sym: null as boolean | null };
+    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false, vin: "current" as Vintage, sym: null as boolean | null, bi: "" };
   const p = new URLSearchParams(window.location.search);
   const m = p.get("m") || "";
   // Jenks is the global default (iter-53 item 404); explicit URL param wins
@@ -95,6 +96,9 @@ function readUrl() {
   return {
     m,
     mode: (p.get("mode") === "vs_avg" ? "vs_avg" : p.get("mode") === "coverage" ? "coverage" : "value") as Mode,
+    // The metric this map is PAIRED with (#408 item 1080). A second metric id, or
+    // empty. It is a first-class part of the view, so it travels in the link.
+    bi: p.get("bi") || "",
     st: p.get("st") || "",
     stn: p.get("stn") || "",
     cmp: (p.get("cmp") || "").split(",").filter(Boolean),
@@ -142,6 +146,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [sel, setSel] = useState<string>(init.m);
   const [data, setData] = useState<MetricData | null>(null);
   const [mode, setMode] = useState<Mode>(init.mode);
+  // The pair (#408 item 1080). `pairValues` is the second metric at the current
+  // level; `pairElig` is the resolver's verdict, kept even when it REFUSES so the
+  // legend can say why rather than the pair silently doing nothing.
+  const [pairId, setPairId] = useState<string>(init.bi);
+  const pairIdRef = useRef(pairId);
+  const pairValuesRef = useRef<Record<string, number>>({});
+  const [pairElig, setPairElig] = useState<Eligibility | null>(null);
+  const pairEligRef = useRef<Eligibility | null>(null);
+  const [pairOpen, setPairOpen] = useState(false);
   // Coverage view: which provenance classes are hidden (toggled off in the legend),
   // so a reader can e.g. show only inherited districts (item 830). A hidden class'
   // regions recede to the neutral no-data tone.
@@ -303,6 +316,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { coverageHiddenRef.current = coverageHidden; }, [coverageHidden]);
   useEffect(() => { brkRef.current = brkMethod; }, [brkMethod]);
+  useEffect(() => { pairIdRef.current = pairId; }, [pairId]);
   useEffect(() => { metricRefRef.current = METRIC_REFERENCE[sel] ?? null; }, [sel]);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -982,6 +996,52 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets, coverageHidden, symbolOn]);
 
+  // The pair's own values, and the resolver's verdict on the pairing (#408 item
+  // 1080). Re-run when the pair, the base metric or the level changes: eligibility
+  // is a property of the two series AT A LEVEL, not of the ids.
+  useEffect(() => {
+    let cancelled = false;
+    if (!pairId || !sel) {
+      pairValuesRef.current = {};
+      pairEligRef.current = null;
+      setPairElig(null);
+      if (dataRef.current) recolor();
+      return;
+    }
+    (async () => {
+      const effLevel = vintage === "2011" ? (level === "state" ? "state2011" : "district2011") : level;
+      try {
+        const md = await fetch(`/api/metrics/${pairId}?level=${effLevel}`).then((r) => r.json());
+        if (cancelled) return;
+        const base = dataRef.current;
+        if (!md?.values || !base) return;
+        const verdict = bivariateEligible({
+          level: effLevel,
+          xId: sel, xUnit: base.unit ?? "", xValues: valuesRef.current,
+          yId: pairId, yUnit: md.unit ?? "", yValues: md.values,
+        });
+        pairValuesRef.current = verdict.ok ? md.values : {};
+        pairEligRef.current = verdict;
+        setPairElig(verdict);
+        recolor();
+      } catch {
+        if (cancelled) return;
+        // A failed fetch is no pair, never a half-drawn one.
+        pairValuesRef.current = {};
+        pairEligRef.current = null;
+        setPairElig(null);
+        recolor();
+      }
+    })();
+    return () => { cancelled = true; };
+    // `data` is in here on purpose. Eligibility is computed against the BASE metric's
+    // values, and this effect can fire before those land — it bails when they have
+    // not, and without a dependency on the load it would never come back, leaving a
+    // ?bi= link silently univariate. Depending on the loaded data rather than a
+    // timer is what makes the pair deterministic on a cold open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairId, sel, level, vintage, ready, data]);
+
   // The MapLibre host is display:none while the table view is up (the plate around
   // it stays), so MapLibre holds its last canvas size until the host is shown
   // again. Resize on the way back so the choropleth fills the plate instead of
@@ -1088,13 +1148,17 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
     if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
     if (vintage === "2011") p.set("vin", "2011");
+    // The pair is half of what this map shows, so unlike `brk` or `sym` it is not a
+    // preference that should stay behind — a shared link without it is a different
+    // map (#408 item 1080).
+    if (pairId) p.set("bi", pairId);
     // to-do 348: adaptive is the outline default, so only the fixed ESCAPE HATCH needs
     // to travel. Preserving it here keeps a shared/reloaded "fixed" view fixed — and
     // stops this writer from stripping the param out from under the mount-time reader.
     if (outlineModeRef.current === "fixed") p.set("outline", "fixed");
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
-  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick, symbolOn]);
+  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick, symbolOn, pairId]);
 
   // ── colouring ────────────────────────────────────────────────────────────
   type PaintSource = "districts" | "states" | "districts2011" | "states2011";
@@ -1209,8 +1273,29 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // they hold. Not offered in symbol mode — a count already has circles — nor on
     // the 2011 vintages, which have no density series to recover an area from, nor
     // in coverage or vs-average mode, where the colour is not the metric at all.
+    // BIVARIATE (#408 item 1080). Two metrics, one geography, a 3x3 matrix. Breaks
+    // are QUANTILE at k=3 over the SHARED regions only — quantile because a matrix
+    // wants a third of the regions in each band on each axis (an empty row or column
+    // is a legend cell that never appears on the map), and shared-only because a
+    // region the pair does not both cover is not part of this map's population and
+    // must not stretch its bands. Never in symbol mode, coverage or vs-average, and
+    // never on the 2011 vintage — the resolver refuses that level outright.
+    const pairOk = !!pairEligRef.current?.ok
+      && modeRef.current === "value" && !symOn && !vin && Object.keys(pairValuesRef.current).length > 0;
+    let biEdgesX: number[] = [];
+    let biEdgesY: number[] = [];
+    if (pairOk) {
+      const shared = sharedRegions(valuesRef.current, pairValuesRef.current)
+        .filter((c) => scope.has(c));
+      if (shared.length >= BIVARIATE_K) {
+        biEdgesX = computeBreaks(shared.map((c) => valuesRef.current[c]), "quantile", BIVARIATE_K, null);
+        biEdgesY = computeBreaks(shared.map((c) => pairValuesRef.current[c]), "quantile", BIVARIATE_K, null);
+      }
+    }
+    const biOn = pairOk && biEdgesX.length > 0 && biEdgesY.length > 0;
+
     const wts = weightRef.current[levelRef.current] ?? { pop: {}, area: {} };
-    const warr = (!vin && !symOn && modeRef.current === "value" && breaks.length > 0)
+    const warr = (!vin && !symOn && !biOn && modeRef.current === "value" && breaks.length > 0)
       ? alphaWarrant({ values: valuesRef.current, pop: wts.pop, area: wts.area, edges: breaks })
       : null;
     alphaRef.current = warr?.warranted
@@ -1249,6 +1334,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       if (modeRef.current === "coverage") {
         const cls = provenanceOf(estimatedRef.current[code], estimateKindRef.current[code]);
         color = coverageHiddenRef.current.includes(cls) ? PROVENANCE_MUTED : PROVENANCE_COLOR[cls];
+      } else if (biOn) {
+        const pv = pairValuesRef.current[code];
+        // A region the pair does not cover gets the no-data tone rather than a
+        // corner of the matrix. Painting it low-low would invent a reading.
+        color = pv == null || !Number.isFinite(pv) ? NODATA : bivariateColor(v, biEdgesX, pv, biEdgesY);
       } else if (modeRef.current === "vs_avg") {
         color = interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - mean) / (2 * maxDev))));
       } else {
@@ -1956,6 +2046,16 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   // Why this map is faded, in the reader's words (#408 item 1077).
                   // Present only when the fade actually fired.
                   alphaNote={warrant?.warranted ? warrant.reason : null}
+                  // The pair (#408 item 1080): names for the two axes, the
+                  // resolver's verdict (shown even when it refuses), and the two
+                  // controls. Passing the verdict rather than a boolean is what
+                  // lets a refused pair say why instead of quietly doing nothing.
+                  pairName={pairId ? (metrics.find((m) => m.id === pairId)?.name ?? pairId) : null}
+                  baseName={data?.name ?? ""}
+                  pairElig={pairElig}
+                  pairActive={!!pairElig?.ok && mode === "value" && !symbolOn && vintage !== "2011"}
+                  onOpenPair={() => { setPairOpen(true); setChooserOpen(false); setScaleOpen(false); setSearchOpen(false); }}
+                  onClearPair={() => setPairId("")}
                 />
               </div>
             )}
@@ -2340,6 +2440,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           metrics={metrics} selected={sel}
           onPick={(id) => { track("metric_selected", { metric: id }); setSel(id); setChooserOpen(false); }}
           onClose={() => setChooserOpen(false)}
+        />
+      )}
+      {/* Picking the PAIR (#408 item 1080). The same chooser, minus the metric
+          already on the map — pairing a metric with itself is the one refusal a
+          picker can prevent instead of explaining. Everything else is offered and
+          the resolver explains its verdict in the legend, because a picker that
+          silently omits options teaches a reader nothing about why. */}
+      {pairOpen && (
+        <ChooserModal
+          metrics={metrics.filter((m) => m.id !== sel)} selected={pairId}
+          onPick={(id) => { track("metric_selected", { metric: id, pair: "1" }); setPairId(id); setPairOpen(false); }}
+          onClose={() => setPairOpen(false)}
         />
       )}
       <SearchModal

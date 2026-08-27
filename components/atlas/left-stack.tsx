@@ -15,6 +15,7 @@ import {
 } from "@/lib/coverage";
 import { useDismiss } from "@/lib/use-dismiss";
 import { legendStops, symbolRadius, type SymbolLevel } from "@/lib/symbols";
+import { BIVARIATE_PALETTE } from "@/lib/bivariate";
 import { SEGMENTED_WIDTH, ViewToggle } from "@/components/atlas/data-table";
 
 /** Legend view mode — shared with india-map's Mode. */
@@ -244,6 +245,7 @@ export function LegendCard({
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
   symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor, alphaNote,
+  pairName, baseName, pairElig, pairActive, onOpenPair, onClearPair,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -276,6 +278,17 @@ export function LegendCard({
   symbolFloor?: { drawn: number; atFloor: number; share: number; threshold: number };
   /** Why this map is faded by population, or null when it is not (#408 item 1077). */
   alphaNote?: string | null;
+  /** The paired metric's name, or null when the map is not paired (#408 item 1080). */
+  pairName?: string | null;
+  /** The metric on the primary axis, for labelling the matrix. */
+  baseName?: string;
+  /** The resolver's verdict. Present and NOT ok means a pair was asked for and
+   *  refused, and the reason is the reader's answer. */
+  pairElig?: { ok: boolean; reason: string; shared: number; floor: number | null } | null;
+  /** Whether the matrix is what the map is actually drawing right now. */
+  pairActive?: boolean;
+  onOpenPair?: () => void;
+  onClearPair?: () => void;
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
@@ -346,6 +359,18 @@ export function LegendCard({
               className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated max-lg:min-h-[26px] max-lg:px-2"
             >
               ⚙ SCALE
+            </button>
+          )}
+          {/* PAIR sits beside SCALE and under the same condition: it is a value-mode
+              instrument, meaningless over the categorical coverage key, and a count
+              is drawn as circles rather than shaded (#408 item 1080). */}
+          {!symbolOn && mode !== "coverage" && (
+            <button
+              onClick={onOpenPair} data-pair-toggle
+              aria-pressed={!!pairActive}
+              className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated max-lg:min-h-[26px] max-lg:px-2"
+            >
+              ⊕ PAIR
             </button>
           )}
         </div>
@@ -475,6 +500,57 @@ export function LegendCard({
           </div>
         </>
       )}
+      {/* THE PAIR (#408 item 1080). The matrix legend is not optional furniture: nine
+          fills are at the limit of what a reader can hold, and unlike a ramp there is
+          no intuition to fall back on. It is drawn at the size of a real key, with
+          both metric names on their axes.
+          A REFUSED pair renders its reason instead. The map stays univariate and
+          says why, which is the difference between a feature declining and a feature
+          appearing broken. */}
+      {pairActive && pairName ? (
+        <div className="mt-2" data-bivariate-legend>
+          <div className="flex items-end gap-2">
+            <div className="flex flex-col-reverse gap-[2px]" aria-hidden>
+              {BIVARIATE_PALETTE.map((row, y) => (
+                <div key={y} className="flex gap-[2px]">
+                  {row.map((c, x) => (
+                    <span
+                      key={x}
+                      data-bivariate-cell={`${x}-${y}`}
+                      className="block h-3 w-3"
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-[3px] font-mono text-[9px] leading-tight text-faint">
+              <span className="truncate" data-bivariate-y>&#8593; {pairName}</span>
+              <span className="truncate" data-bivariate-x>&#8594; {baseName}</span>
+            </div>
+          </div>
+          <button
+            onClick={onClearPair}
+            data-bivariate-clear
+            className="mt-1.5 font-mono text-[9px] tracking-[.1em] text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text max-lg:min-h-[26px]"
+          >
+            UNPAIR
+          </button>
+        </div>
+      ) : pairElig && !pairElig.ok ? (
+        <div className="mt-2 font-mono text-[9px] leading-snug text-faint" data-bivariate-refused>
+          <span className="font-semibold tracking-[.05em]">NOT PAIRED</span>
+          <span aria-hidden> &#183; </span>
+          <span>{pairElig.reason}</span>
+          <button
+            onClick={onClearPair}
+            data-bivariate-clear
+            className="ml-1 underline decoration-dotted underline-offset-2 hover:text-accent-text"
+          >
+            clear
+          </button>
+        </div>
+      ) : null}
       {/* Why this map is faded (#408 item 1077). The map only sets this when the
           fade actually fired, so its presence IS the disclosure — a reader never
           sees a differently-weighted map without being told it is one. Sits under
