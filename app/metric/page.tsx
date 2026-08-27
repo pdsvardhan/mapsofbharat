@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getAllMetrics, type MetricListItem } from "@/lib/metric-page-data";
 import { SITE_OG_IMAGE, SITE_TWITTER_IMAGE, SITE_URL } from "@/lib/site";
 import { coverageOf, sourceLegend, sourceSigil } from "@/lib/source-sigil";
-import { groupByForm } from "@/lib/browse-by-form";
+import { groupByForm, type FormGroup } from "@/lib/browse-by-form";
 
 // Crawlable catalogue of every metric (iter-131 item 829, AC 5). /explore
 // redirects to the atlas /, so this server-rendered index is where the linkable
@@ -76,6 +76,23 @@ function CoverageMark({ levels, silent }: { levels?: string[]; silent?: boolean 
       {!silent && <span className="sr-only">{c.label}</span>}
     </span>
   );
+}
+
+/** A form group's rows clustered by the resolver's reason sentence, in the order
+ *  each sentence first appears in the catalogue.
+ *
+ *  A form is not one argument. `capabilitiesFor` reaches `choropleth` down two
+ *  different preferred paths — the intensive one and the signed-count one — so the
+ *  members of a group can be there for different stated reasons, and printing one
+ *  of them over all of them puts a false sentence on the page. See the render site. */
+function byReason(metrics: FormGroup["metrics"]): [string, FormGroup["metrics"]][] {
+  const out = new Map<string, FormGroup["metrics"]>();
+  for (const m of metrics) {
+    const bucket = out.get(m.reason);
+    if (bucket) bucket.push(m);
+    else out.set(m.reason, [m]);
+  }
+  return [...out.entries()];
 }
 
 export default async function MetricCatalogue(
@@ -162,36 +179,50 @@ export default async function MetricCatalogue(
               <p className="mt-3 max-w-3xl text-[13.5px] leading-relaxed text-muted" data-form-suits>
                 {g.suits}
               </p>
-              {/* The resolver's reader-facing sentence, once per group rather than
-                  once per row: within a form it is the same sentence, and repeating
-                  it 89 times would bury the list it is meant to explain. */}
-              {g.metrics[0] ? (
-                <p className="mt-2 max-w-3xl text-[12.5px] leading-relaxed text-faint" data-form-reason>
-                  {g.metrics[0].reason}
-                </p>
-              ) : null}
-              <ul data-role="category-list" className="mt-3 border-t border-border-faint">
-                {g.metrics.map(({ metric: m }) => (
-                  <li key={m.id}>
-                    <Link
-                      href={`/metric/${m.id}`}
-                      data-role="category-row"
-                      title={`${m.name} — ${m.source}`}
-                      className="grid h-8 items-center gap-x-2 border-b border-border-faint px-2 no-underline transition-colors duration-[160ms] hover:bg-elevated"
-                      style={{ gridTemplateColumns: ROW_COLS }}
-                    >
-                      <span className="truncate text-[13.5px] font-semibold text-bright">{m.name}</span>
-                      <span aria-hidden className="h-0 border-b border-dotted border-border" />
-                      <CoverageMark levels={m.levels} />
-                      <span className="text-right font-mono text-[10px] text-muted">{m.year}</span>
-                      <span className="truncate text-right font-mono text-[9px] font-bold tracking-[.06em] text-foreground">
-                        {sourceSigil(m.source)}
-                      </span>
-                      <span className="truncate text-right font-mono text-[9.5px] text-muted">{m.unit}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              {/* The resolver's reader-facing sentence, once per DISTINCT reason —
+                  not once per group, and not once per row.
+                  Once per group was the first version, taken from the first metric on
+                  the argument that "within a form it is the same sentence". It is not:
+                  forest_change_km2 is a km² change that shading can carry because a
+                  circle cannot say which way it went, and the page filed it under
+                  "already measured per person or per unit of area", which is the one
+                  thing a page about what the data can honestly be must not do.
+                  Once per row would make it true and unreadable — 125 sentences under
+                  125 single-line rows bury the list they annotate. Clustering the rows
+                  by the sentence says each one exactly once and leaves the circles
+                  group, whose members really do share a reason, as it was. */}
+              {byReason(g.metrics).map(([reason, rows], i) => (
+                <div key={reason} data-form-reason-group>
+                  <p
+                    className={`${i === 0 ? "mt-2" : "mt-6"} max-w-3xl text-[12.5px] leading-relaxed text-faint`}
+                    data-form-reason
+                  >
+                    {reason}
+                  </p>
+                  <ul data-role="category-list" className="mt-3 border-t border-border-faint">
+                    {rows.map(({ metric: m }) => (
+                      <li key={m.id}>
+                        <Link
+                          href={`/metric/${m.id}`}
+                          data-role="category-row"
+                          title={`${m.name} — ${m.source}`}
+                          className="grid h-8 items-center gap-x-2 border-b border-border-faint px-2 no-underline transition-colors duration-[160ms] hover:bg-elevated"
+                          style={{ gridTemplateColumns: ROW_COLS }}
+                        >
+                          <span className="truncate text-[13.5px] font-semibold text-bright">{m.name}</span>
+                          <span aria-hidden className="h-0 border-b border-dotted border-border" />
+                          <CoverageMark levels={m.levels} />
+                          <span className="text-right font-mono text-[10px] text-muted">{m.year}</span>
+                          <span className="truncate text-right font-mono text-[9px] font-bold tracking-[.06em] text-foreground">
+                            {sourceSigil(m.source)}
+                          </span>
+                          <span className="truncate text-right font-mono text-[9.5px] text-muted">{m.unit}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </section>
           ))}
           {/* Said out loud rather than quietly dropped. A metric with no values in the
