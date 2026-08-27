@@ -132,12 +132,24 @@ test.describe("catalogue + sitemap (item 829)", () => {
   });
 
   test("the home page links to the catalogue", async ({ page }) => {
-    // `domcontentloaded`, not the default `load` (#608). This asserts that a
-    // crawlable link to the catalogue exists in the document. The default waits for
-    // the LOAD event, which on the explorer means the map's geometry, its tiles and
-    // its fonts — none of which this assertion is about, all of which are slow, and
-    // all of which get slower when the rest of the suite is competing for the CPU.
-    // So what ran out of time was the navigation, not the link.
+    // NOT AN SEO GATE, despite the name. The link is emitted by
+    // components/atlas/left-stack.tsx, which is "use client", so it is absent from
+    // the served HTML — `curl -s / | grep -c 'href="/metric"'` returns 0 — and what
+    // this asserts is that a reader who has run the JS gets a link to the catalogue.
+    // Crawlability is a different claim with its own test: "/metric lists every
+    // metric" above reads the raw response through `request.get`, no browser.
+    //
+    // `domcontentloaded`, not the default `load` (#608). The default waits for the
+    // LOAD event, which on the explorer means the map's geometry, its tiles and its
+    // fonts — none of which this assertion is about, all of which are slow, and all
+    // of which get slower when the rest of the suite is competing for the CPU. So
+    // what ran out of time was the navigation, not the link.
+    //
+    // And the budget has to hold both waits. At the config's 30s the second one could
+    // never be spent: a slow attach would eat the test's whole allowance and the
+    // failure would surface as a bare test timeout, which is exactly the diagnostic
+    // the two-step wait exists to give.
+    test.setTimeout(60_000);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const link = page.locator('a[href="/metric"]').first();
     // Attached first, so a failure says WHICH of the two things went wrong: the link
