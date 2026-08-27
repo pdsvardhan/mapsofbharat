@@ -248,7 +248,8 @@ export function LegendCard({
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
   symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor, alphaNote, alphaBounds,
-  pairName, baseName, pairElig, pairActive, onOpenPair, onClearPair,
+  pairName, baseName, pairElig, pairActive, pairEdgesX, pairEdgesY, pairDecimals, pairUnit,
+  onOpenPair, onClearPair,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -293,8 +294,19 @@ export function LegendCard({
   /** The resolver's verdict. Present and NOT ok means a pair was asked for and
    *  refused, and the reason is the reader's answer. */
   pairElig?: { ok: boolean; reason: string; shared: number; floor: number | null } | null;
-  /** Whether the matrix is what the map is actually drawing right now. */
+  /** Whether the matrix is what the map is actually drawing right now. Comes straight
+   *  from the paint: deriving it here from the pairing verdict is what put a 3x3 key
+   *  over a univariately-painted map wherever the drilled scope was too small to cut
+   *  three bands (#408 item 1080, round 2). */
   pairActive?: boolean;
+  /** The bands the matrix is drawn with, per axis — the k-1 inner edges the paint
+   *  used. Shown as numbers, because a nine-cell key with no boundaries asks the
+   *  reader to take "high" and "low" on trust. */
+  pairEdgesX?: number[];
+  pairEdgesY?: number[];
+  /** Precision and unit for the SECOND axis (the first uses this legend's own). */
+  pairDecimals?: number;
+  pairUnit?: string;
   onOpenPair?: () => void;
   onClearPair?: () => void;
 }) {
@@ -303,6 +315,11 @@ export function LegendCard({
   /** Whole people, Indian grouping. The fade key labels its rows with populations
    *  rather than opacities — 0.28 is not a fact about anywhere. */
   const fmtPop = (v: number) => Math.round(v).toLocaleString("en-IN");
+  /** The k-1 band edges of one matrix axis, in that axis' own precision and unit. */
+  const fmtEdges = (es: number[] | undefined, d: number, u: string) =>
+    (es ?? [])
+      .map((e) => e.toLocaleString("en-IN", { maximumFractionDigits: d }) + (u === "%" ? "%" : ""))
+      .join("  ·  ");
   const binned = mode === "value" && method !== "continuous";
   const edges = binned ? mapEdges : [];
   // Occupancy per class, disclosed beside each row. The research brief's remedy for
@@ -484,6 +501,13 @@ export function LegendCard({
           <div className="mt-2 h-2" style={{ background: "linear-gradient(90deg,#b2182b,#f7f7f7,#2166ac)" /* no-token: ColorBrewer RdBu endpoints — a data-palette swatch, not a UI role */ }} />
           <div className="mt-1 flex justify-between font-mono text-[9.5px] text-faint"><span>below avg</span><span>{avgNote}</span><span>above avg</span></div>
         </>
+      ) : pairActive ? (
+        // A PAIRED MAP HAS NO RAMP. The matrix below is the key, and the fills on the
+        // map come out of it — so drawing the univariate ramp here as well would key
+        // nine colours the map is not painting with five it is not either, which is
+        // the mirror image of the defect that made the matrix key appear over an
+        // unpaired map (#408 item 1080, round 2).
+        null
       ) : binned && edges.length ? (
         <>
           <div className="mt-2 flex h-2">
@@ -535,10 +559,36 @@ export function LegendCard({
                 </div>
               ))}
             </div>
+            {/* Each axis names its metric AND the two boundaries between its three
+                bands. The univariate legend has always printed its class edges; the
+                matrix asked the reader to take "low" and "high" on trust, which on a
+                nine-cell key is the harder read of the two. */}
             <div className="flex min-w-0 flex-1 flex-col gap-[3px] font-mono text-[9px] leading-tight text-faint">
               <span className="truncate" data-bivariate-y>&#8593; {pairName}</span>
+              <span className="truncate pl-2.5" data-bivariate-y-edges>
+                {fmtEdges(pairEdgesY, pairDecimals ?? 0, pairUnit ?? "")}
+              </span>
               <span className="truncate" data-bivariate-x>&#8594; {baseName}</span>
+              <span className="truncate pl-2.5" data-bivariate-x-edges>
+                {fmtEdges(pairEdgesX, decimals, unit)}
+              </span>
             </div>
+          </div>
+          {/* Which rule cut those bands, deep-linked like the univariate method label.
+              It is not always quantile now: each axis runs the same data-driven
+              selector the single-metric map uses, so a distribution that collapses —
+              445 districts at exactly 0% Buddhist — ladders to a floor band instead of
+              painting "none" as the middle one of three. */}
+          <div data-bivariate-method-line className="mt-1.5 font-mono text-[9px] tracking-[.05em] text-faint">
+            <a
+              href="/methodology#bivariate" target="_blank" rel="noopener noreferrer"
+              data-bivariate-method
+              className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
+            >
+              PAIRED
+            </a>
+            <span aria-hidden> · </span>
+            <span>3 bands per axis, cut on each axis&apos; own spread</span>
           </div>
           <button
             onClick={onClearPair}
@@ -636,7 +686,11 @@ export function LegendCard({
           <span>circle AREA ∝ value</span>
         </div>
       )}
-      {!symbolOn && mode !== "coverage" && (
+      {/* Not while a pair is drawn: this line names the SINGLE-metric classification
+          and its class count, and the paired map is using neither — the matrix has its
+          own method line above. It also carries REVERSE, which the matrix palette does
+          not honour, so leaving it up would be a live control with no effect. */}
+      {!symbolOn && mode !== "coverage" && !pairActive && (
         <div
           data-legend-method-line
           className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-faint"

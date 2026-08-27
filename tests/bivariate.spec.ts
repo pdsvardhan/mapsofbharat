@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
 import {
   BIVARIATE_K, BIVARIATE_PALETTE, axisClass, bivariateColor, sharedRegions,
-  bivariateEligible,
+  bivariateEligible, axisBreaks, bivariateScope,
 } from "@/lib/bivariate";
 import { TRANSITION_FLOOR } from "@/lib/coverage-floor";
-import { computeBreaks } from "@/lib/breaks";
+import { classCounts, computeBreaks } from "@/lib/breaks";
 
 // #408 item 1080 — two metrics on one map.
 
@@ -53,6 +53,93 @@ test.describe("the matrix", () => {
     // ever matched, the map would be showing one metric twice.
     expect(bivariateColor(25, ex, 5, ey)).toBe("#5ac8c8");
     expect(bivariateColor(5, ex, 25, ey)).toBe("#be64ac");
+  });
+});
+
+test.describe("the bands on each axis", () => {
+  test("a well-spread axis stays rank-balanced — a third of the regions per band", () => {
+    const xs = Array.from({ length: 600 }, (_, i) => i / 6);
+    const { edges, method } = axisBreaks(xs, { isPct: false });
+    expect(edges).toHaveLength(BIVARIATE_K - 1);
+    expect(method).toBe("quantile");
+    for (const [i, n] of classCounts(xs, edges).entries()) {
+      expect(n, `band ${i} holds ${n} of 600`).toBeGreaterThan(150);
+    }
+  });
+
+  test("a TIE MASS gets its own band, at the bottom — not the middle of three", () => {
+    // The defect, in miniature. 60% of the regions sit at exactly 0 and the rest run
+    // 1..40. Quantile cuts [0, 0.x], and because binning is `v >= edge` BOTH collapsed
+    // edges clear at once, so "none" is painted band 1 of 0..2 — the middle — while
+    // band 0 renders for nobody. It is item 757's incident (445 districts at zero
+    // painted class 4 of 5) one feature over.
+    const xs = [...Array(360).fill(0), ...Array.from({ length: 240 }, (_, i) => 1 + i / 6)];
+
+    const q = computeBreaks(xs, "quantile", BIVARIATE_K, null);
+    expect(axisClass(0, q), "quantile puts 'none' in the middle band").toBe(1);
+    expect(classCounts(xs, q)[0], "and leaves the low band empty").toBe(0);
+
+    const { edges, method } = axisBreaks(xs, { isPct: true });
+    expect(method).toBe("zeroFloor");
+    expect(axisClass(0, edges), "'none' belongs at the bottom of the axis").toBe(0);
+    const counts = classCounts(xs, edges);
+    expect(counts[0]).toBe(360);
+    for (const [i, n] of counts.entries()) expect(n, `band ${i} is empty`).toBeGreaterThan(0);
+  });
+
+  test("an axis cannot see the other one", () => {
+    // The independence property, kept by construction rather than by care: axisBreaks
+    // is handed ONE array and has no parameter through which the second metric could
+    // reach it. Same values in, same bands out, whatever the map is pairing them with.
+    const xs = Array.from({ length: 300 }, (_, i) => (i * 7) % 53);
+    expect(axisBreaks(xs, { isPct: false }).edges)
+      .toEqual(axisBreaks([...xs].reverse(), { isPct: false }).edges);
+  });
+
+  test("a flat axis produces no bands, and says so through the scope check", () => {
+    const flat = Array(300).fill(4);
+    const { edges } = axisBreaks(flat, { isPct: false });
+    const v = bivariateScope({ shared: 300, edgesX: edges, edgesY: [1, 2], scopeLabel: "this view" });
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain("does not vary");
+  });
+});
+
+test.describe("the scope the matrix is actually drawn over", () => {
+  // The legend used to ask "may these two be paired" (nationally) while the paint
+  // asked "can three bands be cut HERE". Focus Goa — 2 districts — and the two
+  // disagreed: a 3x3 key over a univariate map, refusing nothing.
+
+  test("fewer regions than bands is refused, naming the scope and the count", () => {
+    const v = bivariateScope({ shared: 2, edgesX: [], edgesY: [], scopeLabel: "Goa" });
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain("Goa");
+    expect(v.reason).toContain("2 regions in Goa carry");
+    expect(v.reason).toContain(String(BIVARIATE_K));
+    expect(v.shared).toBe(2);
+  });
+
+  test("one region reads as one region", () => {
+    // Chandigarh, the other reproduction. A refusal that says "1 regions" is a
+    // refusal a reader stops trusting.
+    expect(bivariateScope({ shared: 1, edgesX: [], edgesY: [], scopeLabel: "Chandigarh" }).reason)
+      .toContain("1 region in Chandigarh carries");
+  });
+
+  test("enough regions and real bands on both axes holds", () => {
+    const v = bivariateScope({ shared: 40, edgesX: [1, 2], edgesY: [3, 4], scopeLabel: "this view" });
+    expect(v.ok).toBe(true);
+    expect(v.shared).toBe(40);
+  });
+
+  test("the floor is the matrix's own size, not the pairing floor", () => {
+    // A district-level pair needs 690 shared regions NATIONALLY (lib/metric-pairs).
+    // Inside one state there are not 690 districts to be had, so reusing that floor
+    // here would refuse every drill-down. Three is the number a 3x3 needs.
+    expect(bivariateScope({ shared: 3, edgesX: [1, 2], edgesY: [3, 4], scopeLabel: "Sikkim" }).ok)
+      .toBe(true);
+    expect(bivariateScope({ shared: 3, edgesX: [], edgesY: [], scopeLabel: "Sikkim" }).floor)
+      .toBe(BIVARIATE_K);
   });
 });
 
@@ -180,8 +267,11 @@ test.describe("against the real catalogue", () => {
     expect(e.ok, e.reason).toBe(true);
 
     const shared = sharedRegions(lit, sex);
-    const ex = computeBreaks(shared.map((c) => lit[c]), "quantile", BIVARIATE_K, null);
-    const ey = computeBreaks(shared.map((c) => sex[c]), "quantile", BIVARIATE_K, null);
+    // Through axisBreaks, which is what the map calls. This used to duplicate the
+    // paint's hardcoded `computeBreaks(..., "quantile", ...)`, and duplicating a call
+    // is how a test keeps passing after the call it was mirroring changed.
+    const ex = axisBreaks(shared.map((c) => lit[c]), { isPct: true }).edges;
+    const ey = axisBreaks(shared.map((c) => sex[c]), { isPct: false }).edges;
     const used = new Set(shared.map((c) => bivariateColor(lit[c], ex, sex[c], ey)));
 
     // Quantile breaks put a third of the districts in each class on each axis, so a
@@ -190,5 +280,36 @@ test.describe("against the real catalogue", () => {
     // expensive way to draw one of them.
     expect(used.size, `only ${used.size} of 9 cells drawn`).toBeGreaterThanOrEqual(6);
     for (const c of used) expect(BIVARIATE_PALETTE.flat()).toContain(c);
+  });
+
+  test("the three collapsed religion shares no longer paint 'none' as the middle band", async ({ request }) => {
+    // The measured defect, on the real store. buddhist_pct: quantile at k=3 cuts
+    // [0, 0.1] for marginals [0, 445, 288] — the low band empty and 445 districts
+    // reporting EXACTLY zero painted the middle of three. sikh_pct [0, 377, 356] and
+    // jain_pct [0, 374, 359] are the same shape.
+    for (const id of ["buddhist_pct", "sikh_pct", "jain_pct"]) {
+      const res = await request.get(`/api/metrics/${id}?level=district`);
+      expect(res.ok(), `${id} should be in the store`).toBe(true);
+      const { values } = await res.json();
+      const xs = (Object.values(values) as number[]).filter((v) => Number.isFinite(v));
+      const zeros = xs.filter((v) => v === 0).length;
+      expect(zeros / xs.length, `${id} should carry a tie mass at zero`).toBeGreaterThan(0.4);
+
+      // What the hardcoded call did, still measurable.
+      const q = computeBreaks(xs, "quantile", BIVARIATE_K, null);
+      expect(axisClass(0, q), `${id}: quantile paints 'none' as band ${axisClass(0, q)}`)
+        .toBeGreaterThan(0);
+
+      // What the axis does now.
+      const { edges, method } = axisBreaks(xs, { isPct: true });
+      expect(method, `${id} should ladder off quantile`).toBe("zeroFloor");
+      expect(axisClass(0, edges), `${id}: 'none' must be band 0`).toBe(0);
+      const counts = classCounts(xs, edges);
+      expect(counts[0], `${id}: the floor band should hold exactly the zeros`).toBe(zeros);
+      for (const [i, n] of counts.entries()) {
+        expect(n, `${id}: band ${i} of the matrix axis is empty — a legend cell that never appears`)
+          .toBeGreaterThan(0);
+      }
+    }
   });
 });

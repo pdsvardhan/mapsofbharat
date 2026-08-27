@@ -34,6 +34,7 @@
 
 import { preferredViz } from "@/lib/metric-capabilities";
 import { TRANSITION_FLOOR, isTransitionLevel } from "@/lib/coverage-floor";
+import { BreakMethod, computeBreaks, selectMethod } from "@/lib/breaks";
 
 /** Classes per axis. Nine fills total. */
 export const BIVARIATE_K = 3;
@@ -94,6 +95,90 @@ export type Eligibility = {
   shared: number;
   floor: number | null;
 };
+
+/**
+ * The bands for ONE axis of the matrix.
+ *
+ * QUANTILE WAS HARDCODED HERE, and the justification for it was sound: a matrix wants
+ * a third of the regions in each band on each axis, because an empty row is a legend
+ * cell that never appears on the map. What was wrong is that quantile does not deliver
+ * that on a tie mass, and this catalogue is full of them. buddhist_pct at k=3 cuts
+ * edges [0, 0.1] for marginals [0, 445, 288]: the LOW band is empty and the 445
+ * districts reporting EXACTLY ZERO Buddhist population are painted the MIDDLE class of
+ * three. That is item 757's incident — "the 445 districts reporting ZERO Buddhist
+ * population were painted class 4 of 5" — reproduced one feature over, with the same
+ * cause (binning is `v >= edge`, so collapsed edges all clear at once) and the same
+ * remedy already written and tested in lib/breaks. sikh_pct and jain_pct are the same
+ * shape.
+ *
+ * So this reuses selectMethod — the repo's data-driven degeneracy guard, the one the
+ * univariate map is on — at k=3, and it ladders to zeroFloor exactly where a
+ * distribution collapses, giving the floor its own band at the BOTTOM of the axis.
+ *
+ * ONE AXIS AT A TIME, BY CONSTRUCTION. This is handed a single array of values and
+ * cannot see the other axis, so the two can never contaminate each other's bands —
+ * a property that was already true of the hardcoded call and stays true here.
+ *
+ * NO PIVOT, deliberately: `reference` is passed as null even for the two metrics that
+ * have one. A matrix column runs pale -> saturated, a single sequential channel, so a
+ * diverging cut at parity has nothing in the palette to read it by; and on a one-sided
+ * series like child_sex_ratio (no district at or above 1000) it would spend a whole
+ * row of the matrix on a band holding nobody, which is the failure this function
+ * exists to remove.
+ */
+export function axisBreaks(
+  values: number[],
+  opts: { isPct: boolean },
+): { edges: number[]; method: BreakMethod; reason: string } {
+  const choice = selectMethod(values, { isPct: opts.isPct, reference: null }, BIVARIATE_K);
+  return {
+    edges: computeBreaks(values, choice.method, BIVARIATE_K, null),
+    method: choice.method,
+    reason: choice.reason,
+  };
+}
+
+/**
+ * May the matrix be drawn over the scope actually on screen, with these bands?
+ *
+ * SEPARATE FROM bivariateEligible ON PURPOSE, and the separation is the bug. That one
+ * answers "may these two metrics be paired at all", nationally. This one answers "can
+ * the matrix be drawn HERE" — over one focused state, whose shared regions are a
+ * subset and can be fewer than the three a 3x3 needs. The legend used to derive its
+ * own answer from the national verdict while the paint derived a different one from
+ * the scope, so focusing Goa (2 districts) or Chandigarh (1) drew a 3x3 key over a map
+ * painted with the univariate ramp, and said nothing. Both now call this.
+ */
+export function bivariateScope(args: {
+  shared: number;
+  edgesX: number[];
+  edgesY: number[];
+  scopeLabel: string;
+}): Eligibility {
+  const { shared, edgesX, edgesY, scopeLabel } = args;
+  if (shared < BIVARIATE_K) {
+    return {
+      ok: false,
+      shared,
+      floor: BIVARIATE_K,
+      reason: `Only ${shared} ${shared === 1 ? "region in " + scopeLabel + " carries" : "regions in " + scopeLabel + " carry"} both metrics, and a 3x3 matrix needs at least ${BIVARIATE_K} to cut a band on each axis. The map stays on the single-metric ramp here.`,
+    };
+  }
+  if (!edgesX.length || !edgesY.length) {
+    return {
+      ok: false,
+      shared,
+      floor: BIVARIATE_K,
+      reason: `One of these two does not vary across ${scopeLabel}, so there are no bands to cut it into. The map stays on the single-metric ramp here.`,
+    };
+  }
+  return {
+    ok: true,
+    shared,
+    floor: BIVARIATE_K,
+    reason: `${shared} regions in ${scopeLabel} carry both metrics.`,
+  };
+}
 
 /**
  * May these two be drawn as one bivariate map?

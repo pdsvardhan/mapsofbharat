@@ -75,6 +75,77 @@ test.describe("a pair that holds", () => {
     await page.goto("/?m=literacy_rate");
     await expect(page.locator("[data-pair-toggle]")).toBeVisible({ timeout: 25_000 });
   });
+
+  test("the key carries the numbers, not just the nine colours", async ({ page }) => {
+    await page.goto(PAIR);
+    await expect(page.locator("[data-bivariate-legend]")).toBeVisible({ timeout: 25_000 });
+
+    // Two boundaries per axis, in that axis' own units — the univariate legend has
+    // always printed its class edges, and a nine-cell key is the harder read of the
+    // two to take "high" and "low" on trust.
+    const x = page.locator("[data-bivariate-x-edges]");
+    const y = page.locator("[data-bivariate-y-edges]");
+    await expect(x).toContainText(/\d/);
+    await expect(y).toContainText(/\d/);
+    // literacy is a percentage and sex ratio is not: the axes carry their own units.
+    await expect(x).toContainText("%");
+    await expect(y).not.toContainText("%");
+
+    // And the map's five-class ramp is NOT keyed beside it: those colours are not on
+    // this map, and two keys for one map is the same defect as a key for the wrong one.
+    await expect(page.locator("[data-legend-row]")).toHaveCount(0);
+    await expect(page.locator("[data-legend-method-line]")).toHaveCount(0);
+    await expect(page.locator("[data-bivariate-method-line]")).toBeVisible();
+  });
+});
+
+test.describe("a scope too small to cut three bands", () => {
+  // THE ROUND-2 DEFECT. `pairActive` was derived from the national verdict and never
+  // consulted the bands, while the paint required three shared regions IN SCOPE. Focus
+  // a two-district state and the two disagreed: reproduced live, Goa gave
+  // matrixLegend=1 refusal=0 with 0 of 2 fills from the matrix, Chandigarh the same
+  // with 1 district. A 3x3 key over a univariate map, and nothing said so.
+
+  test("Goa refuses the matrix, in words, and keeps the ramp it is really drawn with", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&bi=sex_ratio&lvl=district&st=30&stn=Goa");
+    const refused = page.locator("[data-bivariate-refused]");
+    await expect(refused).toBeVisible({ timeout: 25_000 });
+    await expect(refused).toContainText(/Goa/);
+    await expect(refused).toContainText(/2 regions/);
+    // The key the map cannot honour is gone...
+    await expect(page.locator("[data-bivariate-legend]")).toHaveCount(0);
+    // ...and the single-metric key it IS painting with is back. Not the class rows:
+    // two districts are fewer than the five classes computeBreaks needs, so this scope
+    // paints a smooth ramp, and the method line is what says so.
+    await expect(page.locator("[data-legend-method-line]")).toBeVisible();
+    await expect(page.locator("[data-legend-method-detail]")).toHaveText(/smooth/i);
+  });
+
+  test("Chandigarh — one district — refuses the same way", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&bi=sex_ratio&lvl=district&st=04&stn=Chandigarh");
+    const refused = page.locator("[data-bivariate-refused]");
+    await expect(refused).toBeVisible({ timeout: 25_000 });
+    await expect(refused).toContainText(/1 region in Chandigarh carries/);
+    await expect(page.locator("[data-bivariate-legend]")).toHaveCount(0);
+  });
+
+  test("the fills prove it — nothing in a refused scope comes from the matrix", async ({ page }) => {
+    await page.goto("/?m=literacy_rate&bi=sex_ratio&lvl=district&st=30&stn=Goa");
+    await expect(page.locator("[data-bivariate-refused]")).toBeVisible({ timeout: 25_000 });
+
+    const colors = await page.evaluate(() => {
+      const m = (window as unknown as {
+        __mob_map?: { getFeatureState: (t: unknown) => unknown };
+      }).__mob_map;
+      if (!m) return null;
+      return ["30_585", "30_586"].map((id) =>
+        ((m.getFeatureState({ source: "districts", id }) as { color?: string })?.color ?? "").toLowerCase());
+    });
+    expect(colors, "the map did not expose its handle — nothing was measured").not.toBeNull();
+    expect(colors!.every(Boolean), "Goa's two districts should still be painted").toBe(true);
+    const palette = BIVARIATE_PALETTE.flat().map((c) => c.toLowerCase());
+    for (const c of colors!) expect(palette, `${c} came out of the matrix`).not.toContain(c);
+  });
 });
 
 test.describe("a pair that does not hold says why", () => {

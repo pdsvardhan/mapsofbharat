@@ -33,7 +33,10 @@ import {
   regionAreas, alphaWarrant, alphaByRegion, alphaBounds,
   ALPHA_UNFADED, MAP_GROUND, NO_DATA_FILL, noDataHatchTile, type Warrant,
 } from "@/lib/value-by-alpha";
-import { BIVARIATE_K, bivariateColor, sharedRegions, bivariateEligible, type Eligibility } from "@/lib/bivariate";
+import {
+  BIVARIATE_K, bivariateColor, sharedRegions, bivariateEligible, axisBreaks, bivariateScope,
+  type Eligibility,
+} from "@/lib/bivariate";
 // The single resolver for which forms a metric may honestly take (#575).
 import { canRender, preferredViz } from "@/lib/metric-capabilities";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
@@ -197,9 +200,21 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [pairId, setPairId] = useState<string>(init.bi);
   const pairIdRef = useRef(pairId);
   const pairValuesRef = useRef<Record<string, number>>({});
+  /** The pair's unit and decimals, for the axis that is not the base metric's: the
+   *  matrix key prints real class boundaries now, and a boundary printed with the
+   *  wrong precision is a number the map never used. */
+  const pairUnitRef = useRef<string>("");
+  const pairDecimalsRef = useRef<number>(0);
   const [pairElig, setPairElig] = useState<Eligibility | null>(null);
   const pairEligRef = useRef<Eligibility | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
+  /** What the PAINT decided about the pair, published for the legend: whether the
+   *  matrix is what is on the map, why not when it is not, and the bands it cut.
+   *  One source, because the legend saying "matrix" over a univariately-painted map
+   *  is the whole of item 1080's D1. */
+  type PairView = { drawn: boolean; refusal: Eligibility | null; edgesX: number[]; edgesY: number[] };
+  const [pairView, setPairView] = useState<PairView>({ drawn: false, refusal: null, edgesX: [], edgesY: [] });
+  const pairSigRef = useRef<string>("");
   // Coverage view: which provenance classes are hidden (toggled off in the legend),
   // so a reader can e.g. show only inherited districts (item 830). A hidden class'
   // regions recede to the neutral no-data tone.
@@ -1065,6 +1080,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     let cancelled = false;
     if (!pairId || !sel) {
       pairValuesRef.current = {};
+      pairUnitRef.current = "";
+      pairDecimalsRef.current = 0;
       pairEligRef.current = null;
       setPairElig(null);
       if (dataRef.current) recolor();
@@ -1083,6 +1100,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           yId: pairId, yUnit: md.unit ?? "", yValues: md.values,
         });
         pairValuesRef.current = verdict.ok ? md.values : {};
+        pairUnitRef.current = String(md.unit ?? "");
+        pairDecimalsRef.current = Number.isFinite(md.decimals) ? Number(md.decimals) : 0;
         pairEligRef.current = verdict;
         setPairElig(verdict);
         recolor();
@@ -1090,6 +1109,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         if (cancelled) return;
         // A failed fetch is no pair, never a half-drawn one.
         pairValuesRef.current = {};
+        pairUnitRef.current = "";
+        pairDecimalsRef.current = 0;
         pairEligRef.current = null;
         setPairElig(null);
         recolor();
@@ -1342,26 +1363,46 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // they hold. Not offered in symbol mode — a count already has circles — nor on
     // the 2011 vintages, which have no density series to recover an area from, nor
     // in coverage or vs-average mode, where the colour is not the metric at all.
-    // BIVARIATE (#408 item 1080). Two metrics, one geography, a 3x3 matrix. Breaks
-    // are QUANTILE at k=3 over the SHARED regions only — quantile because a matrix
-    // wants a third of the regions in each band on each axis (an empty row or column
-    // is a legend cell that never appears on the map), and shared-only because a
-    // region the pair does not both cover is not part of this map's population and
-    // must not stretch its bands. Never in symbol mode, coverage or vs-average, and
+    // BIVARIATE (#408 item 1080). Two metrics, one geography, a 3x3 matrix. Bands are
+    // cut over the SHARED regions IN SCOPE only — a region the pair does not both
+    // cover, or that this drill is not showing, is not part of this map's population
+    // and must not stretch its bands. The METHOD is no longer hardcoded to quantile:
+    // lib/bivariate's axisBreaks runs the repo's own degeneracy guard per axis, which
+    // is what stops the 445 districts reporting zero Buddhist population landing in
+    // the middle band of three. Never in symbol mode, coverage or vs-average, and
     // never on the 2011 vintage — the resolver refuses that level outright.
     const pairOk = !!pairEligRef.current?.ok
       && modeRef.current === "value" && !symOn && !vin && Object.keys(pairValuesRef.current).length > 0;
     let biEdgesX: number[] = [];
     let biEdgesY: number[] = [];
+    let biScope: Eligibility | null = null;
     if (pairOk) {
       const shared = sharedRegions(valuesRef.current, pairValuesRef.current)
         .filter((c) => scope.has(c));
       if (shared.length >= BIVARIATE_K) {
-        biEdgesX = computeBreaks(shared.map((c) => valuesRef.current[c]), "quantile", BIVARIATE_K, null);
-        biEdgesY = computeBreaks(shared.map((c) => pairValuesRef.current[c]), "quantile", BIVARIATE_K, null);
+        biEdgesX = axisBreaks(shared.map((c) => valuesRef.current[c]), { isPct: md.unit === "%" }).edges;
+        biEdgesY = axisBreaks(shared.map((c) => pairValuesRef.current[c]), { isPct: pairUnitRef.current === "%" }).edges;
       }
+      biScope = bivariateScope({
+        shared: shared.length,
+        edgesX: biEdgesX,
+        edgesY: biEdgesY,
+        scopeLabel: focusRef.current?.name ?? "this view",
+      });
     }
-    const biOn = pairOk && biEdgesX.length > 0 && biEdgesY.length > 0;
+    // ONE CONDITION FOR THE PAINT AND FOR THE KEY (#408 item 1080, round 2). The
+    // legend used to derive `pairActive` from the national verdict alone, so focusing
+    // Goa (2 shared districts) or Chandigarh (1) drew a 3x3 matrix key over a map
+    // painted with the univariate ramp — and refused nothing, because as far as the
+    // resolver was concerned the pair held. It does hold; it just cannot be DRAWN
+    // here, which is a different sentence and the reader is owed it.
+    const biOn = pairOk && !!biScope?.ok;
+    const biRefusal = biScope && !biScope.ok ? biScope : null;
+    const pairSig = `${biOn}|${biRefusal?.reason ?? ""}|${biEdgesX.join(",")}|${biEdgesY.join(",")}`;
+    if (pairSigRef.current !== pairSig) {
+      pairSigRef.current = pairSig;
+      setPairView({ drawn: biOn, refusal: biRefusal, edgesX: biEdgesX, edgesY: biEdgesY });
+    }
 
     const wts = weightRef.current[levelRef.current] ?? { pop: {}, area: {} };
     const warr = (!vin && !symOn && !biOn && modeRef.current === "value" && breaks.length > 0)
@@ -2140,8 +2181,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   // lets a refused pair say why instead of quietly doing nothing.
                   pairName={pairId ? (metrics.find((m) => m.id === pairId)?.name ?? pairId) : null}
                   baseName={data?.name ?? ""}
-                  pairElig={pairElig}
-                  pairActive={!!pairElig?.ok && mode === "value" && !symbolOn && vintage !== "2011"}
+                  // A scope refusal outranks the national verdict: "these two may be
+                  // paired" is true and useless while the drilled state has two
+                  // districts to cut three bands from. The reader is told the one
+                  // that explains the map in front of them.
+                  pairElig={pairView.refusal ?? pairElig}
+                  // Straight from the paint (#408 item 1080, round 2) — this used to
+                  // be a second, looser condition that never consulted the bands.
+                  pairActive={pairView.drawn}
+                  // The bands themselves, so the matrix key carries numbers like the
+                  // univariate legend does.
+                  pairEdgesX={pairView.edgesX} pairEdgesY={pairView.edgesY}
+                  pairDecimals={pairDecimalsRef.current} pairUnit={pairUnitRef.current}
                   onOpenPair={() => { setPairOpen(true); setChooserOpen(false); setScaleOpen(false); setSearchOpen(false); }}
                   onClearPair={() => setPairId("")}
                 />
