@@ -1,4 +1,5 @@
-// Refuse `cmd | grep -q` in any script that sets pipefail (#609).
+// Refuse early-exit pipelines — `cmd | grep -q`, `| head -N`, `| grep -m N`,
+// `| read` — in any script that runs under pipefail (#609).
 //
 // The mechanism, and why a local fix was never enough, is in
 // scripts/lib/pipefail-grep.cjs. This is the walk.
@@ -10,13 +11,18 @@
 // from a real pass unless the count is part of the verdict. So a walk that finds no
 // scripts is a FAILURE here, not a pass.
 //
+// WHY IT PRINTS THE LATENT ONES. `x="$(cmd | head -1)"` drops the pipeline's status
+// on the floor, so it is not a live bug and the detector says so (the exemption and
+// its limits are documented in the library). But an exemption nobody can see is a
+// skip, and a silent skip reads exactly like a pass. They are listed every run.
+//
 //   node scripts/check-pipefail-grep.mjs
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 
-import { findEarlyExitPipelines } from "./lib/pipefail-grep.cjs";
+import { findEarlyExitPipelines, sourcedUnderPipefail } from "./lib/pipefail-grep.cjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -40,7 +46,7 @@ function walk(dir, acc = []) {
   return acc;
 }
 
-const files = walk(ROOT);
+const files = walk(ROOT).map((path) => ({ path, source: readFileSync(path, "utf8") }));
 
 if (files.length === 0) {
   console.error("check-pipefail-grep: found no .sh files to scan.");
@@ -49,27 +55,43 @@ if (files.length === 0) {
   process.exit(2);
 }
 
-let offences = 0;
+// A library sets no shell options of its own; it inherits them from whoever sources
+// it. scripts/lib/stage-run-tree.sh runs under pipefail three times over and was
+// permanently exempt while this verdict was per file (iter-46 item 1075).
+const inherited = sourcedUnderPipefail(files);
+
+const offences = [];
+const latent = [];
 for (const file of files) {
-  const rel = relative(ROOT, file);
-  for (const hit of findEarlyExitPipelines(readFileSync(file, "utf8"))) {
-    offences += 1;
-    console.error(`${rel}:${hit.line}: ${hit.text}`);
+  const rel = relative(ROOT, file.path);
+  for (const hit of findEarlyExitPipelines(file.source, { underPipefail: inherited.has(file.path) })) {
+    (hit.latent ? latent : offences).push(`${rel}:${hit.line}: [${hit.kind}] ${hit.text}`);
   }
 }
 
-if (offences > 0) {
+if (offences.length > 0) {
+  for (const o of offences) console.error(o);
   console.error("");
-  console.error(`check-pipefail-grep: ${offences} early-exit pipeline(s) under pipefail.`);
-  console.error("  `grep -q` exits as soon as it has an answer; the writer upstream takes");
-  console.error("  SIGPIPE, and pipefail reports the WRITER's 141. So the pipeline fails");
-  console.error("  exactly when the match came quickly — an answer that inverts under load.");
+  console.error(`check-pipefail-grep: ${offences.length} early-exit pipeline(s) under pipefail.`);
+  console.error("  A consumer that stops reading before its input is done — grep -q, grep -m N,");
+  console.error("  head -N, read — kills the writer with SIGPIPE, and pipefail reports the");
+  console.error("  WRITER's 141. So the pipeline fails exactly when the answer came quickly:");
+  console.error("  a result that inverts under load.");
   console.error("");
-  console.error("  Remove the pipe rather than the -q:");
+  console.error("  Remove the pipe, or read to EOF:");
   console.error("    [ -n \"$(cmd)\" ]                 # anything at all on stdout");
   console.error("    grep -qx -- \"$n\" <<<\"$list\"      # a here-string is not a pipe");
+  console.error("    cmd | awk 'NR==1'               # awk reads to EOF; head -1 does not");
   console.error("    [ \"$(cmd | grep -c PATTERN)\" -gt 0 ]   # grep -c reads to EOF");
   process.exit(1);
 }
 
 console.log(`check-pipefail-grep: OK — ${files.length} shell script(s) scanned, no early-exit pipelines under pipefail`);
+if (latent.length > 0) {
+  console.log(`  ${latent.length} latent capture(s), exempt because the status is never consulted:`);
+  for (const l of latent) console.log(`    ${l}`);
+  console.log("  Each is `name=$(… | head -1)` in a script without `set -e`: the value is");
+  console.log("  correct and the 141 is discarded unread. Adding -e to any of them makes");
+  console.log("  this guard fail on it. Listed rather than hidden — a silent exemption and");
+  console.log("  a pass must not print the same thing.");
+}

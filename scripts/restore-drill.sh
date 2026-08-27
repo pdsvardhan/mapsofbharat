@@ -82,7 +82,11 @@ log "restoring from $SNAP"
 # ── 1. the canonical DB opens and is intact ──────────────────────────────────
 [ -f "$SNAP/mapsofbharat.db.gz" ] || fail "snapshot has no mapsofbharat.db.gz"
 gunzip -c "$SNAP/mapsofbharat.db.gz" > "$WORK/mapsofbharat.db" || fail "gunzip failed"
-verdict="$(sqlite3 "$WORK/mapsofbharat.db" 'PRAGMA integrity_check;' 2>&1 | head -1)"
+# `awk NR==1`, not `head -1`: head has its answer after one line and dies, sqlite3
+# takes SIGPIPE, and pipefail reports the writer's 141 (#609). It is latent here —
+# nothing reads the status of an assignment — but "latent" is a property of the
+# code around it, and the code around it changes. awk reads to EOF.
+verdict="$(sqlite3 "$WORK/mapsofbharat.db" 'PRAGMA integrity_check;' 2>&1 | awk 'NR==1')"
 [ "$verdict" = "ok" ] || fail "restored DB fails integrity_check: $verdict"
 R_METRICS="$(sqlite3 "$WORK/mapsofbharat.db" 'SELECT COUNT(*) FROM metrics;')"
 R_VALUES="$(sqlite3 "$WORK/mapsofbharat.db" 'SELECT COUNT(*) FROM metric_values;')"
@@ -245,13 +249,13 @@ log "raw mirror holds $mirrored files (backup recorded $declared at snapshot tim
 # 903 zero-byte files would satisfy any count check.
 if [ "$FROM_REMOTE" -eq 1 ]; then
   mkdir -p "$WORK/rawprobe"
-  probe="$(rclone lsf "$MIRROR/pipeline/raw" --files-only 2>/dev/null | head -1)"
+  probe="$(rclone lsf "$MIRROR/pipeline/raw" --files-only 2>/dev/null | awk 'NR==1')"
   [ -n "$probe" ] || fail "no files listed under the remote raw mirror"
   rclone copy "$MIRROR/pipeline/raw/$probe" "$WORK/rawprobe" 2>/dev/null \
     || fail "could not restore $probe from the remote mirror"
   sz="$(stat -c%s "$WORK/rawprobe/$probe" 2>/dev/null || echo 0)"
 else
-  probe="$(find "$MIRROR" -type f -size +1k | head -1)"
+  probe="$(find "$MIRROR" -type f -size +1k | awk 'NR==1')"
   [ -n "$probe" ] || fail "no non-trivial file found in the local raw mirror"
   sz="$(stat -c%s "$probe" 2>/dev/null || echo 0)"
 fi
