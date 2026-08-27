@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getAllMetrics, type MetricListItem } from "@/lib/metric-page-data";
 import { SITE_OG_IMAGE, SITE_TWITTER_IMAGE, SITE_URL } from "@/lib/site";
 import { coverageOf, sourceLegend, sourceSigil } from "@/lib/source-sigil";
+import { groupByForm } from "@/lib/browse-by-form";
 
 // Crawlable catalogue of every metric (iter-131 item 829, AC 5). /explore
 // redirects to the atlas /, so this server-rendered index is where the linkable
@@ -77,8 +78,16 @@ function CoverageMark({ levels, silent }: { levels?: string[]; silent?: boolean 
   );
 }
 
-export default function MetricCatalogue() {
+export default async function MetricCatalogue(
+  { searchParams }: { searchParams: Promise<{ by?: string }> },
+) {
   const metrics = getAllMetrics();
+  // BY FORM is a facet, not a second page (owner ruling 2026-08-27). The catalogue
+  // already is the list of everything; what changes is the question it answers —
+  // "what is this about" or "what can this honestly be drawn as". One URL, one
+  // sitemap entry, and the by-form view is addressable and shareable.
+  const byForm = ((await searchParams)?.by ?? "") === "form";
+  const forms = byForm ? groupByForm() : null;
 
   const byCategory = new Map<string, MetricListItem[]>();
   for (const m of metrics) {
@@ -115,7 +124,89 @@ export default function MetricCatalogue() {
         embed. Pick one to see it mapped across India with a ranked table of every district.
       </p>
 
-      {[...byCategory.entries()].map(([cat, ms]) => (
+      {/* The facet switch. Two links rather than a control, so each view has a URL a
+          reader can send someone (#575 item 1081). */}
+      <div className="mt-6 flex items-center gap-2 text-[11px] font-bold tracking-[.08em]" data-facet-switch>
+        <Link
+          href="/metric"
+          data-facet="category"
+          aria-current={byForm ? undefined : "page"}
+          className={`rounded-sm border px-2 py-1 no-underline ${byForm ? "border-border text-faint hover:bg-elevated" : "border-accent-border bg-elevated text-accent-text"}`}
+        >
+          BY SUBJECT
+        </Link>
+        <Link
+          href="/metric?by=form"
+          data-facet="form"
+          aria-current={byForm ? "page" : undefined}
+          className={`rounded-sm border px-2 py-1 no-underline ${byForm ? "border-accent-border bg-elevated text-accent-text" : "border-border text-faint hover:bg-elevated"}`}
+        >
+          BY FORM
+        </Link>
+      </div>
+
+      {byForm && forms ? (
+        <>
+          <p className="mt-6 max-w-3xl leading-relaxed text-muted">
+            The form a map takes is a property of the DATA, not a preference. A total
+            adds up across districts, so shading it lets a large district shout and it
+            is drawn as circles instead; a rate is already measured per person, so it
+            is shaded. Each indicator appears once, under the instrument its numbers
+            can honestly take &mdash; the same rule the map itself uses when it opens.
+          </p>
+          {forms.groups.map((g) => (
+            <section key={g.viz} className="mt-10" data-form-group={g.viz}>
+              <h2 className="border-b border-border-soft pb-2 text-[13px] font-bold uppercase tracking-[.12em] text-faint">
+                {g.name} <span className="font-normal text-faint">&middot; {g.metrics.length}</span>
+              </h2>
+              <p className="mt-3 max-w-3xl text-[13.5px] leading-relaxed text-muted" data-form-suits>
+                {g.suits}
+              </p>
+              {/* The resolver's reader-facing sentence, once per group rather than
+                  once per row: within a form it is the same sentence, and repeating
+                  it 89 times would bury the list it is meant to explain. */}
+              {g.metrics[0] ? (
+                <p className="mt-2 max-w-3xl text-[12.5px] leading-relaxed text-faint" data-form-reason>
+                  {g.metrics[0].reason}
+                </p>
+              ) : null}
+              <ul data-role="category-list" className="mt-3 border-t border-border-faint">
+                {g.metrics.map(({ metric: m }) => (
+                  <li key={m.id}>
+                    <Link
+                      href={`/metric/${m.id}`}
+                      data-role="category-row"
+                      title={`${m.name} — ${m.source}`}
+                      className="grid h-8 items-center gap-x-2 border-b border-border-faint px-2 no-underline transition-colors duration-[160ms] hover:bg-elevated"
+                      style={{ gridTemplateColumns: ROW_COLS }}
+                    >
+                      <span className="truncate text-[13.5px] font-semibold text-bright">{m.name}</span>
+                      <span aria-hidden className="h-0 border-b border-dotted border-border" />
+                      <CoverageMark levels={m.levels} />
+                      <span className="text-right font-mono text-[10px] text-muted">{m.year}</span>
+                      <span className="truncate text-right font-mono text-[9px] font-bold tracking-[.06em] text-foreground">
+                        {sourceSigil(m.source)}
+                      </span>
+                      <span className="truncate text-right font-mono text-[9.5px] text-muted">{m.unit}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          {/* Said out loud rather than quietly dropped. A metric with no values in the
+              store cannot be asked what form suits it, and filing it under a guess
+              would put a claim on this page that nothing backs. */}
+          {forms.omitted > 0 ? (
+            <p className="mt-8 text-[12px] leading-relaxed text-faint" data-form-omitted>
+              {forms.omitted} indicator{forms.omitted === 1 ? " is" : "s are"} not listed here:
+              the store carries no values for {forms.omitted === 1 ? "it" : "them"} yet, and the
+              form that suits an indicator is decided from its numbers.
+            </p>
+          ) : null}
+        </>
+      ) : (
+      [...byCategory.entries()].map(([cat, ms]) => (
         <section key={cat} className="mt-10">
           <h2 className="border-b border-border-soft pb-2 text-[13px] font-bold uppercase tracking-[.12em] text-faint">
             {cat} <span className="font-normal text-faint">· {ms.length}</span>
@@ -162,7 +253,7 @@ export default function MetricCatalogue() {
             </span>
           </div>
         </section>
-      ))}
+      )))}
 
       <footer className="mt-12 border-t border-border-soft pt-5 text-[12px] leading-relaxed text-muted">
         See the{" "}

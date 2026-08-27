@@ -158,7 +158,13 @@ fi
 echo "test-isolated: verified the instance writes to the scratch store"
 echo
 
+# DB_PATH goes to the TEST PROCESS too, not only to the scratch server.
+# A spec that imports from lib/ runs node-side, in the Playwright worker, and a
+# worker without DB_PATH opens no store — so lib/browse-by-form returned an empty
+# catalogue and the spec read that as the page being broken. It is the same atlas
+# file the server is given and lib/db opens it readonly, so this can only read.
 BASE_URL="http://127.0.0.1:$PORT" \
+DB_PATH="$REPO/data/mapsofbharat.db" \
 CORRECTIONS_ADMIN_TOKEN="$TOKEN" \
 CORRECTIONS_SCRATCH_DB="$SCRATCH_DB" \
 SITE_LAUNCHED="$LAUNCHED" \

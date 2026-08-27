@@ -1,0 +1,41 @@
+{
+  "tests": "tests/browse-by-form.spec.ts",
+  "mutations": [
+    {
+      "name": "the LAST capability wins instead of the preferred one, so every metric is filed under what merely tolerates it",
+      "file": "lib/browse-by-form.ts",
+      "find": "    const top = caps.find((c) => c.standing === \"preferred\") ?? caps[0];",
+      "replace": "    const top = caps[caps.length - 1] ?? caps[0];"
+    },
+    {
+      "name": "a metric with no values is filed under a guess rather than omitted",
+      "file": "lib/browse-by-form.ts",
+      "find": "    if (!ex) { omitted += 1; continue; }",
+      "replace": "    const ex2 = ex ?? [0, 1]; if (!ex2) { omitted += 1; continue; }"
+    },
+    {
+      "name": "the value extremes are never read, so the signed-count case cannot be caught",
+      "file": "lib/browse-by-form.ts",
+      "find": "  for (const r of rows) {\n    if (Number.isFinite(r.mn) && Number.isFinite(r.mx)) out.set(String(r.metric_id), [r.mn, r.mx]);\n  }",
+      "replace": "  for (const r of rows) {\n    out.set(String(r.metric_id), [1, 1]);\n  }"
+    },
+    {
+      "name": "empty groups are kept, so the page advertises a form with nothing in it",
+      "file": "lib/browse-by-form.ts",
+      "find": "    .filter((g) => g.metrics.length > 0);",
+      "replace": "    ;"
+    },
+    {
+      "name": "the form's name stops coming from the resolver",
+      "file": "lib/browse-by-form.ts",
+      "find": "      name: VISUALIZATIONS[viz].name,",
+      "replace": "      name: viz,"
+    },
+    {
+      "name": "the form's description stops coming from the resolver",
+      "file": "lib/browse-by-form.ts",
+      "find": "      suits: VISUALIZATIONS[viz].suits,",
+      "replace": "      suits: \"A map.\","
+    }
+  ]
+}
