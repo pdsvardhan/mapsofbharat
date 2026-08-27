@@ -453,11 +453,13 @@ test.describe("what axe cannot see", () => {
   // one box had no focusable children at all so axe caught it, and the other had three
   // in its header so axe did not.
   //
-  // So this asks the question axe cannot: can focus alone drive this box to its bottom?
+  // STATIC ANALYSIS OF THE FOCUS MODEL, not synthetic key presses - the verifier was
+  // right that the first name for this test oversold its mechanism. It asks the question
+  // axe cannot: can focus alone drive this box to its bottom?
   // A region is reachable if it is focusable ITSELF, or if its focusable descendants
   // extend past the point where scrolling stops mattering. Anything else hides content
   // from a keyboard.
-  test("every scrollable region can actually be scrolled by keyboard", async ({ page }) => {
+  test("every scrollable region is reachable by focus, and named if it is a tab stop", async ({ page }) => {
     const findings: string[] = [];
     let examined = 0;
 
@@ -467,7 +469,7 @@ test.describe("what axe cannot see", () => {
       await page.waitForTimeout(600);
 
       const boxes = await page.evaluate(() => {
-        const out: { route: string; cls: string; scrollH: number; clientH: number; focusable: boolean; deepest: number | null; n: number }[] = [];
+        const out: { route: string; cls: string; scrollH: number; clientH: number; focusable: boolean; named: boolean; deepest: number | null; n: number }[] = [];
         for (const el of Array.from(document.querySelectorAll<HTMLElement>("main *"))) {
           const scrollsVertically = el.scrollHeight > el.clientHeight * 1.5 && el.clientHeight > 80;
           if (!scrollsVertically) continue;
@@ -475,6 +477,9 @@ test.describe("what axe cannot see", () => {
           if (!/auto|scroll/.test(style.overflowY)) continue;
 
           const focusable = el.tabIndex >= 0;
+          const named =
+            !!el.getAttribute("role") &&
+            !!(el.getAttribute("aria-label") || el.getAttribute("aria-labelledby"));
           const kids = Array.from(
             el.querySelectorAll<HTMLElement>('a[href],button,select,input,textarea,[tabindex]:not([tabindex="-1"])'),
           ).filter((k) => !(k as HTMLButtonElement).disabled);
@@ -486,6 +491,7 @@ test.describe("what axe cannot see", () => {
             scrollH: el.scrollHeight,
             clientH: el.clientHeight,
             focusable,
+            named,
             deepest: tops.length ? Math.round(Math.max(...tops)) : null,
             n: kids.length,
           });
@@ -495,7 +501,20 @@ test.describe("what axe cannot see", () => {
 
       examined += boxes.length;
       for (const b of boxes) {
-        if (b.focusable) continue;
+        if (b.focusable) {
+          // A BARE tabIndex IS NOT THE FIX. Making a scroll box focusable without naming
+          // it just adds an unlabelled tab stop, which is the trade metric-share.tsx
+          // documents and the reason #631's fix carries role + aria-label. The first
+          // version of this guard was satisfied by tabIndex alone, so it would have gone
+          // green on half the fix - caught by the verifier, not by me.
+          if (!b.named) {
+            findings.push(
+              `${b.route} .${b.cls}: focusable but unnamed - a scroll box that is a tab ` +
+                `stop needs a role and an accessible name, or it is an anonymous stop`,
+            );
+          }
+          continue;
+        }
         // Focus can only drive the scroll as far as its deepest focusable child. Past
         // that point the remaining content is mouse-only.
         const reachable = b.deepest !== null && b.deepest >= b.scrollH - b.clientH;
