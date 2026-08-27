@@ -243,7 +243,7 @@ export function LegendCard({
   mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
-  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor,
+  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor, alphaNote,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -274,6 +274,8 @@ export function LegendCard({
   symbolMax: number; symbolLevel: SymbolLevel;
   /** How many marks the floor flattens, from lib/symbols floorShare (#566). */
   symbolFloor?: { drawn: number; atFloor: number; share: number; threshold: number };
+  /** Why this map is faded by population, or null when it is not (#408 item 1077). */
+  alphaNote?: string | null;
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
@@ -473,6 +475,26 @@ export function LegendCard({
           </div>
         </>
       )}
+      {/* Why this map is faded (#408 item 1077). The map only sets this when the
+          fade actually fired, so its presence IS the disclosure — a reader never
+          sees a differently-weighted map without being told it is one. Sits under
+          the ramp because the ramp is what it qualifies. */}
+      {alphaNote ? (
+        <div
+          data-alpha-note
+          className="mt-2 font-mono text-[9px] leading-snug text-faint"
+        >
+          <a
+            href="/methodology#value-by-alpha" target="_blank" rel="noopener noreferrer"
+            data-alpha-method
+            className="font-semibold tracking-[.05em] text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
+          >
+            FADED BY POPULATION
+          </a>
+          <span aria-hidden> · </span>
+          <span>{alphaNote}</span>
+        </div>
+      ) : null}
       {symbolOn && (
         <div data-symbol-method-line className="mt-2 text-[9.5px] font-semibold tracking-[.05em] text-faint">
           <a

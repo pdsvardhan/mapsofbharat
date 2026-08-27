@@ -29,6 +29,7 @@ import type { SocialFeature } from "@/lib/social-export";
 import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { floorShare, symbolRadius, type SymbolLevel } from "@/lib/symbols";
+import { regionAreas, alphaWarrant, alphaByRegion, type Warrant } from "@/lib/value-by-alpha";
 // The single resolver for which forms a metric may honestly take (#575).
 import { canRender, preferredViz } from "@/lib/metric-capabilities";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
@@ -118,6 +119,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const valuesRef = useRef<Record<string, number>>({});
+  // Value-by-alpha inputs (#408 item 1077). Cached per LEVEL, not per metric: these
+  // are two Census 2011 series and they are the same for every map drawn at that
+  // level, so the fetch happens once and every later metric reuses it.
+  const weightRef = useRef<Record<string, { pop: Record<string, number>; area: Record<string, number> }>>({});
+  const alphaRef = useRef<Record<string, number>>({});
+  const warrantRef = useRef<Warrant | null>(null);
+  const [warrant, setWarrant] = useState<Warrant | null>(null);
   const estimatedRef = useRef<Record<string, 1>>({});
   const estimateKindRef = useRef<Record<string, string>>({});
   const estimatedFromRef = useRef<Record<string, string>>({});
@@ -551,9 +559,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
       const fillPaint = {
         "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
+        // The last arm is value-by-alpha (#408 item 1077): per-region opacity from
+        // how many people the region holds, defaulting to the flat 0.9 this layer
+        // always used when no fade is warranted. dim and hover still win — a reader
+        // pointing at a region must see it fully whatever its population.
         "fill-opacity": ["case",
           ["boolean", ["feature-state", "dim"], false], 0.15,
-          ["boolean", ["feature-state", "hover"], false], 1, 0.9],
+          ["boolean", ["feature-state", "hover"], false], 1,
+          ["coalesce", ["feature-state", "alpha"], 0.9]],
         "fill-color-transition": { duration: 400 },
         "fill-opacity-transition": { duration: 160 },
       };
@@ -954,6 +967,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const on = forced === null ? preferredViz(sel, unit, vals) === "symbol" : forced && eligible;
       symbolOnRef.current = on;
       setSymbolOn(on);
+      // Before the first paint, so the map does not draw once un-faded and then
+      // visibly reflow into the faded version a moment later.
+      await ensureWeights(effLevel);
+      if (cancelled) return;
       recolor();
     })();
     return () => { cancelled = true; };
@@ -1109,6 +1126,37 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       if (map.getSource(s)) map.removeFeatureState({ source: s });
   }
 
+  /** Population and recovered area for a level — fetched once, then cached.
+   *
+   *  area = pop_total / pop_density, both Census 2011, both already in the store.
+   *  Not an approximation of the published area: the recovery of the very figure the
+   *  source divided by. Kutch comes back 45,486 km² against a published 45,674 — the
+   *  0.4% is the rounding in the printed density.
+   *
+   *  Only the current-day layers carry a density series, so only they can have an
+   *  area recovered at all. The 2011 vintages are cached as EMPTY and the warrant
+   *  then refuses on its own terms rather than this silently skipping — a skip that
+   *  looks like a pass is the shape this repo keeps finding in its own guards. */
+  async function ensureWeights(level: string): Promise<void> {
+    if (weightRef.current[level]) return;
+    if (level !== "district" && level !== "state") {
+      weightRef.current[level] = { pop: {}, area: {} };
+      return;
+    }
+    try {
+      const [p, d] = await Promise.all([
+        fetch(`/api/metrics/pop_total?level=${level}`).then((r) => r.json()),
+        fetch(`/api/metrics/pop_density?level=${level}`).then((r) => r.json()),
+      ]);
+      const pop = (p?.values ?? {}) as Record<string, number>;
+      const den = (d?.values ?? {}) as Record<string, number>;
+      weightRef.current[level] = { pop, area: regionAreas(pop, den) };
+    } catch {
+      // A failed fetch means no fade, never a wrong fade.
+      weightRef.current[level] = { pop: {}, area: {} };
+    }
+  }
+
   function recolor() {
     const map = mapRef.current;
     const md = dataRef.current;
@@ -1155,6 +1203,25 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     let lumSum = 0, lumN = 0; // backdrop mean for the state-outline overlay (to-do 348)
     const breaks = modeRef.current === "value"
       ? computeBreaks(vals, brkRef.current, 5, metricRefRef.current) : [];
+    // Value-by-alpha (#408 item 1077, owner ruling under #575: the form follows the
+    // DATA). A choropleth's visual weight is AREA; a rate is about PEOPLE. Where the
+    // map's colour is not where the people are, regions are faded by how many people
+    // they hold. Not offered in symbol mode — a count already has circles — nor on
+    // the 2011 vintages, which have no density series to recover an area from, nor
+    // in coverage or vs-average mode, where the colour is not the metric at all.
+    const wts = weightRef.current[levelRef.current] ?? { pop: {}, area: {} };
+    const warr = (!vin && !symOn && modeRef.current === "value" && breaks.length > 0)
+      ? alphaWarrant({ values: valuesRef.current, pop: wts.pop, area: wts.area, edges: breaks })
+      : null;
+    alphaRef.current = warr?.warranted
+      ? alphaByRegion(wts.pop, codes.filter((c) => wts.pop[c] > 0))
+      : {};
+    if ((warrantRef.current?.warranted ?? null) !== (warr?.warranted ?? null)
+        || warrantRef.current?.reason !== warr?.reason) {
+      warrantRef.current = warr;
+      setWarrant(warr);
+    }
+
     const basePal = PALETTES[palRef.current].fn;
     const pal = revRef.current ? (t: number) => basePal(1 - t) : basePal;
     const maxDev = Math.max(...vals.map((v) => Math.abs(v - mean))) || 1;
@@ -1196,7 +1263,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // `r` rides the same write: the wrapper mirrors it onto the centroid source,
       // where the circle layer reads it. Zero when symbol mode is off, so switching
       // back to a choropleth cannot leave stale circles behind.
-      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0 });
+      // `alpha` rides the same write as `color` (#408 item 1077). 0.9 is the
+      // unfaded default the fill layer used before this existed, so a map with no
+      // warrant paints exactly as it always did.
+      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0, alpha: alphaRef.current[code] ?? 0.9 });
       lumSum += fillLuminance(color);
       lumN++;
     }
@@ -1883,6 +1953,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                     entries.map((e) => e.value),
                     level === "state" ? "state" : "district"
                   )}
+                  // Why this map is faded, in the reader's words (#408 item 1077).
+                  // Present only when the fade actually fired.
+                  alphaNote={warrant?.warranted ? warrant.reason : null}
                 />
               </div>
             )}

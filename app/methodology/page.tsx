@@ -137,6 +137,29 @@ export default function MethodologyPage() {
         ))}
       </dl>
 
+      <h2 id="forms" className="mt-10 scroll-mt-24 border-b border-border-soft pb-2 text-[13px] font-bold tracking-[.12em] text-faint">HOW THE MAP IS DRAWN</h2>
+      <p className="mt-4 text-[14px] leading-relaxed text-muted">
+        Classing decides which colours the map uses. This decides whether colour is the
+        right instrument at all. A choropleth gives every region the visual weight of its
+        AREA, and for most of what this atlas publishes that is the wrong weight &mdash;
+        so two of these forms exist to take it back. Which one a map uses is a property of
+        the DATA, not a preference: the map opens in the form its numbers can honestly
+        take, and offers you the alternatives only where they are also honest.
+      </p>
+      <dl className="mt-4 space-y-3">
+        {(
+          [
+            ["symbol-maps", "Proportional circles", "For a COUNT \u2014 people, tonnes, head of livestock \u2014 shading is simply the wrong instrument. The eye reads area, so on a shaded map Kutch outweighs Mumbai City by the 291\u00d7 ratio of their surfaces whatever colour either one takes, and a count is a quantity that adds up rather than one already measured per person. A circle\u2019s radius is tied only to the value, so it is decoupled from the polygon entirely. Circle AREA is proportional to the value, not radius \u2014 four times the count draws twice the radius, so twice the ink means twice the quantity. Each circle sits on a point computed offline to lie inside its own region, so none is drawn out at sea or over a neighbour."],
+            ["value-by-alpha", "Faded by population", "A rate is already measured per person, so circles would invent a distortion that normalising had removed. But the shaded map still gives every district the weight of its acreage, and India\u2019s districts are not the same size or anything like as evenly peopled: 82% of the country\u2019s surface sits in the lowest population-density band while only 51% of Indians do. Where a map\u2019s colour is not where its people are, regions are faded by how many people they hold, so the picture reads closer to the country than to its acreage. The fade never reaches invisibility \u2014 carrying few people is a reason to be quieter, never a reason to be unreadable, and every region stays hoverable, readable and correctable. It is applied only where measured to be warranted, and the legend says so and why whenever it fires. It is never used on a count, which has circles instead, nor on the as-reported 2011 view, whose vintage has no density series to weigh with."],
+          ] as [string, string, string][]
+        ).map(([id, name, body]) => (
+          <div key={id} id={id} className="scroll-mt-24 border border-border px-4 py-4" style={{ background: "var(--panel)" }}>
+            <dt className="text-[13px] font-semibold text-bright">{name}</dt>
+            <dd className="mt-2 text-[13.5px] leading-relaxed text-muted">{body}</dd>
+          </div>
+        ))}
+      </dl>
+
       {[...byCategory.entries()].map(([cat, ms]) => (
         <section key={cat} className="mt-10">
           <h2 className="border-b border-border-soft pb-2 text-[13px] font-bold uppercase tracking-[.12em] text-faint">{cat}</h2>
