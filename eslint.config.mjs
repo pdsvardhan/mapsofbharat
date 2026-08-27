@@ -20,6 +20,32 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+
+      // THE GENERATED TREES .gitignore ALREADY KNOWS ABOUT. Flat config does not skip
+      // dot-directories, so anything not named here gets walked — which is why `.next`
+      // is on the list above and why its absence below was a live bug.
+      //
+      // `.next-runs` is where scripts/test-isolated.sh stages a per-run hardlink copy
+      // of the standalone build (#607). While any run is up, that tree carries ~360
+      // more lintable files, so `node scripts/check-lint-baseline.mjs` measured 8962
+      // problems instead of the tracked 42 — and when the run finished and released
+      // the tree mid-lint, eslint died on a file that had just been unlinked:
+      //   Error: ENOENT … .next-runs/tests-1787871804-1262742/tests/metric-families.spec.ts
+      //   → check-lint-baseline: eslint produced no JSON output   EXIT=2
+      // A ratchet whose answer depends on whether a test happens to be running is not
+      // a ratchet. CI never saw it — a fresh checkout has no run trees — which is
+      // exactly how it survived: it could only misfire on the box, which is the one
+      // place the fix gets made.
+      //
+      // The rest are the same class, listed on principle rather than after the fact.
+      // `.next.isolation-check` is where scripts/check-build-isolation.sh parks .next
+      // for the length of its window: a whole .next under another name, and left
+      // behind entirely if that run is killed. `test-results` is Playwright's artefact
+      // directory. `coverage` is gitignored for the day we have it.
+      ".next-runs/**",
+      ".next.isolation-check/**",
+      "test-results/**",
+      "coverage/**",
       // The Python virtualenv. matplotlib ships browser JS for its web backends,
       // and linting a third-party package inside a venv is meaningless — we will
       // never fix it and it is not ours. It was 22 of the 64 problems the lint

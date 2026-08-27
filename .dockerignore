@@ -1,5 +1,13 @@
 node_modules
 .next
+# .next by its other two names (#607). The builder stage is `COPY . .`, so a build
+# started while a test run is up would otherwise tar up .next-runs — a 1.3GB hardlink
+# copy of the standalone tree per run — into the context and then into a layer, and
+# read it while test-isolated.sh is releasing it. Same reason .next is here; these
+# were simply added later and the list was not told.
+.next-runs
+.next.isolation-check
+.buildlock
 .git
 *.log
 .env
