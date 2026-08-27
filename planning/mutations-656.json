@@ -1,0 +1,47 @@
+{
+  "tests": "tests/control-signal.spec.ts",
+  "mutations": [
+    {
+      "name": "hole 3 reopens — a bottom border counts as a control surface again",
+      "file": "tests/lib/control-signal.ts",
+      "find": "  return s.borderTopWidth > 0 || s.borderLeftWidth > 0 || s.borderRightWidth > 0;",
+      "replace": "  return s.borderTopWidth > 0 || s.borderLeftWidth > 0 || s.borderRightWidth > 0 || s.borderBottomWidth > 0;"
+    },
+    {
+      "name": "hole 2 reopens — the right edge goes unseen again",
+      "file": "tests/lib/control-signal.ts",
+      "find": "  return s.borderTopWidth > 0 || s.borderLeftWidth > 0 || s.borderRightWidth > 0;",
+      "replace": "  return s.borderTopWidth > 0 || s.borderLeftWidth > 0;"
+    },
+    {
+      "name": "hole 1 reopens — padding on either axis exempts, so py-1 alone does",
+      "file": "tests/lib/control-signal.ts",
+      "find": "  return (s.paddingTop + s.paddingBottom) >= 6\n    && (s.paddingLeft + s.paddingRight) >= 8;",
+      "replace": "  return (s.paddingTop + s.paddingBottom) >= 6\n    || (s.paddingLeft + s.paddingRight) >= 8;"
+    },
+    {
+      "name": "a drawn underline stops being credited, so closing hole 3 starts false-flagging",
+      "file": "tests/lib/control-signal.ts",
+      "find": "  return deco.includes(\"underline\") || s.borderBottomWidth > 0;",
+      "replace": "  return deco.includes(\"underline\");"
+    },
+    {
+      "name": "#635 reopens — layout alone is a control again",
+      "file": "tests/lib/control-signal.ts",
+      "find": "  if (!isContainerLaidOut(s)) return false;\n  return hasFill(s) || hasFramingBorder(s) || hasControlPadding(s) || hasControlRole(s);",
+      "replace": "  return isContainerLaidOut(s);"
+    },
+    {
+      "name": "an inline link becomes exemptible, so any prose link can opt out",
+      "file": "tests/lib/control-signal.ts",
+      "find": "  return s.display.includes(\"flex\") || s.display.includes(\"grid\");",
+      "replace": "  return true;"
+    },
+    {
+      "name": "a transparent background counts as a fill",
+      "file": "tests/lib/control-signal.ts",
+      "find": "  return s.backgroundImage !== \"none\"\n    || (s.backgroundColor !== \"rgba(0, 0, 0, 0)\" && s.backgroundColor !== \"transparent\");",
+      "replace": "  return true;"
+    }
+  ]
+}
