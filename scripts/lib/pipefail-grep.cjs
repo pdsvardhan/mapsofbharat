@@ -33,6 +33,11 @@
 // coexist with its own documentation. A heredoc body is not shell either — the
 // python this repo pipes into `python3 -` is data, whatever `|` means inside it.
 //
+// NOR IS `case write|read)` A PIPELINE. That `|` separates glob alternatives, and
+// `case "$mode" in write|read)` is ordinary shell that four scripts in this repo
+// write. See "THE SECOND SWEEP" below: flagging it is the same failure as flagging
+// the comments, one step further along.
+//
 // WHY THIS PARSES INSTEAD OF GREPPING (iter-46 item 1075)
 //
 // The first version was one regex per line. An independent sweep put seven real
@@ -51,10 +56,41 @@
 // heredocs accounted for, and each command that reads from a pipe is classified by
 // what it is rather than by what it looks like.
 //
-// WHAT IS STILL NOT MODELLED, said out loud rather than left to be rediscovered: a
-// quoted string that spans physical lines (an awk program, say) is parsed as if it
-// did not, and `sed '1q'` and `sed -n 1p;q` are early-exit readers this does not
-// know about. Both fail towards MISSING an offence, never towards inventing one.
+// THE SECOND SWEEP, AND WHY THE FIX NEEDED ITS OWN FIX (iter-46 item 1075, again)
+//
+// The rewrite above closed all seven, and opened three of its own. An independent
+// verifier measured each by pasting it into a real repo script:
+//
+//   f  `case "$mode" in write|read)` was read as a PIPELINE INTO `read`, and
+//      `tail|head)` as one into `head`. Both are ordinary shell — kill-port.sh,
+//      mutation-test.sh, restore-drill.sh and backup-offbox.sh all write case
+//      alternations — so the CI gate would have gone red on correct code. That is
+//      the "guard people learn to ignore" failure named twenty lines above, arriving
+//      in the commit that quoted it. The tokenizer now knows what `case` is: the
+//      alternation bars in a PATTERN are blanked before the line is split, and
+//      nothing else about the arm is touched, so a genuine pipeline in an arm's BODY
+//      is still an offence.
+//   g  a quoted string spanning physical lines — a usage() heredoc-substitute, a SQL
+//      statement — was parsed as if it did not, so `pipe it | head off"` on its
+//      second line became an offence. The header used to promise this "fail[ed]
+//      towards MISSING an offence, never towards inventing one". It did the
+//      opposite. Quote state is now carried across physical lines as a STACK of
+//      contexts, because the obvious one-open-quote-character version was measured
+//      wrong on test-isolated.sh:151 and would have swallowed two real lines whole —
+//      the details are on scanLine, and they are the reason this fix took two goes.
+//   h  errexit was still judged per file after (a) taught pipefail not to be. A
+//      capture inside a sourced library stayed exempt even when the sourcing parent
+//      set `set -e`. No such capture exists today; it is fixed anyway, because the
+//      hole (a) closed and the hole (h) left open are the same hole.
+//
+// WHAT IS STILL NOT MODELLED, said out loud rather than left to be rediscovered:
+// `sed '1q'` and `sed -n '1p;q'` are early-exit readers this does not know about,
+// and it fails towards MISSING them rather than inventing an offence. The old
+// version of this paragraph made that same promise about multi-line quoted strings
+// and was simply wrong — see (g) — so it is worth saying that the promise is now a
+// property of the code and not a hope about it: everything the splitter recurses
+// into ($(…), `…`, and $( ) inside double quotes), the case masker recurses into
+// too. A construct the two disagreed about is exactly what (f) and (g) were.
 //
 // This lives in a .cjs and not the .mjs CLI so a spec can import it. Playwright
 // transforms an imported module to CommonJS while Node >= 20.19.5 loads a .mjs as
@@ -92,25 +128,90 @@ function usesErrexit(source) {
     || /^[ \t]*set[ \t]+[^\n#]*-o[ \t]+errexit\b/m.test(source);
 }
 
-/** Strip a trailing comment, respecting quotes crudely but well enough: a `#` inside
- *  a quoted string is not a comment. Returns "" for a whole-line comment. */
-function stripComment(line) {
-  let quote = null;
+/** Scan one PHYSICAL line: drop a trailing comment, and hand back the quoting
+ *  contexts still open at its end so the next line can be read as a continuation.
+ *
+ *  (g) IS WHY THE STATE COMES BACK OUT. A `#` inside a quoted string is not a
+ *  comment, which this always knew — but a quote that never closes on its own line
+ *  is not a mistake either, and reading the next line as fresh shell turns
+ *
+ *      echo "usage: foo
+ *        pipe it | head off"
+ *
+ *  into a pipeline that ends in `head`. Measured, twice, in exactly that shape.
+ *
+ *  AND IT IS A STACK, NOT A FLAG, BECAUSE THE FLAG VERSION WAS MEASURED WRONG. The
+ *  first attempt tracked one open quote character. test-isolated.sh:151 has
+ *
+ *      reported="$(curl -sf -H "authorization: Bearer $TOKEN" "$url" \
+ *        | sed -n 's|…"db_path":"\([^"]…\)"…|\1|p')"
+ *
+ *  (the real line uses `/` delimiters and a `.` glob; they are drawn as `|` and `…`
+ *  here only because the literal text would close this comment)
+ *
+ *  where the inner `"` live inside a `$( )` inside the outer `"` — quoting NESTS
+ *  through a command substitution and restarts there. A flat flag came out of the
+ *  second line believing a single quote was open, and would have swallowed the next
+ *  two lines into a string. That is the direction that HIDES offences, which is
+ *  strictly worse than the false positive being fixed, so it is not good enough.
+ *  Contexts: `sq` and `dq` are literal text; `sub` is a `$( )` or backtick body,
+ *  which is ordinary command text again and where a fresh quote may open.
+ *
+ *  A backslash escapes inside double quotes and OUTSIDE quotes. It does NOT escape
+ *  inside single quotes, and this used to think it did: `awk -F'\t'` survived only
+ *  because skipping the `t` happened to land on the closing quote anyway. `tr -d '\'`
+ *  would not have, and a phantom open quote is the swallowing direction again.
+ *
+ *  @param {string} line
+ *  @param {{t:string,d?:number}[]} stack  what the previous physical line left open
+ *  @returns {{code:string, stack:{t:string,d?:number}[]}} */
+function scanLine(line, stack = []) {
+  const st = stack.map((f) => ({ ...f }));
+  const top = () => st[st.length - 1];
+
   for (let i = 0; i < line.length; i += 1) {
     const c = line[i];
-    if (quote) {
-      if (c === "\\") { i += 1; continue; }
-      if (c === quote) quote = null;
+    const ctx = top();
+
+    if (ctx && ctx.t === "sq") { if (c === "'") st.pop(); continue; }
+    if (c === "\\") { i += 1; continue; }
+    if (ctx && ctx.t === "dq") {
+      if (c === '"') { st.pop(); continue; }
+      if (c === "$" && line[i + 1] === "(") { st.push({ t: "sub", d: 0 }); i += 1; }
       continue;
     }
-    if (c === "'" || c === '"') { quote = c; continue; }
+
+    // Top level, a `$( … )` body or a backtick body: all ordinary command text.
+    if (c === "'") { st.push({ t: "sq" }); continue; }
+    if (c === '"') { st.push({ t: "dq" }); continue; }
+    if (c === "$" && line[i + 1] === "(") { st.push({ t: "sub", d: 0 }); i += 1; continue; }
+    if (c === "`") { if (ctx && ctx.t === "bt") st.pop(); else st.push({ t: "bt" }); continue; }
+    if (ctx && ctx.t === "sub") {
+      // `$(( … ))` and `$( (a; b) )` both nest parens the closing one must survive.
+      if (c === "(") { ctx.d += 1; continue; }
+      if (c === ")") { if (ctx.d > 0) ctx.d -= 1; else st.pop(); continue; }
+    }
     if (c === "#") {
       // A `#` that opens a comment is at the start of a word, not mid-token
       // (`$#`, `${x#y}` and `a#b` are not comments).
-      if (i === 0 || /\s/.test(line[i - 1])) return line.slice(0, i);
+      if (i === 0 || /\s/.test(line[i - 1])) return { code: line.slice(0, i), stack: st };
     }
   }
-  return line;
+  return { code: line, stack: st };
+}
+
+/** Is the innermost open context a literal string? Only that makes the next physical
+ *  line a continuation of THIS one; an open `$( )` is a command list, where a newline
+ *  separates rather than continues. */
+function insideString(stack) {
+  const ctx = stack[stack.length - 1];
+  return ctx !== undefined && (ctx.t === "sq" || ctx.t === "dq");
+}
+
+/** Strip a trailing comment, respecting quotes. Returns "" for a whole-line comment.
+ *  `stack` is what a previous physical line left open, if anything. */
+function stripComment(line, stack = []) {
+  return scanLine(line, stack).code;
 }
 
 // A heredoc introducer, but not a here-string: `<<<"$list"` is one expression on one
@@ -119,7 +220,8 @@ function stripComment(line) {
 const HEREDOC = /(?<!<)<<(?!<)-?[ \t]*(["']?)([A-Za-z_][A-Za-z0-9_]*)\1/g;
 
 /** The script as LOGICAL lines: comments stripped, heredoc bodies dropped, and a
- *  line whose last significant character is `|` or `\` joined to the one after it.
+ *  line joined to the one after it when it ends mid-command — a trailing `|`, a
+ *  trailing `\`, or an unclosed quote.
  *
  *  (b) IS WHY THIS EXISTS. Matching per physical line cannot see
  *
@@ -130,6 +232,11 @@ const HEREDOC = /(?<!<)<<(?!<)-?[ \t]*(["']?)([A-Za-z_][A-Za-z0-9_]*)\1/g;
  *  consumer, the second a consumer and no pipe. The leading-pipe style (`\` then
  *  `| grep -q`) happened to be caught by accident; this makes both deliberate.
  *
+ *  (g) IS WHY THE QUOTE JOINS TOO. The same argument runs backwards: half of a
+ *  string is not shell, and reading it as shell invented offences in two real
+ *  scripts' usage text. A heredoc introducer inside an open quote is text, so the
+ *  heredoc scan only runs on a line that STARTED outside one.
+ *
  *  @returns {{line:number, text:string}[]} `line` is the FIRST physical line. */
 function logicalLines(source) {
   const lines = source.split(/\r?\n/);
@@ -137,6 +244,7 @@ function logicalLines(source) {
   let buf = "";
   let start = 0;
   let pending = [];
+  let stack = [];
 
   for (let i = 0; i < lines.length; i += 1) {
     if (pending.length > 0) {
@@ -145,15 +253,23 @@ function logicalLines(source) {
       continue;
     }
 
-    const code = stripComment(lines[i]).trim();
+    // `<<'PY'` inside a string is text. Inside a `$( )` it is a real heredoc, which
+    // is how mutation-test.sh feeds python to a capture, so only a STRING suppresses
+    // the scan.
+    const startedInString = insideString(stack);
+    const scanned = scanLine(lines[i], stack);
+    stack = scanned.stack;
+    const code = scanned.code.trim();
     if (buf === "") start = i + 1;
 
-    HEREDOC.lastIndex = 0;
-    for (let m = HEREDOC.exec(code); m; m = HEREDOC.exec(code)) pending.push(m[2]);
+    if (!startedInString) {
+      HEREDOC.lastIndex = 0;
+      for (let m = HEREDOC.exec(code); m; m = HEREDOC.exec(code)) pending.push(m[2]);
+    }
 
     // A trailing backslash is a continuation and is not part of the command; a
     // trailing single `|` is both. `||` is a logical OR and ends the pipeline.
-    const continues = /\\$/.test(code) || /(?:^|[^|])\|$/.test(code);
+    const continues = insideString(stack) || /\\$/.test(code) || /(?:^|[^|])\|$/.test(code);
     const piece = code.replace(/\\$/, "");
     buf = buf === "" ? piece : `${buf} ${piece}`;
     if (continues) continue;
@@ -166,7 +282,10 @@ function logicalLines(source) {
 }
 
 /** Read a `$(…)` body starting just past the `(`, tracking nesting. Single quotes are
- *  opaque so a `)` inside one cannot close the substitution early. */
+ *  opaque so a `)` inside one cannot close the substitution early.
+ *
+ *  The body it returns is the same LENGTH as the slice it came from, which the case
+ *  masker relies on to write its blanks back at the right offsets. */
 function readSubstitution(text, from) {
   let depth = 1;
   let body = "";
@@ -190,6 +309,196 @@ function readSubstitution(text, from) {
     body += c; i += 1;
   }
   return { body, next: i };
+}
+
+// ── case, which is the one place a bare `|` is not a pipe ───────────────────────
+
+/** The state a `case` block carries from one logical line to the next.
+ *
+ *  `stack` holds one entry per open `case`, each either "pattern" (we are reading
+ *  glob alternatives, up to the `)`) or "body" (we are reading commands, up to the
+ *  `;;`). It is a stack because mutation-test.sh nests one case inside another's
+ *  arm, and popping the inner `esac` must land back in the outer arm's body. */
+function newCaseState() {
+  return { stack: [], awaitingIn: false, depth: 0, atPatternStart: true };
+}
+
+/** After a keyword, the next word starts a command. `if x; then case $y in` is real
+ *  shell in this repo and the `case` in it has to be recognised. */
+const CMD_KEYWORDS = new Set(["if", "then", "else", "elif", "while", "until", "do", "time"]);
+
+const isWordChar = (c) => /[A-Za-z0-9_]/.test(c);
+
+function readWord(text, from) {
+  let j = from;
+  while (j < text.length && isWordChar(text[j])) j += 1;
+  return text.slice(from, j);
+}
+
+/** Blank the `|` characters that separate CASE PATTERN alternatives, and nothing
+ *  else, so the splitter below never mistakes one for a pipe.
+ *
+ *  (f), THE FALSE POSITIVE THAT WOULD HAVE FAILED CI ON CORRECT SHELL. `case "$mode"
+ *  in write|read)` was reported as a pipeline into `read`, and `tail|head)` as one
+ *  into `head`. Four scripts here write case alternations. A gate that fails on them
+ *  is a gate someone disables, and then the four real offences it exists to catch
+ *  come back with it.
+ *
+ *  WHY BLANK ONLY THE BAR, AND NOT THE WHOLE PATTERN. The arm's BODY is real shell
+ *  and `x) cmd | grep -q y ;;` must still be an offence — that is the entire point of
+ *  the guard, and a case fix that turned every arm into a blind spot would be worse
+ *  than the false positive it cured. Replacing one character with one space is the
+ *  smallest edit that separates the two, and it keeps every offset intact, so the
+ *  reported text is still the line the author wrote.
+ *
+ *  It recurses into `$( )` and backticks with a FRESH state, because the splitter
+ *  recurses there too and the two disagreeing is how (f) and (g) both happened. A
+ *  command substitution is a complete command list, so its cases cannot straddle
+ *  its own parentheses.
+ *
+ *  `case … in` split over physical lines survives, because `case` is a reserved word
+ *  — you cannot run a command called that without quoting it — so a `case` at a
+ *  command position is always the keyword and waiting for its `in` is safe.
+ *
+ *  @param {string} text  one logical line
+ *  @param {ReturnType<newCaseState>} state  carried across lines; MUTATED
+ *  @returns {string} the same text, same length, pattern bars replaced by spaces */
+function maskCaseAlternations(text, state, out = text.split(""), offset = 0) {
+  let i = 0;
+  let cmdStart = true;
+  const inPattern = () => state.stack[state.stack.length - 1] === "pattern";
+  const opaque = (next) => {
+    i = next;
+    cmdStart = false;
+    if (inPattern()) state.atPatternStart = false;
+  };
+
+  while (i < text.length) {
+    const c = text[i];
+
+    // ── runs that are not shell operators, whatever they contain ──
+    if (c === "\\") { opaque(i + 2); continue; }
+    if (c === "'") {
+      const end = text.indexOf("'", i + 1);
+      opaque(end === -1 ? text.length : end + 1);
+      continue;
+    }
+    if (c === '"') {
+      // `$( )` inside double quotes is live shell — the splitter descends into it,
+      // so this must as well.
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === "\\") { j += 2; continue; }
+        if (text[j] === '"') { j += 1; break; }
+        if (text[j] === "$" && text[j + 1] === "(") {
+          const sub = readSubstitution(text, j + 2);
+          maskCaseAlternations(sub.body, newCaseState(), out, offset + j + 2);
+          j = sub.next;
+          continue;
+        }
+        j += 1;
+      }
+      opaque(j);
+      continue;
+    }
+    if (c === "$" && text[i + 1] === "(") {
+      const sub = readSubstitution(text, i + 2);
+      maskCaseAlternations(sub.body, newCaseState(), out, offset + i + 2);
+      opaque(sub.next);
+      continue;
+    }
+    if (c === "$" && text[i + 1] === "{") {
+      // `${x}` is one word. Skipping it keeps `${case}` from reading as a keyword.
+      let depth = 1;
+      let j = i + 2;
+      while (j < text.length && depth > 0) {
+        if (text[j] === "{") depth += 1;
+        else if (text[j] === "}") depth -= 1;
+        j += 1;
+      }
+      opaque(j);
+      continue;
+    }
+    if (c === "`") {
+      const end = text.indexOf("`", i + 1);
+      const stop = end === -1 ? text.length : end;
+      maskCaseAlternations(text.slice(i + 1, stop), newCaseState(), out, offset + i + 1);
+      opaque(stop + 1);
+      continue;
+    }
+
+    if (/\s/.test(c)) { i += 1; continue; }
+
+    // ── a case PATTERN: glob text up to the `)`, where every bar is alternation ──
+    if (inPattern()) {
+      if (state.atPatternStart) {
+        // `case x in esac` is an empty but legal block, and so is the `esac` that
+        // follows the last arm's `;;`.
+        if (readWord(text, i) === "esac") { state.stack.pop(); i += 4; cmdStart = false; continue; }
+        // bash allows `(pat)` as well as `pat)`; that leading `(` opens nothing.
+        state.atPatternStart = false;
+        if (c === "(") { i += 1; continue; }
+      }
+      if (c === "(") { state.depth += 1; i += 1; continue; }
+      if (c === ")") {
+        if (state.depth === 0) {
+          state.stack[state.stack.length - 1] = "body";
+          state.atPatternStart = true;
+          cmdStart = true;
+        } else {
+          state.depth -= 1;
+        }
+        i += 1;
+        continue;
+      }
+      // Depth is not consulted: inside a pattern an extglob `@(a|b)` bar is
+      // alternation too, so every bar here is one.
+      if (c === "|") { out[offset + i] = " "; i += 1; continue; }
+      i += 1;
+      continue;
+    }
+
+    // ── ordinary command text: an arm's body, or anywhere outside a case ──
+    if (c === ";") {
+      const term = text.startsWith(";;&", i) ? 3
+        : text.startsWith(";;", i) || text.startsWith(";&", i) ? 2 : 1;
+      if (term > 1 && state.stack.length > 0) {
+        state.stack[state.stack.length - 1] = "pattern";
+        state.atPatternStart = true;
+        state.depth = 0;
+      }
+      i += term;
+      cmdStart = true;
+      continue;
+    }
+    if (isWordChar(c)) {
+      const w = readWord(text, i);
+      if (state.awaitingIn) {
+        if (w === "in") {
+          state.awaitingIn = false;
+          state.stack.push("pattern");
+          state.atPatternStart = true;
+          state.depth = 0;
+        }
+      } else if (cmdStart && w === "case") {
+        state.awaitingIn = true;
+      } else if (cmdStart && w === "esac" && state.stack.length > 0) {
+        state.stack.pop();
+      }
+      i += w.length;
+      cmdStart = CMD_KEYWORDS.has(w);
+      continue;
+    }
+    if (c === "|" || c === "&" || c === "(" || c === ")" || c === "{" || c === "}" || c === "!") {
+      cmdStart = true;
+      i += 1;
+      continue;
+    }
+    i += 1;
+    cmdStart = false;
+  }
+
+  return out.join("");
 }
 
 /** Split a logical line into simple commands, recording which ones read from a pipe.
@@ -364,17 +673,25 @@ const CAPTURE_ONLY =
 
 /**
  * @param {string} source  the script's text
- * @param {{underPipefail?: boolean}} [opts]  underPipefail forces the pipefail
- *        verdict on, for a file that is SOURCED into one — see sourcedUnderPipefail.
+ * @param {{underPipefail?: boolean, underErrexit?: boolean}} [opts]  each forces the
+ *        corresponding verdict on, for a file that is SOURCED into a script that sets
+ *        it — see sourcedUnderPipefail / sourcedUnderErrexit.
  * @returns {{line:number, text:string, kind:string, latent:boolean}[]}
  */
 function findEarlyExitPipelines(source, opts = {}) {
   if (!usesPipefail(source) && !opts.underPipefail) return [];
-  const errexit = usesErrexit(source);
+  const errexit = usesErrexit(source) || Boolean(opts.underErrexit);
   const out = [];
 
-  for (const { line, text } of logicalLines(source)) {
-    const kinds = simpleCommands(text)
+  const lines = logicalLines(source);
+  const caseState = newCaseState();
+
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const { line, text } = lines[idx];
+    // The masker runs on EVERY line, offence or not: it is a state machine, and a
+    // line it never sees is a `case` or an `esac` it never counted.
+    const shell = maskCaseAlternations(text, caseState);
+    const kinds = simpleCommands(shell)
       .filter((c) => c.piped)
       .map((c) => earlyExitReader(c.text))
       .filter(Boolean);
@@ -390,13 +707,33 @@ function findEarlyExitPipelines(source, opts = {}) {
     //   · the WHOLE line must be the assignment. `if x=$(… | head -1); then` reads
     //     the status, `x=$(…) || fail` reads the status, and both stay offences.
     //   · errexit must be off. Under `set -e` a 141 ends the script, so adding `-e`
-    //     to any of these five files makes this guard fire on them that same day.
+    //     to any of these five files makes this guard fire on them that same day —
+    //     and since (h), adding it to a script that SOURCES one of them does too.
     //   · `grep -q` is never exempt. It prints NOTHING, so a capture of it exists
     //     only for its exit status — the exact thing the exemption assumes nobody
     //     wants. `head` and `grep -m` are there for their bytes.
-    // The CLI reports these rather than swallowing them: a silent skip and a pass
-    // must never print the same thing.
-    const latent = !errexit && CAPTURE_ONLY.test(text) && !kinds.includes("grep -q");
+    //   · the next line must not read `$?`. `x=$(… | head -1)` followed by
+    //     `[ $? -eq 0 ]` consults the status as plainly as `|| fail` does; the only
+    //     reason the old wording missed it is that it modelled "consulted" as "on
+    //     the same line". Nothing in this repo does this today, which is the point
+    //     of adding it now rather than after something does.
+    //
+    // WHAT THE EXEMPTION STILL LETS THROUGH, because this file cannot see the caller
+    // and guessing would put the CI gate back to failing on correct shell:
+    //   · a capture that is a function's LAST statement. The pipeline's 141 becomes
+    //     the function's return status, and whether that is consulted depends on
+    //     whether the CALLER wrote `f || fail`. Neither answer is knowable here, and
+    //     guessing "consulted" would flag every helper whose result nobody checks.
+    //   · `local row` on one line and `row="$(…)"` on the next, inside a function
+    //     whose caller writes `if ! peek`. Same reason: the consumer is a frame away.
+    // Both are PRINTED by the CLI, every run, so they are visible rather than
+    // silent — which is the property that matters when a limit cannot be closed.
+    const next = lines[idx + 1];
+    const statusRead = next !== undefined && /\$\?/.test(next.text);
+    const latent = !errexit
+      && CAPTURE_ONLY.test(text)
+      && !kinds.includes("grep -q")
+      && !statusRead;
     for (const kind of kinds) out.push({ line, text, kind, latent });
   }
   return out;
@@ -424,7 +761,7 @@ function sourcedPathTails(source) {
   return out;
 }
 
-/** (a) PIPEFAIL IS INHERITED, AND JUDGING IT PER FILE MADE A HOLE.
+/** (a) A SHELL OPTION IS INHERITED, AND JUDGING IT PER FILE MADE A HOLE.
  *
  *  scripts/lib/stage-run-tree.sh sets no shell options of its own — it is sourced,
  *  never executed, so it has nothing to set them for. Three scripts that DO set
@@ -433,18 +770,19 @@ function sourcedPathTails(source) {
  *  time they run, and the per-file test answered "no pipefail here" for all of them.
  *  A `| grep -q` pasted into that library was invisible to this guard: proven, exit 0.
  *
- *  So a file is under pipefail if it sets it, or if anything that sources it is. The
+ *  So a file is under an option if it sets it, or if anything that sources it is. The
  *  loop runs to a fixpoint because a sourced library may source another.
  *
  *  @param {{path:string, source:string}[]} files
- *  @returns {Set<string>} the paths that inherit pipefail from a sourcing parent */
-function sourcedUnderPipefail(files) {
+ *  @param {(source:string) => boolean} sets  usesPipefail or usesErrexit
+ *  @returns {Set<string>} the paths that inherit the option from a sourcing parent */
+function sourcedUnder(files, sets) {
   const under = new Set();
   const norm = (p) => p.replace(/\\/g, "/");
   for (let changed = true; changed;) {
     changed = false;
     for (const f of files) {
-      if (!usesPipefail(f.source) && !under.has(f.path)) continue;
+      if (!sets(f.source) && !under.has(f.path)) continue;
       for (const tail of sourcedPathTails(f.source)) {
         for (const g of files) {
           if (g.path === f.path || under.has(g.path)) continue;
@@ -459,13 +797,36 @@ function sourcedUnderPipefail(files) {
   return under;
 }
 
+/** Which files run under pipefail because something that sources them sets it. */
+function sourcedUnderPipefail(files) {
+  return sourcedUnder(files, usesPipefail);
+}
+
+/** (h) The same, for errexit, which (a) left behind.
+ *
+ *  errexit is what turns a latent capture into a live one, and it was still judged
+ *  per file after pipefail stopped being. A `x=$(… | head -1)` inside a sourced
+ *  library stayed exempt even when the parent that sourced it set `set -e` — proven
+ *  by putting `set -euo pipefail` on test-isolated.sh and watching
+ *  stage-run-tree.sh's capture stay in the LATENT list. No such capture exists
+ *  today, so this changes no output; it closes the hole before the capture arrives,
+ *  which is the only order in which closing it is cheap. */
+function sourcedUnderErrexit(files) {
+  return sourcedUnder(files, usesErrexit);
+}
+
 module.exports = {
   findEarlyExitPipelines,
   sourcedUnderPipefail,
+  sourcedUnderErrexit,
   usesPipefail,
   usesErrexit,
   stripComment,
+  scanLine,
+  insideString,
   logicalLines,
+  maskCaseAlternations,
+  newCaseState,
   simpleCommands,
   earlyExitReader,
 };

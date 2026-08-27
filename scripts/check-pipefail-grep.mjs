@@ -22,7 +22,11 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 
-import { findEarlyExitPipelines, sourcedUnderPipefail } from "./lib/pipefail-grep.cjs";
+import {
+  findEarlyExitPipelines,
+  sourcedUnderPipefail,
+  sourcedUnderErrexit,
+} from "./lib/pipefail-grep.cjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -58,13 +62,23 @@ if (files.length === 0) {
 // A library sets no shell options of its own; it inherits them from whoever sources
 // it. scripts/lib/stage-run-tree.sh runs under pipefail three times over and was
 // permanently exempt while this verdict was per file (iter-46 item 1075).
-const inherited = sourcedUnderPipefail(files);
+//
+// errexit rides along for the same reason and was left behind by that same fix: it
+// is what turns a latent capture into a live one, so a library sourced into a
+// `set -e` script must be judged with -e on. Nothing in the tree depends on it
+// today; the point is that it will not have to be rediscovered when something does.
+const inheritedPipefail = sourcedUnderPipefail(files);
+const inheritedErrexit = sourcedUnderErrexit(files);
 
 const offences = [];
 const latent = [];
 for (const file of files) {
   const rel = relative(ROOT, file.path);
-  for (const hit of findEarlyExitPipelines(file.source, { underPipefail: inherited.has(file.path) })) {
+  const hits = findEarlyExitPipelines(file.source, {
+    underPipefail: inheritedPipefail.has(file.path),
+    underErrexit: inheritedErrexit.has(file.path),
+  });
+  for (const hit of hits) {
     (hit.latent ? latent : offences).push(`${rel}:${hit.line}: [${hit.kind}] ${hit.text}`);
   }
 }
