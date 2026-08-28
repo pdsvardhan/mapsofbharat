@@ -117,8 +117,12 @@ features:
     size: L
     test_status: partial
     acceptance_criteria:
-      - content: User views a metric as a district-level choropleth and clicks a state
-          to drill into its districts
+      - content: "User views a metric as a district-level choropleth and clicks a state
+          to drill into its districts. The districts must actually RENDER, for
+          every state code including 01-09: a drill is verified by counting
+          polygons on the map, never by the rail or the region count, because
+          those read correctly over a blank plate and that is what hid this for
+          a release (adr-041)."
         test_status: not-tested
         linked_test: null
       - content: The colour scale can be reversed from the legend itself in value mode,
@@ -436,10 +440,10 @@ features:
     short_description: Two curated metrics on one map via a 2D colour matrix, with
       pairings chosen at build time. Parked to post-launch per the launch plan.
     type: ui
-    status: planned
+    status: done
     priority: P2
     size: M
-    test_status: not-tested
+    test_status: partial
     notes: "Roadmap #408 (product growth); adr-plan parks bivariate to post-launch."
     acceptance_criteria:
       - content: A reader can pair two district metrics and read them on one map through
@@ -575,10 +579,10 @@ features:
       key, and forces no-data to a hatch so absence can never be mistaken for
       faintness.
     type: ui
-    status: planned
+    status: done
     priority: P2
     size: M
-    test_status: not-tested
+    test_status: partial
     notes: Built iter-46 item 1077. Child of feat-choropleth-map, mirroring
       feat-social-export under feat-export-share. Split out because the parent
       had reached the 5-AC cap and this behaviour needs more than one criterion
