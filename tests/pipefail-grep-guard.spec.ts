@@ -509,7 +509,7 @@ test.describe("early-exit pipelines under pipefail (#609)", () => {
     expect(findEarlyExitPipelines(src)).toHaveLength(3);
   });
 
-  // ── (j) and (k): the two state machines nothing could look at ─────────────
+  // ── (j) and (k): what a state machine does when it loses the plot ─────────
   //
   // There are THREE cross-line state machines in the library — the heredoc list, the
   // `case` stack, the quote stack — and each fails by SWALLOWING the rest of the file

@@ -28,10 +28,20 @@
 // without anyone deciding that it should. Nor is `head -n -5`, which must read to
 // EOF to know which lines to withhold, or `tail`, or `awk`.
 //
-// A mention in a comment is prose. Three files in this repo explain this exact
-// construct in their headers, and flagging them would make the guard unable to
-// coexist with its own documentation. A heredoc body is not shell either — the
-// python this repo pipes into `python3 -` is data, whatever `|` means inside it.
+// A mention in a comment is prose. SIX shell scripts here explain this exact construct
+// — check-adr-refs.sh, check-build-isolation.sh, mutation-test.sh, restore-drill.sh,
+// setup-backup-remote.sh and test-isolated.sh — each at the line where it chose
+// something else, and flagging them would make the guard unable to coexist with its own
+// documentation. This said "Three files … in their headers" until the third sweep;
+// measured, it is six, and not one of them is a header:
+//
+//   $ grep -rn --include='*.sh' -E "^[[:space:]]*#.*(grep -q|head -1|SIGPIPE)" scripts/
+//
+// Nobody flagged that one. It is here because it is the same defect as (i)–(k) below
+// and it was sitting in the paragraph above them.
+//
+// A heredoc body is not shell either — the python this repo pipes into `python3 -` is
+// data, whatever `|` means inside it.
 //
 // NOR IS `case write|read)` A PIPELINE. That `|` separates glob alternatives, and
 // `case "$mode" in write|read)` is ordinary shell that four scripts in this repo
@@ -83,8 +93,8 @@
 //      set `set -e`. No such capture exists today; it is fixed anyway, because the
 //      hole (a) closed and the hole (h) left open are the same hole.
 //
-// THE THIRD SWEEP (iter-46 item 1075, and this is the third time). (f), (g) and (h)
-// stayed closed. A third verifier measured three more, two of them holes:
+// THE THIRD SWEEP (iter-46 item 1075, and this is the third time). Everything named
+// above stayed closed. A third verifier measured three more, two of them holes:
 //
 //   i  the capture exemption's "the WHOLE line must be the assignment" clause lived
 //      in the comment and not in the code. CAPTURE_ONLY's greedy `.*` before the
