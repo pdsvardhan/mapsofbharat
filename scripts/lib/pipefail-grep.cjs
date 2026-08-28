@@ -83,6 +83,36 @@
 //      set `set -e`. No such capture exists today; it is fixed anyway, because the
 //      hole (a) closed and the hole (h) left open are the same hole.
 //
+// THE THIRD SWEEP (iter-46 item 1075, and this is the third time). (f), (g) and (h)
+// stayed closed. A third verifier measured three more, two of them holes:
+//
+//   i  the capture exemption's "the WHOLE line must be the assignment" clause lived
+//      in the comment and not in the code. CAPTURE_ONLY's greedy `.*` before the
+//      anchor let ANY trailing command through provided the line's last character was
+//      a `)`, so `x=$(ls | head -1) || die $(msg)` came out LATENT while
+//      `x=$(ls | head -1) || fail` came out an offence — the difference being the
+//      shape of the last word rather than anything about the shell. It is a parse
+//      now: the substitution is read with the same reader the splitter uses, and
+//      nothing may follow it.
+//   j  a PHANTOM HEREDOC swallowed the rest of the file. The heredoc scan read the
+//      comment-stripped line with no regard for quoting WITHIN it, so
+//      `echo "run cat <<EOF here"` and `v=$(( 1 << shift ))` each registered a
+//      heredoc and then dropped every line until a delimiter that never came. That is
+//      the SWALLOWING direction — the one (g) named as strictly worse than a false
+//      positive — arriving inside the fix for (g). scanLine hands back a MASKED copy
+//      of the line, quoted runs and `$(( ))` bodies blanked, and the scan reads that.
+//   k  an unterminated `case` left the masker in pattern state and blanked every `|`
+//      through to EOF. Invalid shell, so nothing here writes it — but "nothing here
+//      writes it" was true of (j) as well, and it is not a reason to stay blind.
+//
+// (j) and (k) are one failure underneath: THREE cross-line state machines, and only
+// two of them could be looked at. The spec's hygiene test checked the case stack and
+// the quote stack and said "neither one is left holding state at EOF" — a count
+// contradicted by its own subject, and the machine it omitted was the one with the
+// hole. All three are inspectable now, unclosedState() reports them together, and the
+// CLI calls a file it could not finish parsing a MEASUREMENT FAILURE rather than a
+// clean scan.
+//
 // WHAT IS STILL NOT MODELLED, said out loud rather than left to be rediscovered:
 // `sed '1q'` and `sed -n '1p;q'` are early-exit readers this does not know about,
 // and it fails towards MISSING them rather than inventing an offence. The old
@@ -128,8 +158,17 @@ function usesErrexit(source) {
     || /^[ \t]*set[ \t]+[^\n#]*-o[ \t]+errexit\b/m.test(source);
 }
 
-/** Scan one PHYSICAL line: drop a trailing comment, and hand back the quoting
- *  contexts still open at its end so the next line can be read as a continuation.
+/** Scan one PHYSICAL line: drop a trailing comment, hand back a MASKED copy of what
+ *  is left, and hand back the quoting contexts still open at its end so the next line
+ *  can be read as a continuation.
+ *
+ *  (j) IS WHY THE MASK EXISTS. `masked` is `code` with every character that is
+ *  literal string content — and every `$(( … ))` body — replaced by a space, same
+ *  length, same offsets. Only the heredoc scan reads it: `<<WORD` inside a quoted run
+ *  is text and the `<<` in `1 << shift` is a left shift, and each of those used to
+ *  register a heredoc whose delimiter never arrived, dropping the rest of the file.
+ *  A `$( )` body is NOT masked, because a heredoc in one is real — mutation-test.sh
+ *  feeds python to a capture exactly that way.
  *
  *  (g) IS WHY THE STATE COMES BACK OUT. A `#` inside a quoted string is not a
  *  comment, which this always knew — but a quote that never closes on its own line
@@ -164,40 +203,67 @@ function usesErrexit(source) {
  *
  *  @param {string} line
  *  @param {{t:string,d?:number}[]} stack  what the previous physical line left open
- *  @returns {{code:string, stack:{t:string,d?:number}[]}} */
+ *  @returns {{code:string, masked:string, stack:{t:string,d?:number}[]}} */
 function scanLine(line, stack = []) {
   const st = stack.map((f) => ({ ...f }));
+  const mask = line.split("");
   const top = () => st[st.length - 1];
+  const hide = (k) => { if (k < mask.length) mask[k] = " "; };
+  const done = (end) => ({
+    code: line.slice(0, end),
+    masked: mask.slice(0, end).join(""),
+    stack: st,
+  });
 
   for (let i = 0; i < line.length; i += 1) {
     const c = line[i];
     const ctx = top();
+    // Literal contexts: text, not shell. `sub` and `bt` are command lists and are
+    // left alone — a heredoc introducer inside one is a real heredoc.
+    const literal = ctx !== undefined && (ctx.t === "sq" || ctx.t === "dq" || ctx.t === "arith");
+    if (literal) hide(i);
 
     if (ctx && ctx.t === "sq") { if (c === "'") st.pop(); continue; }
-    if (c === "\\") { i += 1; continue; }
+    if (c === "\\") { if (literal) hide(i + 1); i += 1; continue; }
     if (ctx && ctx.t === "dq") {
       if (c === '"') { st.pop(); continue; }
+      // `$(( … ))` first: `$(` alone would read its opening `((` as a substitution
+      // holding a subshell, which closes in the same place but is not text, so the
+      // `<<` in `1 << shift` would come back out unmasked.
+      if (c === "$" && line[i + 1] === "(" && line[i + 2] === "(") {
+        st.push({ t: "arith", d: 0 }); hide(i + 1); i += 1; continue;
+      }
       if (c === "$" && line[i + 1] === "(") { st.push({ t: "sub", d: 0 }); i += 1; }
+      continue;
+    }
+    if (ctx && ctx.t === "arith") {
+      // Parens nest — `$(( $(date +%s) - START ))` is real and appears here twice —
+      // and the whole body is masked whatever it holds.
+      if (c === "(") { ctx.d += 1; continue; }
+      if (c === ")") { if (ctx.d > 0) ctx.d -= 1; else st.pop(); continue; }
       continue;
     }
 
     // Top level, a `$( … )` body or a backtick body: all ordinary command text.
-    if (c === "'") { st.push({ t: "sq" }); continue; }
-    if (c === '"') { st.push({ t: "dq" }); continue; }
+    if (c === "$" && line[i + 1] === "(" && line[i + 2] === "(") {
+      st.push({ t: "arith", d: 0 }); hide(i); hide(i + 1); i += 1; continue;
+    }
+    if (c === "'") { st.push({ t: "sq" }); hide(i); continue; }
+    if (c === '"') { st.push({ t: "dq" }); hide(i); continue; }
     if (c === "$" && line[i + 1] === "(") { st.push({ t: "sub", d: 0 }); i += 1; continue; }
     if (c === "`") { if (ctx && ctx.t === "bt") st.pop(); else st.push({ t: "bt" }); continue; }
     if (ctx && ctx.t === "sub") {
-      // `$(( … ))` and `$( (a; b) )` both nest parens the closing one must survive.
+      // `$( (a; b) )` nests parens the closing one must survive.
       if (c === "(") { ctx.d += 1; continue; }
       if (c === ")") { if (ctx.d > 0) ctx.d -= 1; else st.pop(); continue; }
     }
     if (c === "#") {
       // A `#` that opens a comment is at the start of a word, not mid-token
       // (`$#`, `${x#y}` and `a#b` are not comments).
-      if (i === 0 || /\s/.test(line[i - 1])) return { code: line.slice(0, i), stack: st };
+      if (i === 0 || /\s/.test(line[i - 1])) return done(i);
     }
   }
-  return { code: line, stack: st };
+  return done(line.length);
 }
 
 /** Is the innermost open context a literal string? Only that makes the next physical
@@ -234,11 +300,15 @@ const HEREDOC = /(?<!<)<<(?!<)-?[ \t]*(["']?)([A-Za-z_][A-Za-z0-9_]*)\1/g;
  *
  *  (g) IS WHY THE QUOTE JOINS TOO. The same argument runs backwards: half of a
  *  string is not shell, and reading it as shell invented offences in two real
- *  scripts' usage text. A heredoc introducer inside an open quote is text, so the
- *  heredoc scan only runs on a line that STARTED outside one.
+ *  scripts' usage text.
  *
+ *  @param {string} source
+ *  @param {{pendingHeredocs?: string[]}} [state]  MUTATED. On return it carries the
+ *         heredoc delimiters still being waited for when the source ran out — the
+ *         third cross-line state machine in this file, and the one (j) hid in
+ *         because nothing could see it. unclosedState() is what reads it.
  *  @returns {{line:number, text:string}[]} `line` is the FIRST physical line. */
-function logicalLines(source) {
+function logicalLines(source, state = {}) {
   const lines = source.split(/\r?\n/);
   const out = [];
   let buf = "";
@@ -253,18 +323,27 @@ function logicalLines(source) {
       continue;
     }
 
-    // `<<'PY'` inside a string is text. Inside a `$( )` it is a real heredoc, which
-    // is how mutation-test.sh feeds python to a capture, so only a STRING suppresses
-    // the scan.
-    const startedInString = insideString(stack);
     const scanned = scanLine(lines[i], stack);
     stack = scanned.stack;
     const code = scanned.code.trim();
     if (buf === "") start = i + 1;
 
-    if (!startedInString) {
-      HEREDOC.lastIndex = 0;
-      for (let m = HEREDOC.exec(code); m; m = HEREDOC.exec(code)) pending.push(m[2]);
+    // (j) THE MASK DECIDES WHETHER THE `<<` IS SHELL; THE CODE SUPPLIES THE NAME.
+    // `<<'PY'` inside a string is text; inside a `$( )` it is a real heredoc, which is
+    // how mutation-test.sh feeds python to a capture. This used to suppress the scan
+    // for a line that STARTED inside a string, which cannot see a quote that opens and
+    // closes on one line — `echo "run cat <<EOF here"` registered a heredoc and every
+    // line after it was dropped looking for an EOF that was never coming, and so did
+    // the `<<` in `$(( 1 << shift ))`.
+    //
+    // The two strings are read TOGETHER rather than the mask alone, and that is not
+    // fussiness: every heredoc in this repo quotes its delimiter (`<<'PY'`), and the
+    // mask blanks quoted runs, so matching the mask found the `<<` and then lost the
+    // PY. Offsets are identical by construction, so the mask can gate a position in
+    // the code without standing in for it.
+    HEREDOC.lastIndex = 0;
+    for (let m = HEREDOC.exec(scanned.code); m; m = HEREDOC.exec(scanned.code)) {
+      if (scanned.masked.startsWith("<<", m.index)) pending.push(m[2]);
     }
 
     // A trailing backslash is a continuation and is not part of the command; a
@@ -278,6 +357,7 @@ function logicalLines(source) {
     buf = "";
   }
   if (buf !== "") out.push({ line: start, text: buf });
+  state.pendingHeredocs = pending;
   return out;
 }
 
@@ -285,7 +365,12 @@ function logicalLines(source) {
  *  opaque so a `)` inside one cannot close the substitution early.
  *
  *  The body it returns is the same LENGTH as the slice it came from, which the case
- *  masker relies on to write its blanks back at the right offsets. */
+ *  masker relies on to write its blanks back at the right offsets.
+ *
+ *  `closed` says whether the `)` was actually found. Only isCaptureOnly consults it,
+ *  and it must: "everything up to the end of the text" and "everything up to the
+ *  closing paren" are the same string when there is no closing paren, and the
+ *  difference between them is the difference between a capture and a truncated line. */
 function readSubstitution(text, from) {
   let depth = 1;
   let body = "";
@@ -303,12 +388,12 @@ function readSubstitution(text, from) {
     if (c === "(") { depth += 1; body += c; i += 1; continue; }
     if (c === ")") {
       depth -= 1;
-      if (depth === 0) return { body, next: i + 1 };
+      if (depth === 0) return { body, next: i + 1, closed: true };
       body += c; i += 1; continue;
     }
     body += c; i += 1;
   }
-  return { body, next: i };
+  return { body, next: i, closed: false };
 }
 
 // ── case, which is the one place a bare `|` is not a pipe ───────────────────────
@@ -665,11 +750,43 @@ function earlyExitReader(command) {
   return null;
 }
 
+/** The head of a capture: an optional declaration keyword, a name, `=`, an optional
+ *  opening quote, and the `$(` itself. Where the substitution ENDS is a parse, not a
+ *  pattern — see isCaptureOnly. */
+const CAPTURE_HEAD =
+  /^(?:(?:local|declare|typeset|export|readonly)[ \t]+(?:-[A-Za-z]+[ \t]+)?)?[A-Za-z_][A-Za-z0-9_]*=("?)\$\(/;
+
 /** The one shape whose exit status genuinely cannot be consulted: a whole line that
  *  is nothing but `name=$(pipeline)`. The assignment leaves the pipeline's status in
- *  $?, and $? is then overwritten by the next command without anyone having read it. */
-const CAPTURE_ONLY =
-  /^(?:(?:local|declare|typeset|export|readonly)[ \t]+(?:-[A-Za-z]+[ \t]+)?)?[A-Za-z_][A-Za-z0-9_]*=(?:"\$\(.*\)"|\$\(.*\))$/;
+ *  $?, and $? is then overwritten by the next command without anyone having read it.
+ *
+ *  (i) THE CLAUSE USED TO BE PROSE. This was one regex ending `…(?:"\$\(.*\)"|\$\(.*\))$`,
+ *  whose greedy `.*` ate any trailing command, so the anchor asked only that the line
+ *  END in `)`. Measured, on the guard's own library:
+ *
+ *      x=$(ls | head -1) || die $(msg)        LATENT    ← the status IS consulted
+ *      x=$(ls | head -1) && rm -f $(cat list) LATENT
+ *      x=$(ls | head -1); notify $(hostname)  LATENT
+ *      x=$(ls | head -1) || fail              offence   ← only because `fail` ends in l
+ *
+ *  The comment above it promised "the WHOLE line must be the assignment"; what was
+ *  enforced was the shape of the last word. So the substitution is READ now, with the
+ *  same reader the splitter and the case masker use, and nothing at all may follow it.
+ *
+ *  A trailing `; cmd` is refused too, deliberately, though `;` does not itself consult
+ *  the status: `x=$(… | head -1); [ $? -eq 0 ]` consults it exactly as plainly as
+ *  `|| fail` does, on the same line, where the next-LINE `$?` clause below cannot see
+ *  it. Telling that apart from `; echo done` would be a taxonomy of trailing operators
+ *  this shape has not earned, and nothing in the tree writes either — so the strict
+ *  reading costs nothing today and errs towards naming a capture rather than exempting
+ *  one, which is the direction an exemption should always fail in. */
+function isCaptureOnly(text) {
+  const m = CAPTURE_HEAD.exec(text);
+  if (!m) return false;
+  const sub = readSubstitution(text, m[0].length);
+  if (!sub.closed) return false;
+  return text.slice(sub.next) === (m[1] === '"' ? '"' : "");
+}
 
 /**
  * @param {string} source  the script's text
@@ -699,16 +816,26 @@ function findEarlyExitPipelines(source, opts = {}) {
 
     // (e) THE EXEMPTION, AND ITS LIMITS. `x="$(sqlite3 … | head -1)"` is not a live
     // bug: head has already printed the line before SIGPIPE reaches sqlite3, so the
-    // VALUE is right, and the pipeline's status is dropped on the floor. Five such
-    // captures exist in this repo and rewriting them into something worse to silence
-    // a guard would be the guard failing, not the code.
+    // VALUE is right, and the pipeline's status is dropped on the floor. A handful of
+    // these exist in this repo and rewriting them into something worse to silence a
+    // guard would be the guard failing, not the code.
+    //
+    // HOW MANY IS NOT WRITTEN HERE, AND THAT IS THE POINT. This paragraph said "five"
+    // for two generations of fix while the CLI printed two — the first fix had already
+    // rewritten three of them to `awk 'NR==1'` (restore-drill.sh) and nobody came back
+    // to the prose. The count is MEASURED, once, by the tool: check-pipefail-grep.mjs
+    // lists every latent capture with a total on every single run. A number a guard
+    // prints cannot drift; a number a comment asserts is only true on the day it is
+    // typed, and this file's whole subject is counts that stopped matching their lists.
     //
     // It is not a licence, and each clause is load-bearing:
-    //   · the WHOLE line must be the assignment. `if x=$(… | head -1); then` reads
-    //     the status, `x=$(…) || fail` reads the status, and both stay offences.
-    //   · errexit must be off. Under `set -e` a 141 ends the script, so adding `-e`
-    //     to any of these five files makes this guard fire on them that same day —
-    //     and since (h), adding it to a script that SOURCES one of them does too.
+    //   · the WHOLE line must be the assignment — ENFORCED since (i), not merely
+    //     claimed. `if x=$(… | head -1); then` reads the status, `x=$(…) || fail`
+    //     reads the status, and so do `x=$(…) && cmd` and `x=$(…); cmd`, which the old
+    //     regex waved through because they happened to end in `)`. All are offences.
+    //   · errexit must be off. Under `set -e` a 141 ends the script, so adding `-e` to
+    //     a file holding one of these makes this guard fire on it that same day — and
+    //     since (h), adding it to a script that SOURCES one does too.
     //   · `grep -q` is never exempt. It prints NOTHING, so a capture of it exists
     //     only for its exit status — the exact thing the exemption assumes nobody
     //     wants. `head` and `grep -m` are there for their bytes.
@@ -731,11 +858,52 @@ function findEarlyExitPipelines(source, opts = {}) {
     const next = lines[idx + 1];
     const statusRead = next !== undefined && /\$\?/.test(next.text);
     const latent = !errexit
-      && CAPTURE_ONLY.test(text)
+      && isCaptureOnly(text)
       && !kinds.includes("grep -q")
       && !statusRead;
     for (const kind of kinds) out.push({ line, text, kind, latent });
   }
+  return out;
+}
+
+/** What the THREE cross-line state machines in this file are still holding when the
+ *  source runs out. Empty means the whole file was read.
+ *
+ *  (j) AND (k) ARE THE SAME FAILURE, AND THIS IS THE ANSWER TO BOTH. Each machine —
+ *  the heredoc `pending` list, the `case` stack, the quote stack — carries state from
+ *  one line to the next, so a shape it cannot parse does not misread ONE line. It
+ *  misreads every line after it, in the direction that HIDES offences: a phantom
+ *  heredoc drops the rest of the file, and an unterminated `case` blanks every `|` to
+ *  EOF so the splitter finds no pipelines at all. Both are silent. Both print the
+ *  same OK as a clean scan, which is the failure this whole codebase keeps finding in
+ *  its own guards.
+ *
+ *  The hygiene test that was supposed to cover this checked two of the three and said
+ *  "neither one is left holding state at EOF" — and the one it did not name was the
+ *  one with the hole in it. So all three answer here, in one place, and the CLI treats
+ *  any of them being open as a MEASUREMENT FAILURE rather than a pass. Nothing in this
+ *  repo trips it today; that is exactly what makes now the cheap time to say so.
+ *
+ *  @returns {string[]} one sentence per machine left mid-parse. */
+function unclosedState(source) {
+  const out = [];
+
+  const heredocs = {};
+  const caseState = newCaseState();
+  for (const ll of logicalLines(source, heredocs)) maskCaseAlternations(ll.text, caseState);
+
+  if (heredocs.pendingHeredocs.length > 0) {
+    out.push(`a heredoc body ran to EOF looking for ${heredocs.pendingHeredocs.join(", ")}`);
+  }
+  if (caseState.stack.length > 0) {
+    out.push(`${caseState.stack.length} \`case\` block(s) never reached an \`esac\``);
+  }
+  if (caseState.awaitingIn) out.push("a `case` never found its `in`");
+
+  let stack = [];
+  for (const raw of source.split(/\r?\n/)) stack = scanLine(raw, stack).stack;
+  if (insideString(stack)) out.push("a quoted string never closed");
+
   return out;
 }
 
@@ -829,4 +997,6 @@ module.exports = {
   newCaseState,
   simpleCommands,
   earlyExitReader,
+  isCaptureOnly,
+  unclosedState,
 };

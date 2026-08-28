@@ -9,11 +9,11 @@ import {
   sourcedUnderPipefail,
   sourcedUnderErrexit,
   stripComment,
-  scanLine,
-  insideString,
   logicalLines,
   maskCaseAlternations,
   newCaseState,
+  isCaptureOnly,
+  unclosedState,
 } from "../scripts/lib/pipefail-grep.cjs";
 
 // #609 — an early-exit pipeline under pipefail.
@@ -362,14 +362,22 @@ test.describe("early-exit pipelines under pipefail (#609)", () => {
       .toEqual(["cmd | grep -q x"]);
   });
 
-  // ── the capture exemption, and the five ways out of it ────────────────────
+  // ── the capture exemption, and the four ways out of it ────────────────────
   //
   // `x="$(cmd | head -1)"` is latent rather than live: head prints its line before
   // SIGPIPE reaches the writer, so the VALUE is right, and the assignment leaves the
-  // pipeline's 141 in $? where nothing reads it. Five of these exist in the repo.
-  // Rewriting them into something worse to silence a guard would be the guard
-  // failing. But the exemption is narrow, and every clause below is load-bearing —
-  // widen any one of them and this test says so.
+  // pipeline's 141 in $? where nothing reads it. Rewriting them into something worse
+  // to silence a guard would be the guard failing.
+  //
+  // HOW MANY ARE IN THE REPO IS NOT WRITTEN HERE. This comment said "five" while the
+  // CLI printed two — three had been rewritten to `awk 'NR==1'` by an earlier fix in
+  // this same iteration and the prose stayed behind. The CLI lists every one of them
+  // with a total on every run; that count is measured and this one was not.
+  //
+  // The exemption is narrow, and each of the four clauses below is load-bearing —
+  // widen any one of them and this test says so. They are: the whole line must be the
+  // assignment (i), errexit must be off, `grep -q` is never exempt, and the next line
+  // must not read `$?`.
   test("a bare capture is latent, and the CLI still prints it", () => {
     const hits = findEarlyExitPipelines(
       `${PIPEFAIL}verdict="$(sqlite3 db 'PRAGMA integrity_check;' 2>&1 | head -1)"\n`);
@@ -393,6 +401,47 @@ test.describe("early-exit pipelines under pipefail (#609)", () => {
       expect(hits, line).toHaveLength(1);
       expect(hits[0].latent, line).toBe(false);
     }
+  });
+
+  test("(i) nor ANY trailing command — the whole line really must be the assignment", () => {
+    // MEASURED 2026-08-28, THIRD SWEEP. The clause above was enforced by a regex whose
+    // greedy `.*` ran to a `$` anchor, so all it actually required was that the line
+    // END in `)`. Side by side, on the library as it shipped:
+    //
+    //   x=$(ls | head -1) || die $(msg)        LATENT   ← the status IS consulted
+    //   x=$(ls | head -1) && rm -f $(cat list) LATENT
+    //   x=$(ls | head -1); notify $(hostname)  LATENT
+    //   x=$(ls | head -1) || fail              offence  ← only because `fail` has no )
+    //
+    // The verdict turned on the shape of the LAST WORD. The previous test passed
+    // throughout, because every line in it happens to end in something other than a
+    // paren — which is how a clause can be tested, green, and unenforced at once.
+    //
+    // `; cmd` is here on purpose even though `;` does not itself read the status:
+    // `x=$(…); [ $? -eq 0 ]` reads it on the same line, where the next-LINE clause
+    // below cannot see it, and this file will not tell that apart from `; echo done`.
+    for (const line of [
+      "x=$(cmd | head -1) || die $(msg)",
+      "x=$(cmd | head -1) && rm -f $(cat list)",
+      "x=$(cmd | head -1); notify $(hostname)",
+      'x="$(cmd | head -1)" && f $(g)',
+      "x=$(cmd | head -1) 2>/dev/null",
+    ]) {
+      const hits = findEarlyExitPipelines(`${PIPEFAIL}${line}\n`);
+      expect(hits, line).toHaveLength(1);
+      expect(hits[0].latent, `${line} — something follows the capture`).toBe(false);
+    }
+
+    // …and the bare shapes stay latent, in both quotings, or the fix is just a ban.
+    for (const line of ['x="$(cmd | head -1)"', "x=$(cmd | head -1)", "local x=$(cmd | head -1)"]) {
+      expect(findEarlyExitPipelines(`${PIPEFAIL}${line}\n`)[0].latent, line).toBe(true);
+    }
+
+    // isCaptureOnly is what the clause is made of, so it is asserted directly too —
+    // a nested `$( )` inside the capture must not be read as the end of it.
+    expect(isCaptureOnly('x="$(a $(b) | head -1)"')).toBe(true);
+    expect(isCaptureOnly("x=$(a $(b) | head -1) || fail")).toBe(false);
+    expect(isCaptureOnly("x=$(a | head -1")).toBe(false);   // never closed
   });
 
   test("nor the status being consulted on the NEXT line", () => {
@@ -460,6 +509,71 @@ test.describe("early-exit pipelines under pipefail (#609)", () => {
     expect(findEarlyExitPipelines(src)).toHaveLength(3);
   });
 
+  // ── (j) and (k): the two state machines nothing could look at ─────────────
+  //
+  // There are THREE cross-line state machines in the library — the heredoc list, the
+  // `case` stack, the quote stack — and each fails by SWALLOWING the rest of the file
+  // rather than by misreading one line of it. The hygiene test below used to check two
+  // of them and describe itself as checking both; the one it left out is the one that
+  // had the hole.
+
+  test("(j) a heredoc introducer inside a quote or an arithmetic shift is not a heredoc", () => {
+    // MEASURED 2026-08-28, THIRD SWEEP. The heredoc scan read the comment-stripped
+    // line with no regard for quoting WITHIN it — it only skipped a line that had
+    // STARTED inside a string. So a quote that opened and closed on one line, and the
+    // `<<` of a left shift, each registered a heredoc, and every line after it was
+    // dropped waiting for a delimiter that was never coming. Both of these returned
+    // ZERO hits; the offence on the second line was simply gone.
+    for (const src of [
+      'echo "run cat <<EOF here"\ncat f | grep -q y\n',
+      "echo 'run cat <<EOF here'\ncat f | grep -q y\n",
+      "v=$(( 1 << shift ))\ncat f | grep -q y\n",
+      'v="$(( 1 << shift ))"\ncat f | grep -q y\n',
+      "log() { echo \"[$(( $(date +%s) - START ))s] $*\"; }\ncat f | grep -q y\n",
+    ]) {
+      expect(findEarlyExitPipelines(`${PIPEFAIL}${src}`), src).toHaveLength(1);
+    }
+
+    // A REAL heredoc must still be skipped, or the cure is worse than (j): the python
+    // this repo pipes in is data, and every one of those delimiters is QUOTED —
+    // `<<'PY'` — which is precisely what the mask blanks. Gating on the mask while
+    // reading the name from the code is the whole of that distinction.
+    for (const src of [
+      "python3 - \"$src\" <<'PY' || fail \"no\"\nx = a | head\nPY\nlog done\n",
+      'cat >&2 <<MSG\na | head -1\nMSG\nlog done\n',
+      "cat <<-'IND'\n\ta | head -1\n\tIND\nlog done\n",
+      "parsed=\"$(python3 - \"$j\" <<'PY'\nx = a | head\nPY\n)\"\nlog done\n",
+    ]) {
+      expect(findEarlyExitPipelines(`${PIPEFAIL}${src}`), src).toHaveLength(0);
+    }
+  });
+
+  test("(j)(k) unclosedState answers for all THREE machines, and can fail on each", () => {
+    // A hygiene check that cannot go red is decoration. The real tree passes it, so
+    // nothing there would ever exercise it — these are the synthetic cases that kill
+    // each clause. Without them the assertion below is a clause no test can kill,
+    // which this file has already shipped once (see the `case` test above).
+    expect(unclosedState(`${PIPEFAIL}cat <<EOF\nbody\n`), "a heredoc with no delimiter")
+      .toEqual(["a heredoc body ran to EOF looking for EOF"]);
+    expect(unclosedState(`${PIPEFAIL}case "$a" in\n  x) : ;;\n`), "a case with no esac")
+      .toEqual(["1 `case` block(s) never reached an `esac`"]);
+    expect(unclosedState(`${PIPEFAIL}case "$a"\n`), "a case that never found its in")
+      .toEqual(["a `case` never found its `in`"]);
+    expect(unclosedState(`${PIPEFAIL}echo "one\n`), "a string that never closed")
+      .toEqual(["a quoted string never closed"]);
+
+    // (k) is what the second of those costs while it is invisible: the masker stays in
+    // pattern state and blanks every `|` to EOF, so a real offence after the unclosed
+    // block is not merely misreported — it is not reported at all.
+    expect(findEarlyExitPipelines(`${PIPEFAIL}case "$a" in\n  x) : ;;\ncmd | grep -q y\n`),
+      "an unterminated case swallows the offence after it").toHaveLength(0);
+    expect(unclosedState(`${PIPEFAIL}case "$a" in\n  x) : ;;\ncmd | grep -q y\n`),
+      "…which is why the guard must refuse to call that file scanned").not.toEqual([]);
+
+    // And a file that parses cleanly says nothing at all.
+    expect(unclosedState(`${PIPEFAIL}case "$a" in\n  x) cmd | grep -q y ;;\nesac\n`)).toEqual([]);
+  });
+
   // ── the repo itself ───────────────────────────────────────────────────────
   test("the repo's own shell scripts are clean", async () => {
     const { readFileSync, readdirSync, statSync } = await import("node:fs");
@@ -506,12 +620,17 @@ test.describe("early-exit pipelines under pipefail (#609)", () => {
     }
   });
 
-  test("the repo's own case blocks and multi-line strings all close", async () => {
-    // The two state machines added for (f) and (g) carry across lines, so a shape
-    // they cannot parse does not merely misread ONE line — it misreads everything
-    // after it, silently, in the swallowing direction. This asserts on the real tree
-    // that neither one is left holding state at EOF. It is the check that would have
-    // caught the flat-quote version of (g) on test-isolated.sh before it shipped.
+  test("the repo's own heredocs, case blocks and multi-line strings all close", async () => {
+    // THREE state machines carry across lines here, not two, and a shape any of them
+    // cannot parse does not merely misread ONE line — it misreads everything after it,
+    // silently, in the swallowing direction. This asserts on the real tree that none of
+    // them is left holding state at EOF.
+    //
+    // IT USED TO CHECK TWO AND SAY "NEITHER ONE". The heredoc list was the third, it
+    // was the one `logicalLines` did not expose, and it was the one with the hole in it
+    // (j) — a count contradicted by its own subject, in the test written to stop
+    // exactly that. All three answer through unclosedState now, so there is one list to
+    // add to rather than three assertions to remember.
     const { readFileSync, readdirSync, statSync } = await import("node:fs");
     const { join } = await import("node:path");
     const skip = new Set(["node_modules", ".git", ".next", ".next-runs", "out",
@@ -529,15 +648,45 @@ test.describe("early-exit pipelines under pipefail (#609)", () => {
     expect(paths.length, "no shell scripts found — the walk is broken").toBeGreaterThan(5);
 
     for (const p of paths) {
-      const source = readFileSync(p, "utf8");
-      const caseState = newCaseState();
-      for (const ll of logicalLines(source)) maskCaseAlternations(ll.text, caseState);
-      expect(caseState.stack, `${p}: a case block never reached its esac`).toEqual([]);
-      expect(caseState.awaitingIn, `${p}: a \`case\` never found its \`in\``).toBe(false);
+      expect(unclosedState(readFileSync(p, "utf8")), p).toEqual([]);
+    }
+  });
 
-      let stack = [];
-      for (const raw of source.split(/\r?\n/)) stack = scanLine(raw, stack).stack;
-      expect(insideString(stack), `${p}: a quoted string never closed`).toBe(false);
+  test("the CLI refuses to call a file it could not finish parsing scanned", async () => {
+    // The assertion above lives in the suite; this is the same finding in the GATE,
+    // which is the thing that actually runs on every push. A phantom heredoc or an
+    // unterminated case makes the walk print `OK — N shell script(s) scanned` about a
+    // tree it read part of, and that sentence is indistinguishable from a real pass.
+    // Exit 2 — "could not measure" — is the same shape check-node-pins.mjs uses.
+    const { mkdtempSync, mkdirSync, cpSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
+
+    const root = mkdtempSync(join(tmpdir(), "mob-pipefail-"));
+    try {
+      mkdirSync(join(root, "scripts", "lib"), { recursive: true });
+      for (const f of ["check-pipefail-grep.mjs", "lib/pipefail-grep.cjs"]) {
+        cpSync(join(__dirname, "..", "scripts", f), join(root, "scripts", f));
+      }
+      const clean = join(root, "scripts", "clean.sh");
+      writeFileSync(clean, `${PIPEFAIL}echo hi\n`);
+      const run = () =>
+        spawnSync("node", [join(root, "scripts", "check-pipefail-grep.mjs")], { encoding: "utf-8" });
+
+      const ok = run();
+      expect(ok.status, `${ok.stdout}${ok.stderr}`).toBe(0);
+
+      writeFileSync(clean, `${PIPEFAIL}cat <<EOF\nbody\ncmd | grep -q y\n`);
+      const heredoc = run();
+      expect(heredoc.status, "a heredoc with no delimiter must not read as a clean scan").toBe(2);
+
+      writeFileSync(clean, `${PIPEFAIL}case "$a" in\n  x) : ;;\ncmd | grep -q y\n`);
+      const unclosed = run();
+      expect(unclosed.status, "an unterminated case must not read as a clean scan").toBe(2);
+      expect(`${unclosed.stdout}${unclosed.stderr}`).toContain("could not finish reading");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
