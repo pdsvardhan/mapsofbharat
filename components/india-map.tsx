@@ -83,6 +83,54 @@ const NODATA_LAYERS: Record<string, string> = {
   "s2011-fill": "s2011-nodata",
 };
 
+// ── a state code is ZERO-PADDED, everywhere (iter-46 item 1091) ───────────────
+// "01".."38", and not incidentally: districts.geojson's st_code carries the pad, so
+// does the rid built from it ("09_75"), so does region_keys.code, so does every
+// metric_values.region_code at state level — and `states` is promoteId'd on st_code,
+// which makes the padded string a MapLibre feature id as well. Five key spaces, one
+// spelling.
+//
+// This file kept normalising the pad away with String(Number(code)) — "09" -> "9" —
+// and one of those call sites was a live production defect. applyFocus built its
+// MapLibre drill filter from the normalised form while the geojson property kept the
+// pad, so for the nine states coded 01..09 the filter matched NOTHING. Measured on
+// the deployed 57581ac: drilling Maharashtra (27) admitted 35 district polygons and
+// rendered them; Uttar Pradesh (09) admitted 0 and rendered 0, Jammu & Kashmir (01)
+// 0 of 22, Delhi (07) 0 of 1. Nine states drew an empty map, India's most populous
+// among them.
+//
+// It hid for as long as it did because the surroundings were TOLERANT: scopeCodes(),
+// the ranking rail and the region counts all accepted either spelling, so every
+// number on the page stayed correct while the map drew nothing — and every drill
+// spec in the suite happened to use a high-numbered state.
+//
+// So the tolerance is gone and these three are what replaces it: one canonical form,
+// applied at the boundary (applyFocus) rather than remembered at each call site, and
+// a filter that compares NUMBERS so it cannot care about the pad on either side —
+// including on the day the geometry is rebuilt by something that does not pad.
+// tests/drill-state-codes.spec.ts sweeps every state code the geometry carries.
+
+/** The canonical form of a state code here: zero-padded to two digits. */
+function stCode(code: string | number): string {
+  return String(code).padStart(2, "0");
+}
+
+/** The district-rid prefix for a state — "09_", the key space districts live in. */
+function ridPrefix(code: string | number): string {
+  return stCode(code) + "_";
+}
+
+/** "this feature belongs to state <code>", as a MapLibre filter.
+ *
+ *  Numeric on BOTH sides, which is the whole point: "09" and "9" are the same state
+ *  and neither spelling can miss the other. The `-1` fallback is to-number's second
+ *  candidate — a feature with no st_code, or an unconvertible one, would otherwise
+ *  make the whole expression an ERROR rather than a non-match, and an erroring filter
+ *  takes the layer down instead of one feature. */
+function stateFilter(code: string | number): maplibregl.FilterSpecification {
+  return ["==", ["to-number", ["get", "st_code"], -1], Number(stCode(code))];
+}
+
 type MetricData = {
   /** Which metric this payload is for. The previous metric's rows stay painted
    *  while the next one loads, so anything that reasons about the DATA (not just
@@ -573,6 +621,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     } as maplibregl.MapOptions);
     mapRef.current = map;
     (window as any).__mob_map = map;
+    // test hook (parallels window.__mob_map and window.__mob_outline): the drill
+    // filter BUILDER, so one page load can put every state code the geometry carries
+    // through the same function applyFocus uses and compare the polygons it admits
+    // against the source's own rid prefixes. Item 1091 was a filter that matched
+    // nothing for nine states; a sweep that reconstructs the expression in the spec
+    // would only be testing a copy of it, and a sweep that reloads the page 38 times
+    // is a sweep nobody runs. The spec still asserts, on a real drill, that
+    // getFilter("district-fill") is exactly what this returns.
+    (window as any).__mob_state_filter = stateFilter;
 
     // ── symbol-layer feature-state parity (#408 S5) ───────────────────────────
     // The proportional-symbol layer cannot read the polygon sources: a `circle`
@@ -782,7 +839,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           setHovered({
             code: String(f.id),
             name: nameOf(f.properties),
-            state: kind === "state" ? "" : String(f.properties?.st_nm ?? statesRef.current[String(Number(String(f.id).split("_")[0]))]?.properties?.st_nm ?? ""),
+            state: kind === "state" ? "" : String(f.properties?.st_nm ?? statesRef.current[stCode(String(f.id).split("_")[0])]?.properties?.st_nm ?? ""),
             kind,
           });
         });
@@ -806,7 +863,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           const s: Sel = {
             code: String(f.id),
             name: nameOf(f.properties),
-            state: String(f.properties?.st_nm ?? statesRef.current[String(Number(String(f.id).split("_")[0]))]?.properties?.st_nm ?? ""),
+            state: String(f.properties?.st_nm ?? statesRef.current[stCode(String(f.id).split("_")[0])]?.properties?.st_nm ?? ""),
             kind,
           };
           clickFeature(s, source);
@@ -828,8 +885,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // restore drill + compare pins from a shared link
       const r = restoreRef.current;
       if (r.st && r.lvl === "district") {
-        const nm = r.stn || statesRef.current[String(Number(r.st))]?.properties?.st_nm || "";
-        applyFocus(r.st.padStart(2, "0"), String(nm));
+        // A shared link's `st` is whatever the sender's address bar held. This writer
+        // emits the canonical padded form, but links from before that, and links typed
+        // by hand, carry "9" — so the lookup canonicalises and applyFocus does the
+        // same to what it stores (item 1091).
+        const nm = r.stn || statesRef.current[stCode(r.st)]?.properties?.st_nm || "";
+        applyFocus(r.st, String(nm));
       }
       if (r.cmp.length) {
         const restored: Sel[] = [];
@@ -838,8 +899,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             const feat = (districts.features as any[]).find((ff) => String(ff.properties?.rid) === code);
             if (feat) restored.push({ code, name: String(feat.properties?.district ?? "—"), state: String(feat.properties?.st_nm ?? ""), kind: "district" });
           } else {
-            const feat = statesRef.current[String(Number(code))];
-            if (feat) restored.push({ code, name: String(feat.properties?.st_nm ?? "—"), state: "", kind: "state" });
+            // The CANONICAL code goes into the pin, not the one the link happened to
+            // spell (item 1091): `code` becomes the MapLibre feature id in the
+            // setFeatureState below and the key into valuesRef, and both are padded.
+            const feat = statesRef.current[stCode(code)];
+            if (feat) restored.push({ code: stCode(code), name: String(feat.properties?.st_nm ?? "—"), state: "", kind: "state" });
           }
         }
         if (restored.length) {
@@ -872,10 +936,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       (d2011.features as any[]).forEach((f) => {
         idx.set(String(f.properties?.rid), { name: String(f.properties?.district ?? "—"), state: String(f.properties?.st_nm ?? "") });
       });
-      // Key on the RAW zero-padded st_code ("01".."35"), not String(Number(...))
-      // (to-do 346). Three things must agree on this key and all three are padded:
-      // the source's promoteId below, the /api/metrics?level=state2011 value keys,
-      // and this index. Normalising to "1".."35" here desynchronised all of them —
+      // Key on the RAW zero-padded st_code ("01".."35") — the canonical form stCode()
+      // names at the top of this file (to-do 346, and the same class of defect as item
+      // 1091). Three things must agree on this key and all three are padded: the
+      // source's promoteId below, the /api/metrics?level=state2011 value keys, and this
+      // index. Normalising to "1".."35" here desynchronised all of them —
       // allCodes("states2011") reads these keys, so every state looked up as
       // undefined and the whole 2011 state map painted no-data, while the ranking
       // rail fell back to showing the bare code instead of the state name.
@@ -1011,10 +1076,21 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   }
 
   // ── drill (focus a state's districts) ───────────────────────────────────
-  function applyFocus(code: string, name: string) {
+  // THE ONE PLACE A STATE CODE IS CANONICALISED (item 1091). Everything downstream —
+  // the MapLibre filter, the rid prefixes scopeCodes() and the ranking rail cut with,
+  // the `st` param in the share link — reads focus.code, so it is padded here once
+  // instead of at each of the five call sites. Four of them used to do it by hand and
+  // the fifth did not have to think about it, which is the shape a sixth call site
+  // gets wrong.
+  function applyFocus(rawCode: string, name: string) {
     const map = mapRef.current; if (!map) return;
-    const f = statesRef.current[String(Number(code))] || statesRef.current[code];
-    const flt: any = ["==", ["to-string", ["get", "st_code"]], String(Number(code))];
+    const code = stCode(rawCode);
+    const f = statesRef.current[code];
+    // Numeric, so the pad cannot break it in either direction. This line used to read
+    // ["==", ["to-string", ["get","st_code"]], String(Number(code))] — "9" against a
+    // geojson that stores "09" — and it is the whole of item 1091: nine states drilled
+    // to a filter that matched no polygon at all.
+    const flt = stateFilter(code);
     // district-nodata rides with district-fill, and must: every district outside the
     // drilled state is out of scope, so recolor marks it no-data — an unfiltered hatch
     // would paint the rest of the country while its fills stayed hidden.
@@ -1303,8 +1379,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const f = focusRef.current;
     const values = valuesRef.current;
     if (levelRef.current === "district" && f) {
-      const pref = String(Number(f.code)) + "_";
-      return Object.keys(values).filter((c) => c.startsWith(pref) || c.startsWith(f.code + "_"));
+      // ONE prefix (item 1091). This used to accept "9_" alongside "09_" because
+      // applyFocus spoke the unpadded form and the geometry spoke the padded one; the
+      // filter is numeric now and focus.code is canonical, so the padded prefix is the
+      // only spelling the rid key space has ever had.
+      const pref = ridPrefix(f.code);
+      return Object.keys(values).filter((c) => c.startsWith(pref));
     }
     return Object.keys(values);
   }
@@ -1477,18 +1557,19 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // they are marks nobody can see. The legend keys the hatch, and a key is owed the
     // marks on screen, so the count below is over the drawn ones only.
     //
-    // The drill test accepts BOTH the padded and the unpadded state prefix, which is
-    // the tolerance scopeCodes() already has. Not defensive vagueness: applyFocus
-    // builds its MapLibre filter from String(Number(code)) while the geojson's
-    // st_code — and so the rid prefix — is zero-padded, so for the nine states coded
-    // 01..09 that filter matches nothing at all. Measured on this build: drilling
-    // Maharashtra passes 35 district polygons, Uttar Pradesh and Jammu & Kashmir pass
-    // 0. That mismatch is a separate defect and is deliberately NOT fixed here; this
-    // rule simply stays on the correct side of it, counting the marks the drill is
-    // meant to draw rather than inheriting a filter bug into the legend.
+    // The drill test is ONE prefix, and it used to be two (item 1091). The tolerance
+    // here documented a live defect rather than a real ambiguity: applyFocus built its
+    // MapLibre filter from String(Number(code)) while the geojson's st_code — and so
+    // the rid prefix — is zero-padded, so for the nine states coded 01..09 that filter
+    // matched nothing at all. Measured on the deployed 57581ac: drilling Maharashtra
+    // passed 35 district polygons, Uttar Pradesh 0 of 75 and Jammu & Kashmir 0 of 22.
+    // With the filter numeric and focus.code canonicalised by applyFocus, the padded
+    // prefix is the only spelling the rid key space carries and there is nothing left
+    // for a second arm to tolerate — so the count below and the polygons on screen are
+    // now the same set for every state, not just the twenty-nine that read as drawn.
     const drill = levelRef.current === "district" ? focusRef.current : null;
-    const drawnHere = (code: string) =>
-      !drill || code.startsWith(String(Number(drill.code)) + "_") || code.startsWith(drill.code + "_");
+    const drillPrefix = drill ? ridPrefix(drill.code) : null;
+    const drawnHere = (code: string) => !drillPrefix || code.startsWith(drillPrefix);
     let hatched = 0;
 
     for (const code of allCodes(source)) {
@@ -1629,7 +1710,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   const entries = useMemo<Entry[]>(() => {
     if (!data) return [];
-    const f = focusActive && focus ? String(Number(focus.code)) + "_" : null;
+    // One canonical prefix (item 1091) — see scopeCodes(), which cuts the same scope.
+    const f = focusActive && focus ? ridPrefix(focus.code) : null;
     // An estimated value is not this region's own measurement, so the ranking list
     // must be able to mark it (item 611) — and estimate_kind travels with it so the
     // rail can say WHICH kind without guessing from the flag (adr-021).
@@ -1639,7 +1721,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const shak = data.shaky ?? {};
     const out: Entry[] = [];
     for (const [code, value] of Object.entries(data.values)) {
-      if (f && !code.startsWith(f) && !code.startsWith((focus?.code ?? "") + "_")) continue;
+      if (f && !code.startsWith(f)) continue;
       // vintage codes are 2011 census codes named by the vintage geojson, not
       // the /api/regions palette index (same code can mean a different region)
       const idx = vintage === "2011" ? vintageIdxRef.current.get(code) : nameIdx.get(code);
@@ -1774,8 +1856,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const districtCountOf = useCallback((stateCode: string): number => {
     const fc = districtsFCRef.current;
     if (!fc) return 0;
-    const n = String(Number(stateCode));
-    return (fc.features as any[]).filter((f) => String(Number(f.properties?.st_code)) === n).length;
+    // Both sides through stCode(), which was already true of this one — it normalised
+    // both ends and so was never part of item 1091. Moved onto the shared helper so
+    // the file has ONE spelling of a state code rather than two that happen to agree.
+    const n = stCode(stateCode);
+    return (fc.features as any[]).filter((f) => stCode(String(f.properties?.st_code)) === n).length;
   }, []);
 
   // compare derived
@@ -1837,17 +1922,24 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (vintageRef.current === "2011") setVintage("current");
     if (r.level === "state") {
       if (levelRef.current === "state") {
-        const f = statesRef.current[String(Number(r.code))] || statesRef.current[r.code];
+        const f = statesRef.current[stCode(r.code)];
         if (f) map.fitBounds(bbox(f.geometry) as any, { padding: 50, duration: 750, essential: true });
-        clickFeature({ code: String(Number(r.code)), name: r.name, state: "", kind: "state" }, "states");
+        // THE CANONICAL CODE, not String(Number(r.code)) (item 1091). This one is a
+        // second, quieter face of the same defect: `code` becomes the MapLibre feature
+        // id in clickFeature's setFeatureState, and `states` is promoteId'd on the
+        // padded st_code — so "9" set selection on a feature that does not exist and
+        // picking any of the nine low-numbered states out of search left it unpainted.
+        // valuesRef is keyed padded too, so the profile that opened alongside read
+        // "No data for this region on the current indicator" for Uttar Pradesh.
+        clickFeature({ code: stCode(r.code), name: r.name, state: "", kind: "state" }, "states");
       } else {
-        drillIntoState(r.code.padStart(2, "0"), r.name);
+        drillIntoState(r.code, r.name);
       }
     } else {
       if (levelRef.current === "state") setLevel("district");
       const feat = (districtsFCRef.current?.features as any[] | undefined)?.find((f) => String(f.properties?.rid) === r.code);
       if (feat) {
-        applyFocus(String(feat.properties?.st_code).padStart(2, "0"), String(feat.properties?.st_nm ?? ""));
+        applyFocus(String(feat.properties?.st_code), String(feat.properties?.st_nm ?? ""));
         map.fitBounds(bbox(feat.geometry) as any, { padding: 80, duration: 900, maxZoom: 9, essential: true });
         clickFeature({ code: r.code, name: r.name, state: String(feat.properties?.st_nm ?? ""), kind: "district" }, "districts");
       }
@@ -1907,7 +1999,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         label: stateCtx, on: !leaf,
         onClick: () => {
           const codeGuess = focus?.code ?? (selected?.kind === "state" ? selected.code : null);
-          if (codeGuess) drillIntoState(codeGuess.padStart(2, "0"), stateCtx);
+          if (codeGuess) drillIntoState(codeGuess, stateCtx);
         },
       });
       if (leaf && selected) items.push({ label: selected.name, on: true, onClick: () => {} });
@@ -2478,7 +2570,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   fmtVal={fmtVal} fmtFull={fmtFull}
                   rank={selectedRank} scopeNoun={scopeNoun}
                   drillLabel={selected.kind === "state" && !focusActive ? `View ${districtCountOf(selected.code) || ""} districts`.replace("  ", " ") : null}
-                  onDrill={() => drillIntoState(selected.code.padStart(2, "0"), selected.name)}
+                  onDrill={() => drillIntoState(selected.code, selected.name)}
                   onClear={clearSelected}
                 />
               </div>
@@ -2695,7 +2787,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               ? statesFCRef.current?.features ?? []
               : focus
                 ? ((districtsFCRef.current?.features ?? []) as SocialFeature[]).filter(
-                    (f) => String(Number(String(f.properties?.st_code))) === String(Number(focus.code)))
+                    (f) => stCode(String(f.properties?.st_code)) === stCode(focus.code))
                 : districtsFCRef.current?.features ?? []) as SocialFeature[]
           }
           codeOf={(f) =>
