@@ -1,0 +1,53 @@
+{
+  "tests": "tests/value-by-alpha.spec.ts",
+  "mutations": [
+    {
+      "name": "the warrant waves everything through, so every map is faded",
+      "file": "lib/value-by-alpha.ts",
+      "find": "  if (tvd < TVD_THRESHOLD) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "name": "the warrant never fires, so the remedy is dead code",
+      "file": "lib/value-by-alpha.ts",
+      "find": "export const TVD_THRESHOLD = 0.15;",
+      "replace": "export const TVD_THRESHOLD = 99;"
+    },
+    {
+      "name": "the ramp goes linear, which erases rather than fades",
+      "file": "lib/value-by-alpha.ts",
+      "find": "  const t = (Math.log(pop) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));",
+      "replace": "  const t = (pop - lo) / (hi - lo);"
+    },
+    {
+      "name": "the floor drops to zero, fading small regions out of existence",
+      "file": "lib/value-by-alpha.ts",
+      "find": "export const ALPHA_MIN = 0.28;",
+      "replace": "export const ALPHA_MIN = 0;"
+    },
+    {
+      "name": "every region gets the same alpha, so the fade encodes nothing",
+      "file": "lib/value-by-alpha.ts",
+      "find": "  for (const c of codes) out[c] = alphaFor(pop[c], lo, hi);",
+      "replace": "  for (const c of codes) out[c] = 0.9;"
+    },
+    {
+      "name": "areas are invented for regions with no recoverable density",
+      "file": "lib/value-by-alpha.ts",
+      "find": "    if (!Number.isFinite(d) || !Number.isFinite(p) || d <= 0 || p <= 0) continue;",
+      "replace": "    if (!Number.isFinite(p) || p <= 0) continue;\n    if (!Number.isFinite(d) || d <= 0) { out[code] = 1; continue; }"
+    },
+    {
+      "name": "bounds become min/max, so one outlier sets the whole ramp",
+      "file": "lib/value-by-alpha.ts",
+      "find": "  return { lo: at(0.05), hi: at(0.95) };",
+      "replace": "  return { lo: at(0), hi: at(1) };"
+    },
+    {
+      "name": "a class edge falls to the class below, shifting every share",
+      "file": "lib/value-by-alpha.ts",
+      "find": "  while (i < edges.length && v >= edges[i]) i += 1;",
+      "replace": "  while (i < edges.length && v > edges[i]) i += 1;"
+    }
+  ]
+}

@@ -27,12 +27,22 @@ import { checkAll } from "./lib/centroid-containment.cjs";
 
 function main() {
   let problems = 0;
+  // A skip is not a pass, and the difference has to be counted to be visible (#602).
+  // Measured before this line existed: with an empty public/geo, all four layers
+  // printed SKIP and the script still printed "check-centroids: OK" and exited 0 —
+  // a build being told its centroids are contained on the strength of zero points.
+  let layersChecked = 0;
+  let pointsChecked = 0;
+  const skipped = [];
   console.log("check-centroids: every point inside its own polygon");
   for (const r of checkAll()) {
     if (r.absent) {
       console.log(`  ${r.layer}: SKIP (source or output not present)`);
+      skipped.push(r.layer);
       continue;
     }
+    layersChecked += 1;
+    pointsChecked += r.checked;
     if (r.outside.length === 0 && r.missing.length === 0) {
       // Only claimed once it has actually been established, which is the whole
       // difference from the line this replaces.
@@ -52,7 +62,14 @@ function main() {
     console.error(`\ncheck-centroids: ${problems} problem(s) — rebuild with pipeline/build_centroids.py`);
     process.exit(1);
   }
-  console.log("check-centroids: OK");
+  if (layersChecked === 0 || pointsChecked === 0) {
+    console.error(`\ncheck-centroids: checked 0 points. Every layer was skipped: ${skipped.join(", ") || "(none found at all)"}.`);
+    console.error("  Nothing was measured, so there is nothing to report as OK. A build that");
+    console.error("  cannot find its geometry must not be told its centroids are contained —");
+    console.error("  the guarantee this guard exists to make is precisely the one it did not make.");
+    process.exit(2);
+  }
+  console.log(`check-centroids: OK — ${pointsChecked} points across ${layersChecked} layer(s), all inside their polygon`);
 }
 
 // Run as a CLI, stay quiet when imported.

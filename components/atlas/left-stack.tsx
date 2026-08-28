@@ -15,6 +15,10 @@ import {
 } from "@/lib/coverage";
 import { useDismiss } from "@/lib/use-dismiss";
 import { legendStops, symbolRadius, type SymbolLevel } from "@/lib/symbols";
+import { BIVARIATE_PALETTE } from "@/lib/bivariate";
+import {
+  ALPHA_UNFADED, NO_DATA_FILL, alphaComposite, alphaFor, noDataHatchCss,
+} from "@/lib/value-by-alpha";
 import { SEGMENTED_WIDTH, ViewToggle } from "@/components/atlas/data-table";
 
 /** Legend view mode — shared with india-map's Mode. */
@@ -243,7 +247,10 @@ export function LegendCard({
   mode, onMode, coverageCounts, coverageHidden, onToggleCoverageClass, coverageStat,
   avgNote, scope, countLabel, source, license, cohortNote,
   scaleOpen, onToggleScale, onReverse,
-  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor,
+  symbolable, symbolOn, onSymbol, symbolMax, symbolLevel, symbolFloor, alphaNote, alphaBounds,
+  nodataCount,
+  pairName, baseName, pairElig, pairActive, pairEdgesX, pairEdgesY, pairDecimals, pairUnit,
+  onOpenPair, onClearPair,
 }: {
   metricName: string; unit: string; decimals: number; min: number; max: number; values: number[];
   method: BreakMethod;
@@ -274,9 +281,53 @@ export function LegendCard({
   symbolMax: number; symbolLevel: SymbolLevel;
   /** How many marks the floor flattens, from lib/symbols floorShare (#566). */
   symbolFloor?: { drawn: number; atFloor: number; share: number; threshold: number };
+  /** Why this map is faded by population, or null when it is not (#408 item 1077). */
+  alphaNote?: string | null;
+  /** The p5/p95 populations the fade ramp ran between. Present exactly when the fade
+   *  fired, and what makes the colour x alpha key readable: a swatch at 0.28 means
+   *  nothing until the reader is told it is the opacity of a district holding this
+   *  many people. */
+  alphaBounds?: { lo: number; hi: number } | null;
+  /** How many regions the map is currently HATCHING, straight from the paint
+   *  (iter-46 polish, N3). The no-data key below renders only above zero: the hatch
+   *  is drawn in every mode and on both vintages and stays that way, but a key for a
+   *  mark this map does not carry is item 1080's defect with the sign flipped — a
+   *  legend describing something the reader cannot find. Measured: crime_ipc_rate at
+   *  state level marks 0 of 36 regions and still keyed the hatch. */
+  nodataCount?: number;
+  /** The paired metric's name, or null when the map is not paired (#408 item 1080). */
+  pairName?: string | null;
+  /** The metric on the primary axis, for labelling the matrix. */
+  baseName?: string;
+  /** The resolver's verdict. Present and NOT ok means a pair was asked for and
+   *  refused, and the reason is the reader's answer. */
+  pairElig?: { ok: boolean; reason: string; shared: number; floor: number | null } | null;
+  /** Whether the matrix is what the map is actually drawing right now. Comes straight
+   *  from the paint: deriving it here from the pairing verdict is what put a 3x3 key
+   *  over a univariately-painted map wherever the drilled scope was too small to cut
+   *  three bands (#408 item 1080, round 2). */
+  pairActive?: boolean;
+  /** The bands the matrix is drawn with, per axis — the k-1 inner edges the paint
+   *  used. Shown as numbers, because a nine-cell key with no boundaries asks the
+   *  reader to take "high" and "low" on trust. */
+  pairEdgesX?: number[];
+  pairEdgesY?: number[];
+  /** Precision and unit for the SECOND axis (the first uses this legend's own). */
+  pairDecimals?: number;
+  pairUnit?: string;
+  onOpenPair?: () => void;
+  onClearPair?: () => void;
 }) {
   const fn = (t: number) => paletteFn(reverse ? 1 - t : t);
   const fmt = (v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: decimals });
+  /** Whole people, Indian grouping. The fade key labels its rows with populations
+   *  rather than opacities — 0.28 is not a fact about anywhere. */
+  const fmtPop = (v: number) => Math.round(v).toLocaleString("en-IN");
+  /** The k-1 band edges of one matrix axis, in that axis' own precision and unit. */
+  const fmtEdges = (es: number[] | undefined, d: number, u: string) =>
+    (es ?? [])
+      .map((e) => e.toLocaleString("en-IN", { maximumFractionDigits: d }) + (u === "%" ? "%" : ""))
+      .join("  ·  ");
   const binned = mode === "value" && method !== "continuous";
   const edges = binned ? mapEdges : [];
   // Occupancy per class, disclosed beside each row. The research brief's remedy for
@@ -344,6 +395,18 @@ export function LegendCard({
               className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated max-lg:min-h-[26px] max-lg:px-2"
             >
               ⚙ SCALE
+            </button>
+          )}
+          {/* PAIR sits beside SCALE and under the same condition: it is a value-mode
+              instrument, meaningless over the categorical coverage key, and a count
+              is drawn as circles rather than shaded (#408 item 1080). */}
+          {!symbolOn && mode !== "coverage" && (
+            <button
+              onClick={onOpenPair} data-pair-toggle
+              aria-pressed={!!pairActive}
+              className="rounded-sm border border-accent-border px-1.5 py-0.5 text-[10px] font-bold text-accent-text hover:bg-elevated max-lg:min-h-[26px] max-lg:px-2"
+            >
+              ⊕ PAIR
             </button>
           )}
         </div>
@@ -446,6 +509,13 @@ export function LegendCard({
           <div className="mt-2 h-2" style={{ background: "linear-gradient(90deg,#b2182b,#f7f7f7,#2166ac)" /* no-token: ColorBrewer RdBu endpoints — a data-palette swatch, not a UI role */ }} />
           <div className="mt-1 flex justify-between font-mono text-[9.5px] text-faint"><span>below avg</span><span>{avgNote}</span><span>above avg</span></div>
         </>
+      ) : pairActive ? (
+        // A PAIRED MAP HAS NO RAMP. The matrix below is the key, and the fills on the
+        // map come out of it — so drawing the univariate ramp here as well would key
+        // nine colours the map is not painting with five it is not either, which is
+        // the mirror image of the defect that made the matrix key appear over an
+        // unpaired map (#408 item 1080, round 2).
+        null
       ) : binned && edges.length ? (
         <>
           <div className="mt-2 flex h-2">
@@ -473,6 +543,144 @@ export function LegendCard({
           </div>
         </>
       )}
+      {/* THE PAIR (#408 item 1080). The matrix legend is not optional furniture: nine
+          fills are at the limit of what a reader can hold, and unlike a ramp there is
+          no intuition to fall back on. It is drawn at the size of a real key, with
+          both metric names on their axes.
+          A REFUSED pair renders its reason instead. The map stays univariate and
+          says why, which is the difference between a feature declining and a feature
+          appearing broken. */}
+      {pairActive && pairName ? (
+        <div className="mt-2" data-bivariate-legend>
+          <div className="flex items-end gap-2">
+            <div className="flex flex-col-reverse gap-[2px]" aria-hidden>
+              {BIVARIATE_PALETTE.map((row, y) => (
+                <div key={y} className="flex gap-[2px]">
+                  {row.map((c, x) => (
+                    <span
+                      key={x}
+                      data-bivariate-cell={`${x}-${y}`}
+                      className="block h-3 w-3"
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            {/* Each axis names its metric AND the two boundaries between its three
+                bands. The univariate legend has always printed its class edges; the
+                matrix asked the reader to take "low" and "high" on trust, which on a
+                nine-cell key is the harder read of the two. */}
+            <div className="flex min-w-0 flex-1 flex-col gap-[3px] font-mono text-[9px] leading-tight text-faint">
+              <span className="truncate" data-bivariate-y>&#8593; {pairName}</span>
+              <span className="truncate pl-2.5" data-bivariate-y-edges>
+                {fmtEdges(pairEdgesY, pairDecimals ?? 0, pairUnit ?? "")}
+              </span>
+              <span className="truncate" data-bivariate-x>&#8594; {baseName}</span>
+              <span className="truncate pl-2.5" data-bivariate-x-edges>
+                {fmtEdges(pairEdgesX, decimals, unit)}
+              </span>
+            </div>
+          </div>
+          {/* Which rule cut those bands, deep-linked like the univariate method label.
+              It is not always quantile now: each axis runs the same data-driven
+              selector the single-metric map uses, so a distribution that collapses —
+              445 districts at exactly 0% Buddhist — ladders to a floor band instead of
+              painting "none" as the middle one of three. */}
+          <div data-bivariate-method-line className="mt-1.5 font-mono text-[9px] tracking-[.05em] text-faint">
+            <a
+              href="/methodology#bivariate" target="_blank" rel="noopener noreferrer"
+              data-bivariate-method
+              className="text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
+            >
+              PAIRED
+            </a>
+            <span aria-hidden> · </span>
+            <span>3 bands per axis, cut on each axis&apos; own spread</span>
+          </div>
+          <button
+            onClick={onClearPair}
+            data-bivariate-clear
+            className="mt-1.5 font-mono text-[9px] tracking-[.1em] text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text max-lg:min-h-[26px]"
+          >
+            UNPAIR
+          </button>
+        </div>
+      ) : pairElig && !pairElig.ok ? (
+        <div className="mt-2 font-mono text-[9px] leading-snug text-faint" data-bivariate-refused>
+          <span className="font-semibold tracking-[.05em]">NOT PAIRED</span>
+          <span aria-hidden> &#183; </span>
+          <span>{pairElig.reason}</span>
+          <button
+            onClick={onClearPair}
+            data-bivariate-clear
+            className="ml-1 underline decoration-dotted underline-offset-2 hover:text-accent-text"
+          >
+            clear
+          </button>
+        </div>
+      ) : null}
+      {/* THE FADE KEY (#408 item 1077, round 2) — colour ACROSS, opacity DOWN.
+          The ramp above keys the colours at full strength only, so on a faded map the
+          colour a floored district actually renders appeared nowhere in the legend:
+          measured, 38 of 733 districts sit exactly at the 0.28 floor and 97 below
+          0.35, and adjacent-class contrast there falls to 1.11–1.27 from 1.68–1.81
+          unfaded. That collapse is the fade working as intended — a district holding
+          8,004 people is meant to recede — but a reader cannot be asked to decode a
+          second encoding that is not in the key.
+          Every swatch is the class colour COMPOSITED over the map's own background at
+          that opacity, not a CSS opacity over this panel: the key has to show the
+          colour the map paints, and this panel is not what the map paints over.
+          Rows are labelled with the POPULATIONS that produce them — the p5 and p95 the
+          ramp actually ran between, and their geometric mean, which is the midpoint of
+          a logarithmic ramp. */}
+      {alphaNote && alphaBounds && edges.length ? (
+        <div className="mt-2" data-alpha-key>
+          <div className="text-[9px] font-bold tracking-[.1em] text-faint">FADE · PEOPLE HELD</div>
+          <div className="mt-1 space-y-[2px]">
+            {[alphaBounds.hi, Math.sqrt(alphaBounds.lo * alphaBounds.hi), alphaBounds.lo].map((pop, r) => {
+              const a = alphaFor(pop, alphaBounds.lo, alphaBounds.hi);
+              return (
+                <div key={r} data-alpha-key-row className="flex items-center gap-2">
+                  <span className="flex flex-none">
+                    {Array.from({ length: edges.length + 1 }, (_, i) => (
+                      <span
+                        key={i}
+                        data-alpha-key-cell={`${i}-${r}`}
+                        className="block h-2.5 w-4"
+                        style={{ background: alphaComposite(fn(i / edges.length), a) }}
+                      />
+                    ))}
+                  </span>
+                  <span className="flex-1 font-mono text-[9px] text-faint">
+                    {r === 0 ? `${fmtPop(pop)} or more` : r === 2 ? `${fmtPop(pop)} or fewer` : `around ${fmtPop(pop)}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {/* Why this map is faded (#408 item 1077). The map only sets this when the
+          fade actually fired, so its presence IS the disclosure — a reader never
+          sees a differently-weighted map without being told it is one. Sits under
+          the ramp because the ramp is what it qualifies. */}
+      {alphaNote ? (
+        <div
+          data-alpha-note
+          className="mt-2 font-mono text-[9px] leading-snug text-faint"
+        >
+          <a
+            href="/methodology#value-by-alpha" target="_blank" rel="noopener noreferrer"
+            data-alpha-method
+            className="font-semibold tracking-[.05em] text-faint underline decoration-dotted underline-offset-2 hover:text-accent-text"
+          >
+            FADED BY POPULATION
+          </a>
+          <span aria-hidden> · </span>
+          <span>{alphaNote}</span>
+        </div>
+      ) : null}
       {symbolOn && (
         <div data-symbol-method-line className="mt-2 text-[9.5px] font-semibold tracking-[.05em] text-faint">
           <a
@@ -486,7 +694,11 @@ export function LegendCard({
           <span>circle AREA ∝ value</span>
         </div>
       )}
-      {!symbolOn && mode !== "coverage" && (
+      {/* Not while a pair is drawn: this line names the SINGLE-metric classification
+          and its class count, and the paired map is using neither — the matrix has its
+          own method line above. It also carries REVERSE, which the matrix palette does
+          not honour, so leaving it up would be a live control with no effect. */}
+      {!symbolOn && mode !== "coverage" && !pairActive && (
         <div
           data-legend-method-line
           className="mt-2 flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[.05em] text-faint"
@@ -531,6 +743,35 @@ export function LegendCard({
       )}
       {cohortNote && (
         <div className="mt-2 border-t border-border-soft pt-2 text-[10.5px] font-semibold text-accent-text">{cohortNote}</div>
+      )}
+      {/* NO DATA IS A TEXTURE, NOT A TONE (#408 item 1077, round 2), so the key shows
+          the texture. A flat tone was imitable: a faded class-5 fill composites to
+          rgb(77,71,37) against a no-data rgb(39,37,28) — 1.64 contrast, one warm olive
+          for "a lot of it" and "we do not know". Kept in every MODE, because the hatch
+          is painted in every mode; a mark on the map with no entry in the key is a
+          question the reader has no way to answer.
+          GATED ON THE MARK BEING THERE (iter-46 polish, N3). This rendered
+          unconditionally, so a map with no absentees keyed a texture it never draws —
+          crime_ipc_rate at state level, 0 of 36 regions marked, and the line still
+          read "Hatched — no figure for this region". That is item 1080's defect with
+          the sign flipped: there it was a matrix key over a map painted from no
+          matrix, here a hatch key over a map with nothing hatched, and both teach the
+          reader to look for something that is not on screen.
+          THE HATCH ITSELF IS NOT CONDITIONAL and must not become so — "no number
+          here" means one thing on every map and both vintages, which is the whole
+          point of using a texture. Only the KEY stands down, and only when the count
+          the paint published is zero, so the mark's meaning never moves. */}
+      {(nodataCount ?? 0) > 0 && (
+      <div className="mt-2 flex items-center gap-2" data-nodata-key>
+        <span
+          className="h-2.5 w-4 flex-none rounded-[1px] border"
+          style={{
+            background: `${noDataHatchCss()}, ${alphaComposite(NO_DATA_FILL, ALPHA_UNFADED)}`,
+            borderColor: "var(--border-soft)",
+          }}
+        />
+        <span className="flex-1 text-[9.5px] text-faint">Hatched — no figure for this region</span>
+      </div>
       )}
       <div className="mt-2 text-[10.5px] text-faint">{countLabel} · {unit}</div>
       <div className="text-[10px] leading-tight text-faint">

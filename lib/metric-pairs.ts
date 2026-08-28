@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { TRANSITION_FLOOR as FLOOR, isTransitionLevel as isLevel } from "@/lib/coverage-floor";
 
 // Which metric pairs the transition may offer (#547 phase C, iter-42 item 977).
 //
@@ -18,13 +19,10 @@ import { db } from "@/lib/db";
 // but it is a visible absence, not an accident, and lowering the floor is a
 // deliberate decision for whoever next wants MGNREGA in here.
 
-export const TRANSITION_FLOOR = { district: 690, state: 30 } as const;
-
-export type TransitionLevel = keyof typeof TRANSITION_FLOOR;
-
-export function isTransitionLevel(v: string): v is TransitionLevel {
-  return v in TRANSITION_FLOOR;
-}
+// The floor moved to lib/coverage-floor.ts so the bivariate map can hold the same
+// number without dragging `db` — and therefore better-sqlite3 — into the client
+// bundle (#408 item 1080). Re-exported here so every existing importer is unchanged.
+export { TRANSITION_FLOOR, isTransitionLevel, type TransitionLevel } from "@/lib/coverage-floor";
 
 export type TransitionPartner = {
   id: string;
@@ -47,10 +45,10 @@ export type TransitionPartner = {
  * picker full of pairs that would all be as thin as it is.
  */
 export function transitionPartners(metricId: string, level: string): TransitionPartner[] {
-  if (!isTransitionLevel(level)) return [];
+  if (!isLevel(level)) return [];
   const d = db();
   if (!d) return [];
-  const floor = TRANSITION_FLOOR[level];
+  const floor = FLOOR[level];
 
   const rows = d
     .prepare(

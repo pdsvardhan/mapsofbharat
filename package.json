@@ -2,12 +2,12 @@
   "name": "mapsofbharat",
   "version": "0.1.0",
   "engines": {
-    "node": ">=20 <21"
+    "node": "20.20.2"
   },
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "./scripts/with-build-lock.sh next build --turbopack",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -19,7 +19,11 @@
     "geo:paths": "node scripts/build-family-paths.mjs",
     "prebuild": "node scripts/check-raw-assets.mjs && node scripts/check-globals-layers.mjs && node scripts/check-centroids.mjs && node scripts/build-family-paths.mjs --check && node scripts/build-geo-compressed.mjs",
     "postbuild": "node scripts/check-raw-assets.mjs --output",
-    "geo:compress": "node scripts/build-geo-compressed.mjs"
+    "geo:compress": "node scripts/build-geo-compressed.mjs",
+    "check:isolation": "./scripts/check-build-isolation.sh",
+    "check:pipes": "node scripts/check-pipefail-grep.mjs",
+    "check:node": "node scripts/check-node-version.mjs",
+    "check:pins": "node scripts/check-node-pins.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

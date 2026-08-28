@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect, type Page } from "@playwright/test";
+import { isControl, looksUnderlined, type StyleProbe } from "./lib/control-signal";
 
 // WCAG 2.1 AA gate (iter-44, TEC-21 / risk 57).
 //
@@ -193,7 +194,7 @@ test.describe("what axe cannot see", () => {
       await page.waitForSelector("main", { timeout: 30_000 });
 
       const links = await page.evaluate(() => {
-      const out: { text: string; deco: string }[] = [];
+      const out: { text: string; deco: string; style: StyleProbe }[] = [];
       for (const a of Array.from(document.querySelectorAll<HTMLElement>("main a[href]"))) {
         // WHETHER A LINK IS "IN A TEXT BLOCK" IS DECIDED FROM THE DOM, NEVER FROM
         // THE OPT-OUT CLASS. The first version skipped any link carrying
@@ -245,22 +246,14 @@ test.describe("what axe cannot see", () => {
         // and "Open in the interactive atlas →" on /metric/[slug], are inline-flex
         // with an accent fill and are still skipped. A link that is merely laid out
         // as flex is judged like any other prose link, because that is what it is.
+        // The browser measures; tests/lib/control-signal.ts judges (#656).
+        // The decision used to live in here, where nothing could reach it: the only
+        // way to exercise it was to load a real route and hope a page happened to
+        // contain the shape under test. Every hole in it was therefore found by
+        // reading rather than by measuring, and every fix believed rather than
+        // proved. Computed styles only exist in the page, so the measuring stays;
+        // the rule moved out to where it can be handed a shape on purpose.
         const cs = getComputedStyle(a);
-        const display = cs.display;
-        if (display.includes("flex") || display.includes("grid")) {
-          const filled =
-            cs.backgroundImage !== "none" ||
-            (cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent");
-          const bordered =
-            parseFloat(cs.borderTopWidth) > 0 ||
-            parseFloat(cs.borderBottomWidth) > 0 ||
-            parseFloat(cs.borderLeftWidth) > 0;
-          const padded =
-            parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) >= 6 ||
-            parseFloat(cs.paddingLeft) >= 8;
-          const roled = a.getAttribute("role") === "button";
-          if (filled || bordered || padded || roled) continue;
-        }
 
         const block = a.closest(
           "nav,p,li,dd,dt,td,th,figcaption,blockquote,footer,div,section,article,main"
@@ -274,15 +267,33 @@ test.describe("what axe cannot see", () => {
         if (blockText - linkTextInBlock < 12) continue;
         out.push({
           text: (a.textContent || "").trim().slice(0, 40),
-          deco: getComputedStyle(a).textDecorationLine,
+          deco: cs.textDecorationLine,
+          style: {
+            display: cs.display,
+            backgroundImage: cs.backgroundImage,
+            backgroundColor: cs.backgroundColor,
+            borderTopWidth: parseFloat(cs.borderTopWidth) || 0,
+            borderRightWidth: parseFloat(cs.borderRightWidth) || 0,
+            borderBottomWidth: parseFloat(cs.borderBottomWidth) || 0,
+            borderLeftWidth: parseFloat(cs.borderLeftWidth) || 0,
+            paddingTop: parseFloat(cs.paddingTop) || 0,
+            paddingRight: parseFloat(cs.paddingRight) || 0,
+            paddingBottom: parseFloat(cs.paddingBottom) || 0,
+            paddingLeft: parseFloat(cs.paddingLeft) || 0,
+            role: a.getAttribute("role"),
+          },
         });
       }
       return out;
       });
 
-      judged += links.length;
-      for (const l of links.filter((x) => !x.deco.includes("underline"))) {
-        bare.push({ route, ...l });
+      // Controls are excluded HERE rather than in the loop above. A link has to be
+      // both not-a-control and in-a-text-block to be reported, and a conjunction does
+      // not care in which order its halves are applied.
+      const prose = links.filter((l) => !isControl(l.style));
+      judged += prose.length;
+      for (const l of prose.filter((x) => !looksUnderlined(x.deco, x.style))) {
+        bare.push({ route, text: l.text, deco: l.deco });
       }
     }
 

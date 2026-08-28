@@ -45,6 +45,21 @@ fail() { echo "RESTORE DRILL FAILED: $*" >&2; exit 1; }
 
 WORK="$(mktemp -d /tmp/mob-restore-drill.XXXXXX)"
 SERVER_PID=""
+STANDALONE=""
+
+# SOURCED HERE, BEFORE THE TRAP, and that is the whole reason it moved (iter-46 item
+# 1073). The trap calls release_run_tree; the library that defines it was not read
+# until step 2, some forty lines further down. Every exit before that point — no
+# snapshot under the source root, a DB that fails integrity_check, --from-remote
+# without MOB_BACKUP_REMOTE — fired the trap and printed
+#     scripts/restore-drill.sh: line 57: release_run_tree: command not found
+# on the way out. The exit code was right, so nothing failed; but that line lands on
+# stderr immediately after the FAILED message a human is meant to read, and a
+# failure path that also prints an internal error trains people to skim it. A trap
+# may only call what is already defined when the trap is installed.
+# shellcheck source=lib/stage-run-tree.sh
+. "$REPO/scripts/lib/stage-run-tree.sh"
+
 cleanup() {
   local code=$?
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -53,6 +68,7 @@ cleanup() {
     kill -0 "$SERVER_PID" 2>/dev/null && kill -9 "$SERVER_PID" 2>/dev/null
   fi
   rm -rf "$WORK"
+  release_run_tree "${STANDALONE:-}"
   exit "$code"
 }
 trap cleanup EXIT INT TERM
@@ -80,7 +96,11 @@ log "restoring from $SNAP"
 # ── 1. the canonical DB opens and is intact ──────────────────────────────────
 [ -f "$SNAP/mapsofbharat.db.gz" ] || fail "snapshot has no mapsofbharat.db.gz"
 gunzip -c "$SNAP/mapsofbharat.db.gz" > "$WORK/mapsofbharat.db" || fail "gunzip failed"
-verdict="$(sqlite3 "$WORK/mapsofbharat.db" 'PRAGMA integrity_check;' 2>&1 | head -1)"
+# `awk NR==1`, not `head -1`: head has its answer after one line and dies, sqlite3
+# takes SIGPIPE, and pipefail reports the writer's 141 (#609). It is latent here —
+# nothing reads the status of an assignment — but "latent" is a property of the
+# code around it, and the code around it changes. awk reads to EOF.
+verdict="$(sqlite3 "$WORK/mapsofbharat.db" 'PRAGMA integrity_check;' 2>&1 | awk 'NR==1')"
 [ "$verdict" = "ok" ] || fail "restored DB fails integrity_check: $verdict"
 R_METRICS="$(sqlite3 "$WORK/mapsofbharat.db" 'SELECT COUNT(*) FROM metrics;')"
 R_VALUES="$(sqlite3 "$WORK/mapsofbharat.db" 'SELECT COUNT(*) FROM metric_values;')"
@@ -93,16 +113,18 @@ log "restored DB intact — $R_METRICS metrics, $R_VALUES values"
 # Serve the STANDALONE build, as production does. `next start` is unsupported with
 # output:"standalone" and comes up without a client bundle — a drill run that way
 # would report a healthy restore from a server no user could actually use.
-STANDALONE="$REPO/.next/standalone"
-[ -f "$STANDALONE/server.js" ] || fail "$STANDALONE/server.js missing — rebuild"
-mkdir -p "$STANDALONE/.next"
-rm -rf "$STANDALONE/.next/static"
-cp -a "$REPO/.next/static" "$STANDALONE/.next/static" || fail "could not stage .next/static"
-[ -d "$STANDALONE/public" ] || cp -a "$REPO/public" "$STANDALONE/public"
+# A PER-RUN copy, not .next itself (#607): a drill that takes nine minutes is
+# exactly long enough for someone to start a build, and a build wipes .next out
+# from under the instance this drill is asking questions of. The drill would then
+# report a restore that could not serve — a false red on the one measurement whose
+# whole job is to be trusted. See scripts/lib/stage-run-tree.sh, which is sourced up
+# beside the trap that needs its release_run_tree.
+STANDALONE="$(stage_run_tree drill)" || fail "could not stage a run tree"
 
 PORT=""
 for c in $(seq 8700 8760); do
-  if ! ss -lntH "sport = :$c" 2>/dev/null | grep -q .; then PORT="$c"; break; fi
+  # No pipe (#609) — see scripts/test-isolated.sh for why this one failed OPEN.
+  if [ -z "$(ss -lntH "sport = :$c" 2>/dev/null)" ]; then PORT="$c"; break; fi
 done
 [ -n "$PORT" ] || fail "no free port"
 
@@ -240,13 +262,13 @@ log "raw mirror holds $mirrored files (backup recorded $declared at snapshot tim
 # 903 zero-byte files would satisfy any count check.
 if [ "$FROM_REMOTE" -eq 1 ]; then
   mkdir -p "$WORK/rawprobe"
-  probe="$(rclone lsf "$MIRROR/pipeline/raw" --files-only 2>/dev/null | head -1)"
+  probe="$(rclone lsf "$MIRROR/pipeline/raw" --files-only 2>/dev/null | awk 'NR==1')"
   [ -n "$probe" ] || fail "no files listed under the remote raw mirror"
   rclone copy "$MIRROR/pipeline/raw/$probe" "$WORK/rawprobe" 2>/dev/null \
     || fail "could not restore $probe from the remote mirror"
   sz="$(stat -c%s "$WORK/rawprobe/$probe" 2>/dev/null || echo 0)"
 else
-  probe="$(find "$MIRROR" -type f -size +1k | head -1)"
+  probe="$(find "$MIRROR" -type f -size +1k | awk 'NR==1')"
   [ -n "$probe" ] || fail "no non-trivial file found in the local raw mirror"
   sz="$(stat -c%s "$probe" 2>/dev/null || echo 0)"
 fi

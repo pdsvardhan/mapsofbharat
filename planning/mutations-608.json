@@ -1,0 +1,29 @@
+{
+  "tests": "tests/stable-box.spec.ts",
+  "mutations": [
+    {
+      "name": "the settle wait is skipped entirely — the naive read this replaces",
+      "file": "tests/lib/stable-box.ts",
+      "find": "  let samples = 1;\n",
+      "replace": "  let samples = 1;\n  return last;\n"
+    },
+    {
+      "name": "every pair of boxes is declared to agree, so it settles on the first frame",
+      "file": "tests/lib/stable-box.ts",
+      "find": "  return Math.abs(a.x - b.x) <= BOX_EPSILON\n    && Math.abs(a.y - b.y) <= BOX_EPSILON\n    && Math.abs(a.width - b.width) <= BOX_EPSILON\n    && Math.abs(a.height - b.height) <= BOX_EPSILON;",
+      "replace": "  return true;"
+    },
+    {
+      "name": "an element that never settles hands back a best guess instead of saying so",
+      "file": "tests/lib/stable-box.ts",
+      "find": "  throw new Error(",
+      "replace": "  return last;\n  throw new Error("
+    },
+    {
+      "name": "the epsilon widens to 500px, so anything mid-flight counts as settled",
+      "file": "tests/lib/stable-box.ts",
+      "find": "export const BOX_EPSILON = 0.5;",
+      "replace": "export const BOX_EPSILON = 500;"
+    }
+  ]
+}

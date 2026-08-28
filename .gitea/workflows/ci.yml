@@ -21,29 +21,84 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-adr-refs.sh
-      # NODE 20, NOT 22, AND IT IS LOAD-BEARING (iter-43).
+      # ONE NODE VERSION, NAMED IN FIVE PLACES, AND IT IS LOAD-BEARING (#610, #659).
       #
-      # Dockerfile builds and runs on node:20-slim and the production container
-      # reports v20.20.2, so 22 here meant CI was the only place this project ever
-      # ran on 22 — testing a runtime that never ships.
+      # .nvmrc says 20.20.2 and is the AUTHORITY — not the only place that says so.
+      # The five, added up rather than asserted: .nvmrc (1) + the Dockerfile's FROMs
+      # (3, all node:20.20.2-slim) + package.json `engines` (1). Two checks hold them
+      # together. scripts/check-node-version.mjs compares the RUNNING Node to .nvmrc —
+      # from playwright.config.ts, from scripts/test-isolated.sh and from `npm run
+      # check:node`. scripts/check-node-pins.mjs, the step below, compares the other
+      # four declarations to it. With both, moving Node is a one-line change to .nvmrc
+      # plus a failure naming every copy you have not carried it through to.
       #
-      # CORRECTED IN ITER-45 (#610). This comment used to go on to blame Node 22 for
-      # the "ReferenceError: exports is not defined in ES module scope" that killed
-      # the e2e job, and to say the same specs "pass on 20". Both halves were wrong,
-      # and correcting the pin to 20 did not turn the job green — it stayed red for
-      # three more weeks. The real boundary is a Node PATCH release: with everything
-      # else held constant (this repo, Playwright 1.60.0), node:20.19.4-slim lists
-      # the tests and node:20.19.5-slim throws. From 20.19.5 Node routes a .mjs
-      # through the ESM loader regardless of the CommonJS Playwright compiled into
-      # it. "Passes on 20 locally" was true only because the VAULT7A host runs
-      # 20.19.2, one side of that boundary, while this container and production both
-      # run 20.20.2 on the other.
+      # THE ADDITION IS WRITTEN OUT BECAUSE THIS PARAGRAPH HAS BEEN WRONG ABOUT ITS OWN
+      # COUNTS TWICE, and both times the count was wrong and the list beside it was
+      # right. It said FOUR places above a list of five, and THREE declarations above a
+      # comparison of four. Neither number is worth trusting from here — both are
+      # printed by something that measured them:
       #
-      # The pin stays at 20 because production is 20 — but the pin was never the
-      # fix. The fix is that no spec imports a .mjs any more (see the
-      # check-spec-imports step below), which holds on every Node.
+      #   $ git grep -n "20\.20\.2" -- .nvmrc Dockerfile package.json .gitea \
+      #       | grep -vE ':[0-9]+:[[:space:]]*#'
+      #   → 5 lines, and they are the five places
+      #
+      #   $ node scripts/check-node-pins.mjs
+      #   → the OK line names everything it compared; move .nvmrc alone and it prints
+      #     `4 of 4 declaration(s) disagree`, which is where the four comes from
+      #
+      # THE SECOND CHECK EXISTS BECAUSE THIS PARAGRAPH USED TO BE WRONG IN A WAY THAT
+      # COST SOMETHING (iter-46 item 1084). It said .nvmrc was "the only place that
+      # says so" — contradicted two lines later by its own list — and that moving Node
+      # was ALREADY a one-line change. A verifier changed .nvmrc to 20.19.2 and nothing
+      # noticed: the Dockerfile still built 20.20.2 three times, `engines` still said
+      # 20.20.2, check-node-version passed, and all six other check scripts in this job
+      # exited 0. The duplication was real and unguarded, and the comment was the
+      # reason nobody would go looking for the comparison — it said the comparison
+      # already existed. That is the same defect as item 1074: a comment that stops the
+      # next reader writing the check they believe is already there.
+      #
+      # THIS USED TO READ `node-version: 20`, AND THE WORD "20" WAS THE BUG. It floated,
+      # as did the Dockerfile's `node:20-slim`. The two agreed the day they were written
+      # and drifted apart afterwards, which is how the gap opened without anyone
+      # deciding to open it.
+      #
+      # TWO CORRECTIONS ARE KEPT HERE BECAUSE BOTH WERE CONFIDENT AND BOTH WERE WRONG.
+      # iter-43: the pin was 22, so CI was the only place this project ever ran on 22 —
+      # testing a runtime that never ships. iter-45: this comment then blamed Node 22
+      # for the "ReferenceError: exports is not defined in ES module scope" that killed
+      # the e2e job, and said the same specs "pass on 20". Both halves were wrong, and
+      # correcting the pin to 20 did not turn the job green — it stayed red for three
+      # more weeks.
+      #
+      # The real boundary is a Node PATCH release. Everything else held constant (this
+      # repo, Playwright 1.60.0): node:20.19.4-slim LISTS the tests and node:20.19.5-slim
+      # THROWS, because from 20.19.5 Node routes a .mjs through the ESM loader regardless
+      # of the CommonJS Playwright compiled it into. "Passes on 20 locally" was true only
+      # because the VAULT7A host ran 20.19.2, one side of that boundary, while this
+      # container and production both run 20.20.2 on the other. No major-version pin can
+      # express that difference — which is why the pin is a full version now.
+      #
+      # The pin is still not the fix. The fix is that no spec imports a .mjs any more
+      # (the check-spec-imports step below), which holds on every Node. The pin, and the
+      # two checks that enforce it, are what stop the next patch-level divergence from
+      # being invisible for weeks.
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
+
+      # The four declarations named above must agree with each other. Runs here, right
+      # after the step that consumes .nvmrc, and before `npm ci`: it needs nothing but
+      # the repo and any Node at all. It also fails when it MEASURED nothing — no node
+      # FROM in the Dockerfile, no `engines`, no setup-node in any workflow — because a
+      # cross-check with nothing to cross-check would otherwise print the same OK as a
+      # repo that agrees with itself.
+      #
+      # And since iter-46, it fails when it measured LESS than it should have. A
+      # digest-pinned `FROM node@sha256:…` used to parse as the image `node@sha256`,
+      # match nothing, and be skipped in silence: two of three FROMs stopped being
+      # compared while the OK line still said "and so does everywhere else". The
+      # Dockerfile's node FROMs are counted twice now, by the parser and by a cruder
+      # test, and the two disagreeing is itself a failure.
+      - run: node scripts/check-node-pins.mjs
 
       # Survey-of-India boundary gate (#405): checksum + geometry + property
       # fingerprint (vs scripts/boundary-fingerprint.json) + always-on extent
@@ -73,6 +128,13 @@ jobs:
       # scans no spec files, which is right for a repo checkout and wrong for a
       # build context that may not carry tests/.
       - run: node scripts/check-spec-imports.mjs
+
+      # `cmd | grep -q` under pipefail fails when grep matches EARLY: grep exits,
+      # the writer takes SIGPIPE, and pipefail reports the writer's 141. So the
+      # pipeline's answer inverts under load. It bit restore-drill.sh, was fixed
+      # locally, and came back in setup-backup-remote.sh — hence a rule rather
+      # than a memory (#609).
+      - run: node scripts/check-pipefail-grep.mjs
 
       # Lint as a RATCHET, not a wish. This step used to be
       # `npm run lint || echo "lint warnings (non-blocking)"`, which let a commit
@@ -118,7 +180,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
 
       # test-isolated.sh resolves a free port from the kernel socket table rather
       # than guessing; the playwright image ships without iproute2.
@@ -188,6 +250,17 @@ jobs:
       # against. Strict: no ALLOW_MISSING_RAW here, deliberately.
       - name: Assert the standalone build can actually serve its raw downloads
         run: node scripts/check-raw-assets.mjs --output
+
+      # A running instance must survive .next going away under it (#607). A build
+      # in another terminal wipes .next as its first act, and an instance serving
+      # out of .next/standalone loses server.js and every chunk while keeping its
+      # PID — so the suite reports twenty-second timeouts that read as map
+      # regressions and are a build. Both harnesses now serve a per-run hardlink
+      # copy instead. This guard carries its own control: it also stands up the
+      # OLD arrangement and requires it to break, and exits ERROR if it does not,
+      # because at that point the guard has stopped measuring anything.
+      - name: A concurrent build must not void a running instance
+        run: bash scripts/check-build-isolation.sh
 
       # The full suite against a scratch instance of the STANDALONE build — never
       # the production container. The harness proves the instance writes to a

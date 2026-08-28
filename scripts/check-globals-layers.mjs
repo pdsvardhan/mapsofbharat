@@ -262,4 +262,15 @@ if (unknownAtRules.length) {
   process.exit(1);
 }
 
+// 0 rules is not a clean stylesheet; it is a parser that has stopped recognising the
+// file (#602). Measured before this line existed: an empty globals.css produced
+// "OK — 0 rules in app/globals.css, no unlayered bare selectors" and exit 0.
+if (rules.length === 0) {
+  console.error(`check-globals-layers: parsed 0 rules from ${rel}.`);
+  console.error("  A stylesheet this guard can find no rules in has not been proved clean —");
+  console.error("  it has not been read. Either the file moved, or the parser no longer");
+  console.error("  understands its syntax. Both are failures; neither is an OK.");
+  process.exit(2);
+}
+
 console.log(`check-globals-layers: OK — ${rules.length} rules in ${rel}, no unlayered bare selectors`);

@@ -17,6 +17,12 @@
 /.next/
 /out/
 
+# Per-run hardlink copies of the standalone build, and the lock that keeps a
+# build from wiping .next while one is being staged (#607).
+/.next-runs/
+/.buildlock
+/.next.isolation-check/
+
 # production
 /build
 

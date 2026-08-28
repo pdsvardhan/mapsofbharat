@@ -58,6 +58,28 @@ try {
   process.exit(2);
 }
 
+// eslint reporting on nothing yields 0 problems, and 0 beats any baseline — so a
+// config drift that stopped matching files would not merely pass, it would be banked
+// as an improvement and ratchet the baseline to zero (#602). The count of FILES is
+// the thing that says whether a measurement happened at all.
+//
+// THIS IS A FALLBACK, NOT A FIX, AND THE DIFFERENCE WAS MEASURED. Under eslint
+// 9.39.4, a config that ignores everything makes eslint refuse the run outright —
+// "all of the files matching the glob pattern '.' are ignored" — with no JSON on
+// stdout, so the no-output branch above already exits 2. This branch did not fire in
+// that test. It is here because the empty-results shape is one eslint version away
+// from being real, and because the alternative is trusting a version's error
+// handling to stay as it is. A partial file set is a different problem and is
+// already caught downstream: fewer files means fewer problems, and a total that
+// goes DOWN fails the ratchet rather than passing it.
+if (!Array.isArray(results) || results.length === 0) {
+  console.error("check-lint-baseline: eslint reported on 0 files.");
+  console.error("  A lint run that linted nothing found no problems, which is not the same");
+  console.error("  as clean. Check the eslint config's files/ignores — something has stopped");
+  console.error("  matching, and taking this as an improvement would bank the emptiness.");
+  process.exit(2);
+}
+
 let errors = 0;
 let warnings = 0;
 for (const f of results) {

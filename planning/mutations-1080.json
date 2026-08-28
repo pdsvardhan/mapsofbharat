@@ -1,0 +1,53 @@
+{
+  "tests": "tests/bivariate.spec.ts",
+  "mutations": [
+    {
+      "name": "the class index stops being clamped, so a value can read past the matrix",
+      "file": "lib/bivariate.ts",
+      "find": "  return Math.min(i, BIVARIATE_K - 1);",
+      "replace": "  return i;"
+    },
+    {
+      "name": "the axes are swapped, so the map shows the pair the wrong way round",
+      "file": "lib/bivariate.ts",
+      "find": "  return BIVARIATE_PALETTE[y][x];",
+      "replace": "  return BIVARIATE_PALETTE[x][y];"
+    },
+    {
+      "name": "a total is allowed on an axis — the area bias walks back in",
+      "file": "lib/bivariate.ts",
+      "find": "    if (preferredViz(id, unit, Object.values(vals)) !== \"choropleth\") {",
+      "replace": "    if (false) {"
+    },
+    {
+      "name": "the coverage floor stops applying, so a thin pair is drawn as a whole map",
+      "file": "lib/bivariate.ts",
+      "find": "  if (shared < floor) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "name": "shared regions count a NaN as a value",
+      "file": "lib/bivariate.ts",
+      "find": "    (c) => Number.isFinite(a[c]) && Number.isFinite(b[c]),",
+      "replace": "    (c) => c in a && c in b,"
+    },
+    {
+      "name": "a metric may be paired with itself, drawing one metric twice",
+      "file": "lib/bivariate.ts",
+      "find": "  if (xId === yId) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "name": "the 2011 vintage is accepted, pairing across two different geographies",
+      "file": "lib/bivariate.ts",
+      "find": "  if (!isTransitionLevel(level)) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "name": "two cells of the matrix collide, making two different pairs look identical",
+      "file": "lib/bivariate.ts",
+      "find": "  [\"#dfb0d6\", \"#a5add3\", \"#5698b9\"], // no-token: DATA palette, not a UI role — as lib/breaks.ts ramps",
+      "replace": "  [\"#e8e8e8\", \"#a5add3\", \"#5698b9\"], // no-token: DATA palette, not a UI role — as lib/breaks.ts ramps"
+    }
+  ]
+}

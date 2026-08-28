@@ -29,6 +29,14 @@ import type { SocialFeature } from "@/lib/social-export";
 import { additionalSourceCredits } from "@/lib/metric-raw-source";
 import { Crumbs, IndicatorCard, LevelColourCard, LegendCard, ScalePopover } from "@/components/atlas/left-stack";
 import { floorShare, symbolRadius, type SymbolLevel } from "@/lib/symbols";
+import {
+  regionAreas, alphaWarrant, alphaByRegion, alphaBounds,
+  ALPHA_UNFADED, MAP_GROUND, NO_DATA_FILL, noDataHatchTile, type Warrant,
+} from "@/lib/value-by-alpha";
+import {
+  BIVARIATE_K, bivariateColor, sharedRegions, bivariateEligible, axisBreaks, bivariateScope,
+  type Eligibility,
+} from "@/lib/bivariate";
 // The single resolver for which forms a metric may honestly take (#575).
 import { canRender, preferredViz } from "@/lib/metric-capabilities";
 import { RegionProfile, RankingRail, ComparePanel, Entry, CohortDef } from "@/components/atlas/right-rail";
@@ -36,7 +44,137 @@ import { DataTable } from "@/components/atlas/data-table";
 
 const INDIA_BOUNDS: [number, number, number, number] = [67, 6, 98, 37];
 const NEUTRAL = "#26231c"; // no indicator picked. token: --map-neutral (MapLibre paint takes a colour, not a var())
-const NODATA = "#2a271d"; // indicator picked, region missing a value. token: --map-nodata
+// Indicator picked, region missing a value (token: --map-nodata). Imported rather
+// than declared here since item 1077 round 2: the tone, the ground it composites
+// over and the hatch drawn on top are one contract — a faded fill must never be
+// mistakable for a region we have no number for — and that contract is measured in
+// lib/value-by-alpha against these exact values.
+const NODATA = NO_DATA_FILL;
+// ── the no-data hatch (item 1077 round 2) ────────────────────────────────────
+// A region with no number is marked by TEXTURE, not by tone, because tone is exactly
+// what the fade eats: a faded class-5 fill composites to rgb(77,71,37) against a
+// no-data rgb(39,37,28) — contrast 1.64, the same warm olive, where unfaded the two
+// stand 8.64 apart. No opacity can imitate a stripe, so the separation survives every
+// alpha from the 0.28 floor to 0.95. The tile, its measurement and the reason this is
+// not adr-019's dropped estimate hatch are all in lib/value-by-alpha.
+//
+// A PATTERN LAYER over the fill, not a data-driven `fill-pattern`: the pattern is
+// constant and it is the per-region SWITCH that must be data-driven, which
+// fill-opacity does natively from feature-state. Each sits directly above its fill and
+// below the seam, so boundaries stay on top; each honours `dim`, so cohort dimming
+// does not leave a hatch shouting over a dimmed state.
+/** The MapLibre image id for the no-data hatch. */
+const NODATA_HATCH_IMG = "nodata-hatch";
+/** Paint for a hatch layer. A function, because the four of them (two levels x two
+ *  vintages) are added from two places and a shared object literal would be one
+ *  mutable style object handed to four layers. */
+const hatchPaint = () => ({
+  "fill-pattern": NODATA_HATCH_IMG,
+  "fill-opacity": ["case",
+    ["!", ["boolean", ["feature-state", "nodata"], false]], 0,
+    ["boolean", ["feature-state", "dim"], false], 0.15,
+    1],
+});
+/** Every hatch layer, paired with the fill whose visibility and filter it follows. */
+const NODATA_LAYERS: Record<string, string> = {
+  "district-fill": "district-nodata",
+  "state-fill": "state-nodata",
+  "d2011-fill": "d2011-nodata",
+  "s2011-fill": "s2011-nodata",
+};
+
+// ── a state code is ZERO-PADDED, everywhere (iter-46 item 1091) ───────────────
+// "01".."38", and not incidentally: districts.geojson's st_code carries the pad, so
+// does the rid built from it ("09_75"), so does region_keys.code, so does every
+// metric_values.region_code at state level — and `states` is promoteId'd on st_code,
+// which makes the padded string a MapLibre feature id as well. Five key spaces, one
+// spelling.
+//
+// This file kept normalising the pad away with String(Number(code)) — "09" -> "9" —
+// and one of those call sites was a live production defect. applyFocus built its
+// MapLibre drill filter from the normalised form while the geojson property kept the
+// pad, so for the nine states coded 01..09 the filter matched NOTHING. Measured on
+// the deployed 57581ac: drilling Maharashtra (27) admitted 35 district polygons and
+// rendered them; Uttar Pradesh (09) admitted 0 and rendered 0, Jammu & Kashmir (01)
+// 0 of 22, Delhi (07) 0 of 1. Nine states drew an empty map, India's most populous
+// among them.
+//
+// It hid for as long as it did because the surroundings were TOLERANT: scopeCodes(),
+// the ranking rail and the region counts all accepted either spelling, so every
+// number on the page stayed correct while the map drew nothing — and every drill
+// spec in the suite happened to use a high-numbered state.
+//
+// So the tolerance is gone and these three are what replaces it: one canonical form,
+// applied at the boundary (applyFocus) rather than remembered at each call site, and
+// a filter that compares NUMBERS so it cannot care about the pad on either side —
+// including on the day the geometry is rebuilt by something that does not pad.
+// tests/drill-state-codes.spec.ts sweeps every state code the geometry carries.
+//
+// ROUND 2: "canonical" has to mean canonical for EVERY spelling, not just the short
+// one. The first fix normalised with padStart, which only adds characters — so "9"
+// canonicalised and "009" and " 9" did not, and a `?st=` carrying either painted the
+// right polygons under a rail reading "0 districts in Uttar Pradesh". stCode() below
+// now goes through the NUMBER, and applyFocus refuses a code that names no state at
+// all instead of drilling into nothing.
+
+/** The canonical form of a state code here: zero-padded to two digits.
+ *
+ *  NUMERIC, not padStart on its own (item 1091 round 2, found by the verifier).
+ *  padStart only ever ADDS characters: it canonicalises "9" and leaves "009" and " 9"
+ *  exactly as they arrived, and both of those are one hand-typed `?st=` away. That
+ *  half-normalisation split the map from the chrome the same way item 1091 itself did,
+ *  arriving from the other side. Measured on the FIXED build f5ce467:
+ *
+ *      ?st=009   75 Uttar Pradesh polygons painted   rail: "0 districts in Uttar Pradesh"
+ *      ?st=%209  75 Uttar Pradesh polygons painted   rail: "0 districts in Uttar Pradesh"
+ *
+ *  — the map was right because stateFilter compares NUMBERS and 009 == 9, and the rail
+ *  was empty because ridPrefix() built "009_" / " 9_", which no rid has ever started
+ *  with. Item 1091 was a correct rail over an empty plate; this is an empty rail over a
+ *  correct plate. Same divergence, same fix: one canonical spelling, made here.
+ *
+ *  A code that is not a whole non-negative number has NO canonical form, and comes back
+ *  as "" rather than as "NaN" (String(Number("abc")).padStart would have produced
+ *  exactly that) or as the junk itself. "" cannot be a `states` feature id, a rid prefix
+ *  or a metric key, so every lookup downstream MISSES instead of half-matching —
+ *  and applyFocus, the one boundary a code enters through, turns that miss into "no
+ *  drill" rather than a drill into nothing. */
+function stCode(code: string | number): string {
+  // trim() first: " 9" reaches this straight off a URL, Number() would have accepted it
+  // and padStart would not have touched it — which is precisely the ?st=%209 row above.
+  const raw = String(code).trim();
+  const n = Number(raw);
+  // Number("") is 0, so the emptiness test cannot be folded into the numeric one.
+  return raw !== "" && Number.isInteger(n) && n >= 0 ? String(n).padStart(2, "0") : "";
+}
+
+/** The district-rid prefix for a state — "09_", the key space districts live in.
+ *
+ *  Only ever handed focus.code, which applyFocus has already canonicalised and refuses
+ *  to set at all unless it names a real state — so this cannot be reached with the
+ *  "009_" of the table above. */
+function ridPrefix(code: string | number): string {
+  return stCode(code) + "_";
+}
+
+/** "this feature belongs to state <code>", as a MapLibre filter.
+ *
+ *  Numeric on BOTH sides, which is the whole point: "09" and "9" are the same state
+ *  and neither spelling can miss the other. The `-1` fallback is to-number's second
+ *  candidate — a feature with no st_code, or an unconvertible one, would otherwise
+ *  make the whole expression an ERROR rather than a non-match, and an erroring filter
+ *  takes the layer down instead of one feature.
+ *
+ *  A code with no canonical form comes back "" from stCode() and Number("") is 0, so
+ *  the expression built from it admits nothing: the Census state codes are 1-based and
+ *  no feature carries 0. That is the floor, not the plan — applyFocus refuses such a
+ *  code before it reaches here. Before this pair of guards the same input produced
+ *  Number("abc") === NaN, which MapLibre serialised into the filter as a bare `null`
+ *  (measured: getFilter("district-fill") came back
+ *  ["==",["to-number",["get","st_code"],-1],null] on ?st=abc). */
+function stateFilter(code: string | number): maplibregl.FilterSpecification {
+  return ["==", ["to-number", ["get", "st_code"], -1], Number(stCode(code))];
+}
 
 type MetricData = {
   /** Which metric this payload is for. The previous metric's rows stay painted
@@ -83,7 +221,7 @@ function bbox(geom: { coordinates: unknown }): [number, number, number, number] 
 
 function readUrl() {
   if (typeof window === "undefined")
-    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false, vin: "current" as Vintage, sym: null as boolean | null };
+    return { m: "", mode: "value" as const, st: "", stn: "", cmp: [] as string[], lvl: "state" as "state" | "district", brk: "jenks" as BreakMethod, pal: DEFAULT_PALETTE, rev: false, brkPinned: false, palPinned: false, vin: "current" as Vintage, sym: null as boolean | null, bi: "" };
   const p = new URLSearchParams(window.location.search);
   const m = p.get("m") || "";
   // Jenks is the global default (iter-53 item 404); explicit URL param wins
@@ -94,6 +232,9 @@ function readUrl() {
   return {
     m,
     mode: (p.get("mode") === "vs_avg" ? "vs_avg" : p.get("mode") === "coverage" ? "coverage" : "value") as Mode,
+    // The metric this map is PAIRED with (#408 item 1080). A second metric id, or
+    // empty. It is a first-class part of the view, so it travels in the link.
+    bi: p.get("bi") || "",
     st: p.get("st") || "",
     stn: p.get("stn") || "",
     cmp: (p.get("cmp") || "").split(",").filter(Boolean),
@@ -118,6 +259,25 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const valuesRef = useRef<Record<string, number>>({});
+  // Value-by-alpha inputs (#408 item 1077). Cached per LEVEL, not per metric: these
+  // are two Census 2011 series and they are the same for every map drawn at that
+  // level, so the fetch happens once and every later metric reuses it.
+  const weightRef = useRef<Record<string, { pop: Record<string, number>; area: Record<string, number> }>>({});
+  const alphaRef = useRef<Record<string, number>>({});
+  /** Signature of the last published fade verdict — warranted, reason and the two
+   *  population bounds. recolor() runs on every repaint and the legend must not
+   *  re-render unless one of those actually moved. */
+  const warrantSigRef = useRef<string>("");
+  const [warrant, setWarrant] = useState<Warrant | null>(null);
+  /** The p5/p95 populations the fade ramp ran between, for the legend's fade key. */
+  const [fadeBounds, setFadeBounds] = useState<{ lo: number; hi: number } | null>(null);
+  /** How many regions this paint HATCHED and actually drew. Published for the
+   *  legend, which keys the hatch, so the key can stand down on a map that has no
+   *  absentees (iter-46 polish, N3). Signature-guarded like the warrant above:
+   *  recolor() runs on every repaint and the legend must not re-render unless the
+   *  number moved. */
+  const [hatchedCount, setHatchedCount] = useState(0);
+  const hatchedSigRef = useRef<number>(-1);
   const estimatedRef = useRef<Record<string, 1>>({});
   const estimateKindRef = useRef<Record<string, string>>({});
   const estimatedFromRef = useRef<Record<string, string>>({});
@@ -134,6 +294,27 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const [sel, setSel] = useState<string>(init.m);
   const [data, setData] = useState<MetricData | null>(null);
   const [mode, setMode] = useState<Mode>(init.mode);
+  // The pair (#408 item 1080). `pairValues` is the second metric at the current
+  // level; `pairElig` is the resolver's verdict, kept even when it REFUSES so the
+  // legend can say why rather than the pair silently doing nothing.
+  const [pairId, setPairId] = useState<string>(init.bi);
+  const pairIdRef = useRef(pairId);
+  const pairValuesRef = useRef<Record<string, number>>({});
+  /** The pair's unit and decimals, for the axis that is not the base metric's: the
+   *  matrix key prints real class boundaries now, and a boundary printed with the
+   *  wrong precision is a number the map never used. */
+  const pairUnitRef = useRef<string>("");
+  const pairDecimalsRef = useRef<number>(0);
+  const [pairElig, setPairElig] = useState<Eligibility | null>(null);
+  const pairEligRef = useRef<Eligibility | null>(null);
+  const [pairOpen, setPairOpen] = useState(false);
+  /** What the PAINT decided about the pair, published for the legend: whether the
+   *  matrix is what is on the map, why not when it is not, and the bands it cut.
+   *  One source, because the legend saying "matrix" over a univariately-painted map
+   *  is the whole of item 1080's D1. */
+  type PairView = { drawn: boolean; refusal: Eligibility | null; edgesX: number[]; edgesY: number[] };
+  const [pairView, setPairView] = useState<PairView>({ drawn: false, refusal: null, edgesX: [], edgesY: [] });
+  const pairSigRef = useRef<string>("");
   // Coverage view: which provenance classes are hidden (toggled off in the legend),
   // so a reader can e.g. show only inherited districts (item 830). A hidden class'
   // regions recede to the neutral no-data tone.
@@ -295,6 +476,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { coverageHiddenRef.current = coverageHidden; }, [coverageHidden]);
   useEffect(() => { brkRef.current = brkMethod; }, [brkMethod]);
+  useEffect(() => { pairIdRef.current = pairId; }, [pairId]);
   useEffect(() => { metricRefRef.current = METRIC_REFERENCE[sel] ?? null; }, [sel]);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -471,7 +653,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (!ref.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: ref.current,
-      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0d0f14" /* token: --background */ } }] },
+      // MAP_GROUND, not a repeated literal: this is the colour every faded fill
+      // composites over, so the legend's fade key and the separation measured in
+      // lib/value-by-alpha are only right while they agree with it.
+      style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": MAP_GROUND /* token: --background */ } }] },
       bounds: INDIA_BOUNDS, fitBoundsOptions: { padding: 24 },
       attributionControl: false, maxZoom: 12, minZoom: 3, dragRotate: false,
       // MapLibre v5 moved this under canvasContextAttributes — the old
@@ -481,6 +666,15 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     } as maplibregl.MapOptions);
     mapRef.current = map;
     (window as any).__mob_map = map;
+    // test hook (parallels window.__mob_map and window.__mob_outline): the drill
+    // filter BUILDER, so one page load can put every state code the geometry carries
+    // through the same function applyFocus uses and compare the polygons it admits
+    // against the source's own rid prefixes. Item 1091 was a filter that matched
+    // nothing for nine states; a sweep that reconstructs the expression in the spec
+    // would only be testing a copy of it, and a sweep that reloads the page 38 times
+    // is a sweep nobody runs. The spec still asserts, on a real drill, that
+    // getFilter("district-fill") is exactly what this returns.
+    (window as any).__mob_state_filter = stateFilter;
 
     // ── symbol-layer feature-state parity (#408 S5) ───────────────────────────
     // The proportional-symbol layer cannot read the polygon sources: a `circle`
@@ -551,12 +745,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
       const fillPaint = {
         "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
+        // The last arm is value-by-alpha (#408 item 1077): per-region opacity from
+        // how many people the region holds, defaulting to the flat 0.9 this layer
+        // always used when no fade is warranted. dim and hover still win — a reader
+        // pointing at a region must see it fully whatever its population.
         "fill-opacity": ["case",
           ["boolean", ["feature-state", "dim"], false], 0.15,
-          ["boolean", ["feature-state", "hover"], false], 1, 0.9],
+          ["boolean", ["feature-state", "hover"], false], 1,
+          ["coalesce", ["feature-state", "alpha"], ALPHA_UNFADED]],
         "fill-color-transition": { duration: 400 },
         "fill-opacity-transition": { duration: 160 },
       };
+      map.addImage(NODATA_HATCH_IMG, noDataHatchTile(), { pixelRatio: 1 });
       const linePaint = (hairline: number) => ({
         "line-color": ["case",
           ["boolean", ["feature-state", "selected"], false], "#d1502f", // token: --accent
@@ -575,7 +775,35 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           ["boolean", ["feature-state", "hover"], false], 1.1, hairline],
       });
 
-      map.addLayer({ id: "district-fill", type: "fill", source: "districts", paint: fillPaint } as any);
+      // EVERY LAYER DECLARES ITS VISIBILITY, INCLUDING THE ONES THAT START ON
+      // (item 1077 round 3). These four used to be added with no `layout` at all,
+      // so MapLibre stored `visibility: undefined` and the level/vintage effect's
+      // first pass — which writes "visible" to all of them unconditionally — was a
+      // REAL change as far as Style.setLayoutProperty's deepEqual guard could tell.
+      // A real change calls _updateLayer, which marks the source 'reload' and
+      // re-parses every tile it has.
+      //
+      // That cost nothing visible until item 1077, and stopped being free the moment
+      // `district-nodata` put a `fill-pattern` on this source. A pattern makes the
+      // worker's tile parse ASYNCHRONOUS — it has to ask the main thread for the
+      // image and await the answer — so the worker yields mid-parse and starts
+      // reading the reload messages queued behind it. MapLibre keeps exactly ONE
+      // copy of the raw tile data for that case (GeoJSONWorkerSource._reloadLoadedTile
+      // consumes it and never puts it back), so the SECOND reload to land during one
+      // parse returns a tile with no rawTileData at all. On the main thread that
+      // leaves tile.latestFeatureIndex.rawTileData undefined, loadVTLayers() returns
+      // {}, and every queryRenderedFeatures / querySourceFeatures against the source
+      // answers with nothing — silently. Measured on the item-1077 build at
+      // /?m=pop_total&lvl=district under load: district-symbol answered 735 features
+      // and district-fill answered 0, so the polygons were still painted and still
+      // unclickable. Nothing errored; the map simply stopped responding to clicks.
+      // Two reloads landed inside one parse there (t+21ms and t+100ms, against a
+      // parse that only returned at t+100ms); with the declaration below it is one.
+      // Declaring the visibility here removes the phantom change, and with it the
+      // first of the two reloads. What is left is one real change per load
+      // (fill-color going neutral when a count opens as circles), which is the case
+      // MapLibre does handle.
+      map.addLayer({ id: "district-fill", type: "fill", source: "districts", layout: { visibility: "visible" }, paint: fillPaint } as any);
       // No estimate hatch here by design (adr-019). The overlay that used to mark
       // inherited districts was measured at 1.09:1 against the dark end of the
       // ramp — below WCAG's 3:1 floor for non-text UI, and its 8px tile at
@@ -584,10 +812,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // would hatch 12% of India, and we render NFHS sampling error perfectly
       // flat. Estimates are disclosed where the number is read instead — rail
       // badge, map hover, region panel, export footnote.
-      map.addLayer({ id: "district-line", type: "line", source: "districts", paint: linePaint(0.3) as any });
+      map.addLayer({ id: "district-nodata", type: "fill", source: "districts", layout: { visibility: "visible" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
+      map.addLayer({ id: "district-line", type: "line", source: "districts", layout: { visibility: "visible" }, paint: linePaint(0.3) as any });
       map.addLayer({ id: "state-fill", type: "fill", source: "states", layout: { visibility: "none" }, paint: fillPaint } as any);
+      map.addLayer({ id: "state-nodata", type: "fill", source: "states", layout: { visibility: "none" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({
-        id: "state-outline", type: "line", source: "states",
+        id: "state-outline", type: "line", source: "states", layout: { visibility: "visible" },
         paint: { "line-color": "rgba(233,227,213,0.26)", "line-width": 0.8 },
       });
       map.addLayer({ id: "state-line", type: "line", source: "states", layout: { visibility: "none" }, paint: linePaint(0.4) as any });
@@ -654,7 +884,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           setHovered({
             code: String(f.id),
             name: nameOf(f.properties),
-            state: kind === "state" ? "" : String(f.properties?.st_nm ?? statesRef.current[String(Number(String(f.id).split("_")[0]))]?.properties?.st_nm ?? ""),
+            state: kind === "state" ? "" : String(f.properties?.st_nm ?? statesRef.current[stCode(String(f.id).split("_")[0])]?.properties?.st_nm ?? ""),
             kind,
           });
         });
@@ -678,7 +908,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           const s: Sel = {
             code: String(f.id),
             name: nameOf(f.properties),
-            state: String(f.properties?.st_nm ?? statesRef.current[String(Number(String(f.id).split("_")[0]))]?.properties?.st_nm ?? ""),
+            state: String(f.properties?.st_nm ?? statesRef.current[stCode(String(f.id).split("_")[0])]?.properties?.st_nm ?? ""),
             kind,
           };
           clickFeature(s, source);
@@ -700,8 +930,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // restore drill + compare pins from a shared link
       const r = restoreRef.current;
       if (r.st && r.lvl === "district") {
-        const nm = r.stn || statesRef.current[String(Number(r.st))]?.properties?.st_nm || "";
-        applyFocus(r.st.padStart(2, "0"), String(nm));
+        // A shared link's `st` is whatever the sender's address bar held. This writer
+        // emits the canonical padded form, but links from before that, and links typed
+        // by hand, carry "9" — so the lookup canonicalises and applyFocus does the
+        // same to what it stores (item 1091).
+        const nm = r.stn || statesRef.current[stCode(r.st)]?.properties?.st_nm || "";
+        applyFocus(r.st, String(nm));
       }
       if (r.cmp.length) {
         const restored: Sel[] = [];
@@ -710,8 +944,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
             const feat = (districts.features as any[]).find((ff) => String(ff.properties?.rid) === code);
             if (feat) restored.push({ code, name: String(feat.properties?.district ?? "—"), state: String(feat.properties?.st_nm ?? ""), kind: "district" });
           } else {
-            const feat = statesRef.current[String(Number(code))];
-            if (feat) restored.push({ code, name: String(feat.properties?.st_nm ?? "—"), state: "", kind: "state" });
+            // The CANONICAL code goes into the pin, not the one the link happened to
+            // spell (item 1091): `code` becomes the MapLibre feature id in the
+            // setFeatureState below and the key into valuesRef, and both are padded.
+            const feat = statesRef.current[stCode(code)];
+            if (feat) restored.push({ code: stCode(code), name: String(feat.properties?.st_nm ?? "—"), state: "", kind: "state" });
           }
         }
         if (restored.length) {
@@ -744,10 +981,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       (d2011.features as any[]).forEach((f) => {
         idx.set(String(f.properties?.rid), { name: String(f.properties?.district ?? "—"), state: String(f.properties?.st_nm ?? "") });
       });
-      // Key on the RAW zero-padded st_code ("01".."35"), not String(Number(...))
-      // (to-do 346). Three things must agree on this key and all three are padded:
-      // the source's promoteId below, the /api/metrics?level=state2011 value keys,
-      // and this index. Normalising to "1".."35" here desynchronised all of them —
+      // Key on the RAW zero-padded st_code ("01".."35") — the canonical form stCode()
+      // names at the top of this file (to-do 346, and the same class of defect as item
+      // 1091). Three things must agree on this key and all three are padded: the
+      // source's promoteId below, the /api/metrics?level=state2011 value keys, and this
+      // index. Normalising to "1".."35" here desynchronised all of them —
       // allCodes("states2011") reads these keys, so every state looked up as
       // undefined and the whole 2011 state map painted no-data, while the ranking
       // rail fell back to showing the bare code instead of the state name.
@@ -768,7 +1006,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       map.addSource("states2011-pts", { type: "geojson", data: s2011Pts, promoteId: "st_code" });
       const fillPaint = {
         "fill-color": ["coalesce", ["feature-state", "color"], NEUTRAL],
-        "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0.9],
+        "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, ALPHA_UNFADED],
         "fill-color-transition": { duration: 400 },
       };
       const linePaint = (w: number) => ({
@@ -776,8 +1014,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.1, w],
       });
       map.addLayer({ id: "d2011-fill", type: "fill", source: "districts2011", layout: { visibility: "none" }, paint: fillPaint } as any);
+      // The hatch travels to the as-reported view too. The fade never runs here (no
+      // density series to recover an area from), so this is not the confusion above —
+      // it is that "no number for this region" must mean one thing on every map in the
+      // atlas, or the mark teaches nothing.
+      map.addLayer({ id: "d2011-nodata", type: "fill", source: "districts2011", layout: { visibility: "none" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({ id: "d2011-line", type: "line", source: "districts2011", layout: { visibility: "none" }, paint: linePaint(0.3) as any });
       map.addLayer({ id: "s2011-fill", type: "fill", source: "states2011", layout: { visibility: "none" }, paint: fillPaint } as any);
+      map.addLayer({ id: "s2011-nodata", type: "fill", source: "states2011", layout: { visibility: "none" }, paint: hatchPaint() } as unknown as maplibregl.AddLayerObject);
       map.addLayer({ id: "s2011-line", type: "line", source: "states2011", layout: { visibility: "none" }, paint: linePaint(0.4) as any });
       const vinSymbolPaint = {
         "circle-radius": ["coalesce", ["feature-state", "r"], 0],
@@ -877,12 +1121,49 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   }
 
   // ── drill (focus a state's districts) ───────────────────────────────────
-  function applyFocus(code: string, name: string) {
+  // THE ONE PLACE A STATE CODE IS CANONICALISED (item 1091). Everything downstream —
+  // the MapLibre filter, the rid prefixes scopeCodes() and the ranking rail cut with,
+  // the `st` param in the share link — reads focus.code, so it is padded here once
+  // instead of at each of the five call sites. Four of them used to do it by hand and
+  // the fifth did not have to think about it, which is the shape a sixth call site
+  // gets wrong.
+  function applyFocus(rawCode: string, name: string) {
     const map = mapRef.current; if (!map) return;
-    const f = statesRef.current[String(Number(code))] || statesRef.current[code];
-    const flt: any = ["==", ["to-string", ["get", "st_code"]], String(Number(code))];
-    map.setFilter("district-fill", flt); map.setFilter("district-line", flt); map.setFilter("state-outline", flt);
-    if (f) map.fitBounds(bbox(f.geometry) as any, { padding: 50, duration: 750, essential: true });
+    const code = stCode(rawCode);
+    const f = statesRef.current[code];
+    // A `?st=` THAT NAMES NO STATE DRILLS NOWHERE (item 1091 round 2).
+    //
+    // This used to fall through: `f` was only consulted for the fitBounds below, so
+    // ?st=abc and ?st=99 installed a filter that admits nothing and set a focus anyway.
+    // Measured on f5ce467 — /?m=literacy_rate&lvl=district&st=abc&stn=Nowhere gave 0
+    // polygons under "0 districts in Nowhere", a blank plate scoped to a state that
+    // does not exist, with no way back but the browser's Back button.
+    //
+    // Failing cleanly here means what it already means for the OTHER code a link can
+    // carry: `cmp` looks each pin up in the same statesRef and silently drops the ones
+    // that resolve to nothing, and the URL writer — which emits only what the view
+    // actually holds — then strips the dead param out of the address bar. Measured:
+    // ?cmp=abc,09 rewrites itself to ?cmp=09. Refusing the focus gives `st` exactly
+    // that: no drill, the national view the reader would have had without the param,
+    // and an address bar that stops claiming a scope the map never entered.
+    //
+    // Not a thrown error and not a toast: a malformed param is not the reader's doing
+    // in any case we can name (a truncated share link, a hand-edited URL), and this
+    // file has no error surface that would be honest about it.
+    if (!f) return;
+    // Numeric, so the pad cannot break it in either direction. This line used to read
+    // ["==", ["to-string", ["get","st_code"]], String(Number(code))] — "9" against a
+    // geojson that stores "09" — and it is the whole of item 1091: nine states drilled
+    // to a filter that matched no polygon at all.
+    const flt = stateFilter(code);
+    // district-nodata rides with district-fill, and must: every district outside the
+    // drilled state is out of scope, so recolor marks it no-data — an unfiltered hatch
+    // would paint the rest of the country while its fills stayed hidden.
+    map.setFilter("district-fill", flt); map.setFilter("district-nodata", flt);
+    map.setFilter("district-line", flt); map.setFilter("state-outline", flt);
+    // Unconditional now: the guard above is what used to be this `if`, moved up to
+    // where it can decide whether to drill at all rather than only whether to fly.
+    map.fitBounds(bbox(f.geometry) as any, { padding: 50, duration: 750, essential: true });
     setFocus({ code, name });
     focusRef.current = { code, name };
   }
@@ -899,7 +1180,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   }
   function exitFocus(toStates: boolean) {
     const map = mapRef.current; if (!map) return;
-    map.setFilter("district-fill", null); map.setFilter("district-line", null); map.setFilter("state-outline", null);
+    map.setFilter("district-fill", null); map.setFilter("district-nodata", null);
+    map.setFilter("district-line", null); map.setFilter("state-outline", null);
     map.fitBounds(INDIA_BOUNDS, { padding: 24, duration: 750, essential: true });
     setFocus(null);
     focusRef.current = null;
@@ -954,6 +1236,10 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       const on = forced === null ? preferredViz(sel, unit, vals) === "symbol" : forced && eligible;
       symbolOnRef.current = on;
       setSymbolOn(on);
+      // Before the first paint, so the map does not draw once un-faded and then
+      // visibly reflow into the faded version a moment later.
+      await ensureWeights(effLevel);
+      if (cancelled) return;
       recolor();
     })();
     return () => { cancelled = true; };
@@ -964,6 +1250,58 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (dataRef.current) recolor();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, brkMethod, palette, reverse, focus, cohort, cohortSets, coverageHidden, symbolOn]);
+
+  // The pair's own values, and the resolver's verdict on the pairing (#408 item
+  // 1080). Re-run when the pair, the base metric or the level changes: eligibility
+  // is a property of the two series AT A LEVEL, not of the ids.
+  useEffect(() => {
+    let cancelled = false;
+    if (!pairId || !sel) {
+      pairValuesRef.current = {};
+      pairUnitRef.current = "";
+      pairDecimalsRef.current = 0;
+      pairEligRef.current = null;
+      setPairElig(null);
+      if (dataRef.current) recolor();
+      return;
+    }
+    (async () => {
+      const effLevel = vintage === "2011" ? (level === "state" ? "state2011" : "district2011") : level;
+      try {
+        const md = await fetch(`/api/metrics/${pairId}?level=${effLevel}`).then((r) => r.json());
+        if (cancelled) return;
+        const base = dataRef.current;
+        if (!md?.values || !base) return;
+        const verdict = bivariateEligible({
+          level: effLevel,
+          xId: sel, xUnit: base.unit ?? "", xValues: valuesRef.current,
+          yId: pairId, yUnit: md.unit ?? "", yValues: md.values,
+        });
+        pairValuesRef.current = verdict.ok ? md.values : {};
+        pairUnitRef.current = String(md.unit ?? "");
+        pairDecimalsRef.current = Number.isFinite(md.decimals) ? Number(md.decimals) : 0;
+        pairEligRef.current = verdict;
+        setPairElig(verdict);
+        recolor();
+      } catch {
+        if (cancelled) return;
+        // A failed fetch is no pair, never a half-drawn one.
+        pairValuesRef.current = {};
+        pairUnitRef.current = "";
+        pairDecimalsRef.current = 0;
+        pairEligRef.current = null;
+        setPairElig(null);
+        recolor();
+      }
+    })();
+    return () => { cancelled = true; };
+    // `data` is in here on purpose. Eligibility is computed against the BASE metric's
+    // values, and this effect can fire before those land — it bails when they have
+    // not, and without a dependency on the load it would never come back, leaving a
+    // ?bi= link silently univariate. Depending on the loaded data rather than a
+    // timer is what makes the pair deterministic on a cold open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairId, sel, level, vintage, ready, data]);
 
   // The MapLibre host is display:none while the table view is up (the plate around
   // it stays), so MapLibre holds its last canvas size until the host is shown
@@ -1002,6 +1340,13 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     for (const [lyr, on] of [["d2011-fill", vin && !showState], ["d2011-line", vin && !showState],
                              ["s2011-fill", vin && showState], ["s2011-line", vin && showState]] as const) {
       if (map.getLayer(lyr)) map.setLayoutProperty(lyr, "visibility", on ? "visible" : "none");
+    }
+    // Each hatch follows the fill it marks, read off that fill rather than re-derived
+    // — a second copy of this level/vintage logic is a second thing to forget. Last,
+    // so it reads the visibility just set above rather than the previous repaint's.
+    for (const [fill, hatch] of Object.entries(NODATA_LAYERS)) {
+      if (map.getLayer(fill) && map.getLayer(hatch))
+        map.setLayoutProperty(hatch, "visibility", map.getLayoutProperty(fill, "visibility") ?? "visible");
     }
     if (vinChanged) {
       // vintage is view-only: drop every current-day interaction artefact so
@@ -1071,13 +1416,17 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (focus) { p.set("st", focus.code); p.set("stn", focus.name); }
     if (pins.length) p.set("cmp", pins.map((x) => x.code).join(","));
     if (vintage === "2011") p.set("vin", "2011");
+    // The pair is half of what this map shows, so unlike `brk` or `sym` it is not a
+    // preference that should stay behind — a shared link without it is a different
+    // map (#408 item 1080).
+    if (pairId) p.set("bi", pairId);
     // to-do 348: adaptive is the outline default, so only the fixed ESCAPE HATCH needs
     // to travel. Preserving it here keeps a shared/reloaded "fixed" view fixed — and
     // stops this writer from stripping the param out from under the mount-time reader.
     if (outlineModeRef.current === "fixed") p.set("outline", "fixed");
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
-  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick, symbolOn]);
+  }, [sel, mode, level, brkMethod, palette, reverse, focus, pins, minimal, vintage, pickTick, symbolOn, pairId]);
 
   // ── colouring ────────────────────────────────────────────────────────────
   type PaintSource = "districts" | "states" | "districts2011" | "states2011";
@@ -1097,8 +1446,12 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const f = focusRef.current;
     const values = valuesRef.current;
     if (levelRef.current === "district" && f) {
-      const pref = String(Number(f.code)) + "_";
-      return Object.keys(values).filter((c) => c.startsWith(pref) || c.startsWith(f.code + "_"));
+      // ONE prefix (item 1091). This used to accept "9_" alongside "09_" because
+      // applyFocus spoke the unpadded form and the geometry spoke the padded one; the
+      // filter is numeric now and focus.code is canonical, so the padded prefix is the
+      // only spelling the rid key space has ever had.
+      const pref = ridPrefix(f.code);
+      return Object.keys(values).filter((c) => c.startsWith(pref));
     }
     return Object.keys(values);
   }
@@ -1107,6 +1460,37 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const map = mapRef.current; if (!map) return;
     for (const s of ["districts", "states", "districts2011", "states2011"])
       if (map.getSource(s)) map.removeFeatureState({ source: s });
+  }
+
+  /** Population and recovered area for a level — fetched once, then cached.
+   *
+   *  area = pop_total / pop_density, both Census 2011, both already in the store.
+   *  Not an approximation of the published area: the recovery of the very figure the
+   *  source divided by. Kutch comes back 45,486 km² against a published 45,674 — the
+   *  0.4% is the rounding in the printed density.
+   *
+   *  Only the current-day layers carry a density series, so only they can have an
+   *  area recovered at all. The 2011 vintages are cached as EMPTY and the warrant
+   *  then refuses on its own terms rather than this silently skipping — a skip that
+   *  looks like a pass is the shape this repo keeps finding in its own guards. */
+  async function ensureWeights(level: string): Promise<void> {
+    if (weightRef.current[level]) return;
+    if (level !== "district" && level !== "state") {
+      weightRef.current[level] = { pop: {}, area: {} };
+      return;
+    }
+    try {
+      const [p, d] = await Promise.all([
+        fetch(`/api/metrics/pop_total?level=${level}`).then((r) => r.json()),
+        fetch(`/api/metrics/pop_density?level=${level}`).then((r) => r.json()),
+      ]);
+      const pop = (p?.values ?? {}) as Record<string, number>;
+      const den = (d?.values ?? {}) as Record<string, number>;
+      weightRef.current[level] = { pop, area: regionAreas(pop, den) };
+    } catch {
+      // A failed fetch means no fade, never a wrong fade.
+      weightRef.current[level] = { pop: {}, area: {} };
+    }
   }
 
   function recolor() {
@@ -1155,6 +1539,71 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     let lumSum = 0, lumN = 0; // backdrop mean for the state-outline overlay (to-do 348)
     const breaks = modeRef.current === "value"
       ? computeBreaks(vals, brkRef.current, 5, metricRefRef.current) : [];
+    // Value-by-alpha (#408 item 1077, owner ruling under #575: the form follows the
+    // DATA). A choropleth's visual weight is AREA; a rate is about PEOPLE. Where the
+    // map's colour is not where the people are, regions are faded by how many people
+    // they hold. Not offered in symbol mode — a count already has circles — nor on
+    // the 2011 vintages, which have no density series to recover an area from, nor
+    // in coverage or vs-average mode, where the colour is not the metric at all.
+    // BIVARIATE (#408 item 1080). Two metrics, one geography, a 3x3 matrix. Bands are
+    // cut over the SHARED regions IN SCOPE only — a region the pair does not both
+    // cover, or that this drill is not showing, is not part of this map's population
+    // and must not stretch its bands. The METHOD is no longer hardcoded to quantile:
+    // lib/bivariate's axisBreaks runs the repo's own degeneracy guard per axis, which
+    // is what stops the 445 districts reporting zero Buddhist population landing in
+    // the middle band of three. Never in symbol mode, coverage or vs-average, and
+    // never on the 2011 vintage — the resolver refuses that level outright.
+    const pairOk = !!pairEligRef.current?.ok
+      && modeRef.current === "value" && !symOn && !vin && Object.keys(pairValuesRef.current).length > 0;
+    let biEdgesX: number[] = [];
+    let biEdgesY: number[] = [];
+    let biScope: Eligibility | null = null;
+    if (pairOk) {
+      const shared = sharedRegions(valuesRef.current, pairValuesRef.current)
+        .filter((c) => scope.has(c));
+      if (shared.length >= BIVARIATE_K) {
+        biEdgesX = axisBreaks(shared.map((c) => valuesRef.current[c]), { isPct: md.unit === "%" }).edges;
+        biEdgesY = axisBreaks(shared.map((c) => pairValuesRef.current[c]), { isPct: pairUnitRef.current === "%" }).edges;
+      }
+      biScope = bivariateScope({
+        shared: shared.length,
+        edgesX: biEdgesX,
+        edgesY: biEdgesY,
+        scopeLabel: focusRef.current?.name ?? "this view",
+      });
+    }
+    // ONE CONDITION FOR THE PAINT AND FOR THE KEY (#408 item 1080, round 2). The
+    // legend used to derive `pairActive` from the national verdict alone, so focusing
+    // Goa (2 shared districts) or Chandigarh (1) drew a 3x3 matrix key over a map
+    // painted with the univariate ramp — and refused nothing, because as far as the
+    // resolver was concerned the pair held. It does hold; it just cannot be DRAWN
+    // here, which is a different sentence and the reader is owed it.
+    const biOn = pairOk && !!biScope?.ok;
+    const biRefusal = biScope && !biScope.ok ? biScope : null;
+    const pairSig = `${biOn}|${biRefusal?.reason ?? ""}|${biEdgesX.join(",")}|${biEdgesY.join(",")}`;
+    if (pairSigRef.current !== pairSig) {
+      pairSigRef.current = pairSig;
+      setPairView({ drawn: biOn, refusal: biRefusal, edgesX: biEdgesX, edgesY: biEdgesY });
+    }
+
+    const wts = weightRef.current[levelRef.current] ?? { pop: {}, area: {} };
+    const warr = (!vin && !symOn && !biOn && modeRef.current === "value" && breaks.length > 0)
+      ? alphaWarrant({ values: valuesRef.current, pop: wts.pop, area: wts.area, edges: breaks })
+      : null;
+    const fadeCodes = codes.filter((c) => wts.pop[c] > 0);
+    alphaRef.current = warr?.warranted ? alphaByRegion(wts.pop, fadeCodes) : {};
+    // The p5/p95 the ramp actually ran between. Handed to the legend so its fade key
+    // can label the rows with the POPULATIONS that produce those opacities — an
+    // opacity on its own decodes nothing, and a floored district's rendered colour
+    // appeared nowhere in the key before this.
+    const fadeBounds = warr?.warranted ? alphaBounds(wts.pop, fadeCodes) : null;
+    const warrSig = `${warr?.warranted ?? ""}|${warr?.reason ?? ""}|${fadeBounds?.lo ?? ""}|${fadeBounds?.hi ?? ""}`;
+    if (warrantSigRef.current !== warrSig) {
+      warrantSigRef.current = warrSig;
+      setWarrant(warr);
+      setFadeBounds(fadeBounds);
+    }
+
     const basePal = PALETTES[palRef.current].fn;
     const pal = revRef.current ? (t: number) => basePal(1 - t) : basePal;
     const maxDev = Math.max(...vals.map((v) => Math.abs(v - mean))) || 1;
@@ -1168,20 +1617,77 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       ? (ck === "pop" ? cs.pop : ck === "nsdp" ? cs.nsdp : cs.area)
       : null;
 
+    // ── how many hatches this map actually DRAWS (iter-46 polish, N3) ─────────
+    // Marked is not the same as drawn. Drilling into a state marks every district
+    // outside it no-data — that is what keeps the rest of the country from painting
+    // over the drill — but applyFocus also FILTERS those polygons off the map, so
+    // they are marks nobody can see. The legend keys the hatch, and a key is owed the
+    // marks on screen, so the count below is over the drawn ones only.
+    //
+    // The drill test is ONE prefix, and it used to be two (item 1091). The tolerance
+    // here documented a live defect rather than a real ambiguity: applyFocus built its
+    // MapLibre filter from String(Number(code)) while the geojson's st_code — and so
+    // the rid prefix — is zero-padded, so for the nine states coded 01..09 that filter
+    // matched nothing at all. Measured on the deployed 57581ac: drilling Maharashtra
+    // passed 35 district polygons, Uttar Pradesh 0 of 75 and Jammu & Kashmir 0 of 22.
+    // With the filter numeric and focus.code canonicalised by applyFocus, the padded
+    // prefix is the only spelling the rid key space carries and there is nothing left
+    // for a second arm to tolerate — so the count below and the polygons on screen are
+    // now the same set for every state, not just the twenty-nine that read as drawn.
+    const drill = levelRef.current === "district" ? focusRef.current : null;
+    const drillPrefix = drill ? ridPrefix(drill.code) : null;
+    const drawnHere = (code: string) => !drillPrefix || code.startsWith(drillPrefix);
+    let hatched = 0;
+
     for (const code of allCodes(source)) {
       const v = valuesRef.current[code];
       const inScope = scope.has(code);
       if (v == null || !inScope) {
-        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA), r: 0 });
+        // `nodata` switches the hatch layer on for this region. It is written
+        // explicitly rather than inferred from the colour because coverage view mutes
+        // a HIDDEN class to the very same tone, and those regions do have a number —
+        // hatching them would say the opposite of what is true.
+        //
+        // `alpha` IS WRITTEN HERE, and the omission it replaces was a real defect
+        // (iter-46 polish, N2). setFeatureState MERGES; it does not replace. The wipe
+        // at the top of recolor() queues a whole-source delete, and MapLibre's
+        // SourceFeatureState.updateState converts that queued delete into a per-feature
+        // one on the FIRST write that follows — excluding the feature being written.
+        // So the first region painted after every wipe keeps whatever state it already
+        // carried for any key the new write does not mention. Measured on the pre-fix
+        // build: open /?m=pop_density&lvl=district (the fade fires), then change to
+        // Forest cover in the chooser. 35_639 North and Middle Andaman is the first
+        // feature in districts.geojson, has no forest figure, and came back
+        // {nodata: true, alpha: 0.3299} — its pop_density fade, on a no-data region.
+        // The tone then composites to rgb(23,23,23) where the no-data tone is
+        // rgb(39,37,28), and the whole sweep found exactly one such region, which is
+        // the first-write exemption and nothing else.
+        //
+        // ALPHA_UNFADED and not the region's own fade weight: a region with no figure
+        // has nothing to weigh, and left-stack's no-data key draws its swatch as
+        // NO_DATA_FILL composited at exactly this opacity. Writing it here is what
+        // makes the key and the map the same colour.
+        map.setFeatureState({ source, id: code }, { color: NODATA, dim: false, stroke: strokeForFill(NODATA), r: 0, alpha: ALPHA_UNFADED, nodata: true });
+        if (drawnHere(code)) hatched++;
         continue;
       }
       // COVERAGE view (item 830): shade by DATA PROVENANCE, not value. A class
       // toggled off in the legend recedes to the neutral no-data tone so the
       // classes left on stand out (e.g. inherited-only).
       let color: string;
+      /** Has this region a number for the map AS DRAWN? A paired map asks for two. */
+      let noValue = false;
       if (modeRef.current === "coverage") {
         const cls = provenanceOf(estimatedRef.current[code], estimateKindRef.current[code]);
         color = coverageHiddenRef.current.includes(cls) ? PROVENANCE_MUTED : PROVENANCE_COLOR[cls];
+      } else if (biOn) {
+        const pv = pairValuesRef.current[code];
+        // A region the pair does not cover gets the no-data tone rather than a
+        // corner of the matrix. Painting it low-low would invent a reading. It is
+        // hatched with the rest of the no-data, because on THIS map that is what it
+        // is — the pair needs both numbers and this region has one.
+        noValue = pv == null || !Number.isFinite(pv);
+        color = noValue ? NODATA : bivariateColor(v, biEdgesX, pv, biEdgesY);
       } else if (modeRef.current === "vs_avg") {
         color = interpolateRdBu(0.5 + Math.max(-0.5, Math.min(0.5, (v - mean) / (2 * maxDev))));
       } else {
@@ -1196,9 +1702,30 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
       // `r` rides the same write: the wrapper mirrors it onto the centroid source,
       // where the circle layer reads it. Zero when symbol mode is off, so switching
       // back to a choropleth cannot leave stale circles behind.
-      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0 });
+      // `alpha` rides the same write as `color` (#408 item 1077). 0.9 is the
+      // unfaded default the fill layer used before this existed, so a map with no
+      // warrant paints exactly as it always did.
+      map.setFeatureState({ source, id: code }, { color, dim, stroke: strokeForFill(color), r: symOn ? symbolRadius(v, symMax, symLevel) : 0, alpha: alphaRef.current[code] ?? ALPHA_UNFADED, nodata: noValue });
+      // A paired map hatches the regions the SECOND metric misses (`noValue` above).
+      // Those are in scope by construction, so they are always drawn.
+      if (noValue) hatched++;
       lumSum += fillLuminance(color);
       lumN++;
+    }
+
+    // Published for the legend's no-data key, the same way the paint publishes its
+    // pair verdict and its fade warrant: ONE condition for the mark and for the key.
+    // Deriving "does this map hatch anything" in the legend instead would be the same
+    // shape as item 1080's D1 — a key describing a mark the paint is not making.
+    //
+    // A stale count can only ever be too HIGH, never too low: the transient this
+    // component has is the previous metric's values against the next metric's source
+    // (the state -> district swap holds them for a frame), and codes the values do not
+    // cover are exactly what counts as no-data. So the key can appear a frame early on
+    // a map that has no absentees; it cannot vanish from a map that is hatching.
+    if (hatchedSigRef.current !== hatched) {
+      hatchedSigRef.current = hatched;
+      setHatchedCount(hatched);
     }
 
     // to-do 348 — the state-outline overlay. District boundaries have been adaptive
@@ -1250,7 +1777,8 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
 
   const entries = useMemo<Entry[]>(() => {
     if (!data) return [];
-    const f = focusActive && focus ? String(Number(focus.code)) + "_" : null;
+    // One canonical prefix (item 1091) — see scopeCodes(), which cuts the same scope.
+    const f = focusActive && focus ? ridPrefix(focus.code) : null;
     // An estimated value is not this region's own measurement, so the ranking list
     // must be able to mark it (item 611) — and estimate_kind travels with it so the
     // rail can say WHICH kind without guessing from the flag (adr-021).
@@ -1260,7 +1788,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const shak = data.shaky ?? {};
     const out: Entry[] = [];
     for (const [code, value] of Object.entries(data.values)) {
-      if (f && !code.startsWith(f) && !code.startsWith((focus?.code ?? "") + "_")) continue;
+      if (f && !code.startsWith(f)) continue;
       // vintage codes are 2011 census codes named by the vintage geojson, not
       // the /api/regions palette index (same code can mean a different region)
       const idx = vintage === "2011" ? vintageIdxRef.current.get(code) : nameIdx.get(code);
@@ -1395,8 +1923,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
   const districtCountOf = useCallback((stateCode: string): number => {
     const fc = districtsFCRef.current;
     if (!fc) return 0;
-    const n = String(Number(stateCode));
-    return (fc.features as any[]).filter((f) => String(Number(f.properties?.st_code)) === n).length;
+    // Both sides through stCode(), which was already true of this one — it normalised
+    // both ends and so was never part of item 1091. Moved onto the shared helper so
+    // the file has ONE spelling of a state code rather than two that happen to agree.
+    const n = stCode(stateCode);
+    return (fc.features as any[]).filter((f) => stCode(String(f.properties?.st_code)) === n).length;
   }, []);
 
   // compare derived
@@ -1458,17 +1989,24 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     if (vintageRef.current === "2011") setVintage("current");
     if (r.level === "state") {
       if (levelRef.current === "state") {
-        const f = statesRef.current[String(Number(r.code))] || statesRef.current[r.code];
+        const f = statesRef.current[stCode(r.code)];
         if (f) map.fitBounds(bbox(f.geometry) as any, { padding: 50, duration: 750, essential: true });
-        clickFeature({ code: String(Number(r.code)), name: r.name, state: "", kind: "state" }, "states");
+        // THE CANONICAL CODE, not String(Number(r.code)) (item 1091). This one is a
+        // second, quieter face of the same defect: `code` becomes the MapLibre feature
+        // id in clickFeature's setFeatureState, and `states` is promoteId'd on the
+        // padded st_code — so "9" set selection on a feature that does not exist and
+        // picking any of the nine low-numbered states out of search left it unpainted.
+        // valuesRef is keyed padded too, so the profile that opened alongside read
+        // "No data for this region on the current indicator" for Uttar Pradesh.
+        clickFeature({ code: stCode(r.code), name: r.name, state: "", kind: "state" }, "states");
       } else {
-        drillIntoState(r.code.padStart(2, "0"), r.name);
+        drillIntoState(r.code, r.name);
       }
     } else {
       if (levelRef.current === "state") setLevel("district");
       const feat = (districtsFCRef.current?.features as any[] | undefined)?.find((f) => String(f.properties?.rid) === r.code);
       if (feat) {
-        applyFocus(String(feat.properties?.st_code).padStart(2, "0"), String(feat.properties?.st_nm ?? ""));
+        applyFocus(String(feat.properties?.st_code), String(feat.properties?.st_nm ?? ""));
         map.fitBounds(bbox(feat.geometry) as any, { padding: 80, duration: 900, maxZoom: 9, essential: true });
         clickFeature({ code: r.code, name: r.name, state: String(feat.properties?.st_nm ?? ""), kind: "district" }, "districts");
       }
@@ -1528,7 +2066,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
         label: stateCtx, on: !leaf,
         onClick: () => {
           const codeGuess = focus?.code ?? (selected?.kind === "state" ? selected.code : null);
-          if (codeGuess) drillIntoState(codeGuess.padStart(2, "0"), stateCtx);
+          if (codeGuess) drillIntoState(codeGuess, stateCtx);
         },
       });
       if (leaf && selected) items.push({ label: selected.name, on: true, onClick: () => {} });
@@ -1757,7 +2295,14 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 `inset-block`, `top-*` to physical `top`, and a variant of one
                 does not reliably beat the base of the other. Every edge here is
                 one property with one override. */}
-            <div className="pointer-events-none absolute bottom-3.5 left-3.5 top-3.5 z-[5] flex w-[300px] flex-col gap-2.5 max-lg:bottom-2 max-lg:left-2 max-lg:right-2 max-lg:top-2 max-lg:w-auto max-lg:gap-2">
+            {/* max-lg:pb-14 reserves the sheet's DISMISSAL STRIP (to-do 424 /
+                item 1077 round 3). Below lg the dock scrolls as one surface, so
+                without this it would run edge to edge and there would be nowhere
+                left on the plate that belongs to the scrim — "tap off the panel
+                to close it" is the only dismissal a bottom-anchored sheet has on
+                a phone, and it has to be somewhere a thumb can reach. 56px is the
+                same order as the sheet handle below it. */}
+            <div className="pointer-events-none absolute bottom-3.5 left-3.5 top-3.5 z-[5] flex w-[300px] flex-col gap-2.5 max-lg:bottom-2 max-lg:left-2 max-lg:right-2 max-lg:top-2 max-lg:w-auto max-lg:gap-2 max-lg:pb-14">
             {/* MOBILE CONTROLS BAR (to-do 424) — the always-visible head of the
                 controls stack below lg. A 300px column over a 374px plate is the
                 same defect as the rail: it leaves no map. Collapsed, this bar is
@@ -1805,6 +2350,34 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 <span aria-hidden className="flex-none text-[11px] text-muted">{ctrlOpen ? "▲" : "▼"}</span>
               </button>
             )}
+            {/* ONE SHEET BELOW lg, TWO BOXES ABOVE IT (to-do 424 / item 1077 round 3).
+                Desktop keeps what item 1077 found working: the cards scroll inside
+                their own box and the legend is pinned to the bottom of the column,
+                with the slack between them belonging to nobody so the map stays
+                draggable through it.
+                On a phone that arrangement has a cliff. The cards' box shrinks and
+                the legend does not, so every pixel the legend gains comes straight
+                out of the controls' scroll viewport — and item 1077's fade key plus
+                the permanent no-data swatch added enough of them to push the
+                STATES / DISTRICTS row below the fold. Nothing overlapped and nothing
+                errored: the row still reported a box at y=445 and still answered
+                toBeVisible, but it was clipped by the scroll container, so a tap at
+                its centre landed on the legend painted over that spot. A control
+                that is present, sized and unhittable is the defect item 910 named.
+                So below lg the two boxes become ONE scroll surface: the whole dock
+                moves together, the legend stops competing with the controls for a
+                fixed slice, and further legend content costs scroll rather than
+                reach. This wrapper is that surface; above lg it is flex-1 and
+                pointer-events-none, which reproduces the column's own geometry
+                exactly and keeps the drag-through gap.
+                Collapsed sub-desktop = display:none, not opacity or a zero height:
+                the cards must leave the tab order and the a11y tree with the pixels,
+                and this is also what keeps the mobile-only branch out of every
+                desktop-width selector in the suite. It sits on this wrapper now
+                rather than on each box, so one condition hides the whole sheet. */}
+            <div
+              className={`atl-scroll pointer-events-none flex min-h-0 flex-1 flex-col gap-2.5 max-lg:pointer-events-auto max-lg:gap-2 max-lg:overflow-y-auto max-lg:overscroll-contain ${ctrlOpen ? "" : "max-lg:hidden"}`}
+            >
             {/* Content-sized, NOT flex-1. flex-1 stretched this box to the full
                 column even when the cards were short, and since it is the box
                 that carries pointer-events-auto, the empty slack below the last
@@ -1812,12 +2385,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 — 35px tall at 900px viewport height, 235px at 1100px, growing
                 1:1 with the window. The default flex-initial keeps the box on
                 its content while min-h-0 still lets it shrink and scroll when
-                the column is tight. */}
-            {/* Collapsed sub-desktop = display:none, not opacity or a zero
-                height: the cards must leave the tab order and the a11y tree with
-                the pixels, and this is also what keeps the mobile-only branch out
-                of every desktop-width selector in the suite. */}
-            <div className={`atl-scroll pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto max-lg:gap-2 ${ctrlOpen ? "" : "max-lg:hidden"}`}>
+                the column is tight.
+                max-lg:flex-none / max-lg:overflow-visible: below lg the scrolling
+                belongs to the sheet above, and a scroll container nested in a
+                scroll container is two places for the same gesture to go. */}
+            <div className="atl-scroll pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto max-lg:flex-none max-lg:gap-2 max-lg:overflow-visible">
               <Crumbs items={crumbs} hasBack={hasBack} onBack={onBack} />
               <IndicatorCard
                 metricName={meta?.name ?? null}
@@ -1844,9 +2416,11 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                 controls that provably do nothing — the line item 908 already drew
                 when it dropped REVERSE from vs-avg mode. It is pinned to the BOTTOM
                 of the column, so dropping it moves nothing above it: the VIEW
-                toggle keeps its position across the swap. */}
+                toggle keeps its position across the swap.
+                max-lg:mt-0 — on a phone there is no bottom to pin to any more, the
+                legend is simply the last section of the sheet. */}
             {view === "map" && data && meta && (
-              <div className={`pointer-events-auto mt-auto flex-none ${ctrlOpen ? "" : "max-lg:hidden"}`}>
+              <div className="pointer-events-auto mt-auto flex-none max-lg:mt-0">
                 <LegendCard
                   metricName={data.name} unit={data.unit} decimals={data.decimals}
                   min={scopeMin} max={scopeMax} values={entries.map((e) => e.value)}
@@ -1883,9 +2457,45 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                     entries.map((e) => e.value),
                     level === "state" ? "state" : "district"
                   )}
+                  // Why this map is faded, in the reader's words (#408 item 1077).
+                  // Present only when the fade actually fired.
+                  alphaNote={warrant?.warranted ? warrant.reason : null}
+                  // ...and the populations the fade ramp ran between, so the key can
+                  // show what each opacity MEANS. Without it the legend showed only
+                  // full-strength swatches and a floored district's rendered colour
+                  // appeared nowhere in the key at all.
+                  alphaBounds={warrant?.warranted ? fadeBounds : null}
+                  // How many regions this map is HATCHING (iter-46 polish, N3). The
+                  // hatch itself is unconditional and stays that way — "no number
+                  // here" has to mean one thing on every map — but the KEY for it was
+                  // drawn even where the map marks nobody: crime_ipc_rate at state
+                  // level hatches 0 of 36 and still carried the line. Straight from
+                  // the paint, so the key can never describe a mark that is not there.
+                  nodataCount={hatchedCount}
+                  // The pair (#408 item 1080): names for the two axes, the
+                  // resolver's verdict (shown even when it refuses), and the two
+                  // controls. Passing the verdict rather than a boolean is what
+                  // lets a refused pair say why instead of quietly doing nothing.
+                  pairName={pairId ? (metrics.find((m) => m.id === pairId)?.name ?? pairId) : null}
+                  baseName={data?.name ?? ""}
+                  // A scope refusal outranks the national verdict: "these two may be
+                  // paired" is true and useless while the drilled state has two
+                  // districts to cut three bands from. The reader is told the one
+                  // that explains the map in front of them.
+                  pairElig={pairView.refusal ?? pairElig}
+                  // Straight from the paint (#408 item 1080, round 2) — this used to
+                  // be a second, looser condition that never consulted the bands.
+                  pairActive={pairView.drawn}
+                  // The bands themselves, so the matrix key carries numbers like the
+                  // univariate legend does.
+                  pairEdgesX={pairView.edgesX} pairEdgesY={pairView.edgesY}
+                  pairDecimals={pairDecimalsRef.current} pairUnit={pairUnitRef.current}
+                  onOpenPair={() => { setPairOpen(true); setChooserOpen(false); setScaleOpen(false); setSearchOpen(false); }}
+                  onClearPair={() => setPairId("")}
                 />
               </div>
             )}
+            </div>
             </div>
             {/* Opened from the legend's gear, so it follows the legend out of the
                 table view rather than floating over the table alone. */}
@@ -2027,7 +2637,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
                   fmtVal={fmtVal} fmtFull={fmtFull}
                   rank={selectedRank} scopeNoun={scopeNoun}
                   drillLabel={selected.kind === "state" && !focusActive ? `View ${districtCountOf(selected.code) || ""} districts`.replace("  ", " ") : null}
-                  onDrill={() => drillIntoState(selected.code.padStart(2, "0"), selected.name)}
+                  onDrill={() => drillIntoState(selected.code, selected.name)}
                   onClear={clearSelected}
                 />
               </div>
@@ -2244,7 +2854,7 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
               ? statesFCRef.current?.features ?? []
               : focus
                 ? ((districtsFCRef.current?.features ?? []) as SocialFeature[]).filter(
-                    (f) => String(Number(String(f.properties?.st_code))) === String(Number(focus.code)))
+                    (f) => stCode(String(f.properties?.st_code)) === stCode(focus.code))
                 : districtsFCRef.current?.features ?? []) as SocialFeature[]
           }
           codeOf={(f) =>
@@ -2267,6 +2877,18 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
           metrics={metrics} selected={sel}
           onPick={(id) => { track("metric_selected", { metric: id }); setSel(id); setChooserOpen(false); }}
           onClose={() => setChooserOpen(false)}
+        />
+      )}
+      {/* Picking the PAIR (#408 item 1080). The same chooser, minus the metric
+          already on the map — pairing a metric with itself is the one refusal a
+          picker can prevent instead of explaining. Everything else is offered and
+          the resolver explains its verdict in the legend, because a picker that
+          silently omits options teaches a reader nothing about why. */}
+      {pairOpen && (
+        <ChooserModal
+          metrics={metrics.filter((m) => m.id !== sel)} selected={pairId}
+          onPick={(id) => { track("metric_selected", { metric: id, pair: "1" }); setPairId(id); setPairOpen(false); }}
+          onClose={() => setPairOpen(false)}
         />
       )}
       <SearchModal

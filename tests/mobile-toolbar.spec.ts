@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { stableBoundingBox } from "./lib/stable-box";
 
 // Mobile reachability of the explorer's action toolbar (item #419).
 //
@@ -21,7 +22,16 @@ const METRIC = "/?m=literacy_rate"; // a known real id (shared with the smoke/sh
 /** Assert a rendered element's box sits fully inside the horizontal viewport. */
 async function expectHorizontallyOnScreen(page: Page, loc: Locator, label: string) {
   await expect(loc, `${label} should be visible`).toBeVisible();
-  const box = await loc.boundingBox();
+  // Settled, not merely visible (#608). toBeVisible() resolves the moment the
+  // element is in the layout and says nothing about whether the layout has
+  // FINISHED — and this toolbar's anchor is derived from the map plate's width,
+  // which the right rail resizes after hydration. Reading inside that window
+  // returns a position no reader ever sees, and is how a correct toolbar gets
+  // reported as off-screen. The window is wider on a contended machine, which is
+  // the whole difference between green alone and red in the suite. A longer
+  // timeout does not help: it is the wrong event, not too short a wait.
+  // tests/stable-box.spec.ts demonstrates the naive read getting it wrong.
+  const box = await stableBoundingBox(page, loc, label);
   expect(box, `${label} should have a layout box`).not.toBeNull();
   const vw = page.viewportSize()!.width;
   // The regression is a negative left edge (x≈-150); the assertion is that the
