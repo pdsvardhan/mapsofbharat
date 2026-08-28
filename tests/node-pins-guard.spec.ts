@@ -190,6 +190,56 @@ test.describe("#659 the Node pin cross-check", () => {
     expect(out).toContain("must take its Node from .nvmrc");
   });
 
+  // ── A FROM the guard reads WRONG is worse than one it fails on, because it does not
+  // subtract from the OK line — it subtracts from what the OK line is about.
+
+  test("a digest-pinned FROM is compared, not skipped in silence", () => {
+    // MEASURED 2026-08-28, THIRD SWEEP. `node@sha256:aaaa` was split on the first colon
+    // after the last slash — the one inside the digest — so the image name came out as
+    // `node@sha256`, failed the `node` test, and the FROM was skipped without a word.
+    // Two thirds of a Dockerfile stopped being compared and the guard printed
+    //     OK — .nvmrc says 20.20.2, and so does everywhere else (1 Dockerfile FROM(s), …)
+    // Internally inconsistent, too: `node:lts-slim` names no version either and has
+    // always been reported. Digest pinning is a routine hardening change and arrives
+    // by bot, which makes it the likeliest way for this to happen unwatched.
+    const { code, out } = runGuard({
+      dockerfile: [
+        "FROM node@sha256:aaaa AS deps",
+        "FROM node@sha256:bbbb AS builder",
+        "FROM node:20.20.2-slim AS runner",
+      ].join("\n"),
+    });
+    expect(code, out).toBe(1);
+    expect(out, "all three FROMs must be counted, not one").toContain("2 of 4 declaration(s)");
+    expect(out).toContain("Dockerfile:1");
+    expect(out).toContain("Dockerfile:2");
+    expect(out).toContain("pins a digest and names no version");
+  });
+
+  test("a tag ALONGSIDE the digest is the pin, and passes", () => {
+    // The remedy the failure above suggests has to actually work, or the guard is
+    // telling people to do something it will fail them for.
+    const { code, out } = runGuard({
+      dockerfile: DOCKERFILE.replace(
+        "FROM node:20.20.2-slim AS deps",
+        "FROM node:20.20.2-slim@sha256:aaaa AS deps"
+      ),
+    });
+    expect(code, out).toBe(0);
+    expect(out).toContain("3 Dockerfile FROM(s)");
+  });
+
+  test("a base image behind an ARG is reported, not walked past", () => {
+    // The other way a node FROM disappears without an error. Measured before the fix:
+    // "2 Dockerfile FROM(s)" for a three-stage build, exit 0. The guard cannot expand
+    // the ARG and does not have to — it has to refuse to pretend the line was not there.
+    const { code, out } = runGuard({
+      dockerfile: ["ARG BASE=node:20.20.2-slim", "FROM ${BASE} AS deps", DOCKERFILE].join("\n"),
+    });
+    expect(code, out).toBe(1);
+    expect(out).toContain("cannot resolve an expanded base image");
+  });
+
   // ── The zero-measurement cases. Each of these once had to be a PASS for the guard
   // to be useless, which is why each is a distinct exit 2 rather than an exit 1.
   test("a Dockerfile with no node base image fails rather than passing on nothing", () => {

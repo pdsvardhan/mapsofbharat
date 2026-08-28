@@ -1,5 +1,22 @@
 #!/usr/bin/env node
-// The Node version is written in four places, and they must agree (#659, #610).
+// The Node version is written in five places, and they must agree (#659, #610).
+//
+// FIVE, AND THE ARITHMETIC IS SPELLED OUT BECAUSE THIS SENTENCE SAID FOUR WHILE THE
+// LINE BELOW LISTED FIVE. `.nvmrc` (1) + the Dockerfile's FROMs (3) + package.json
+// `engines` (1). Measured, not counted from memory:
+//
+//   $ git grep -n "20\.20\.2" -- .nvmrc Dockerfile package.json .gitea \
+//       | grep -vE ':[0-9]+:[[:space:]]*#'
+//   .nvmrc:1:20.20.2
+//   Dockerfile:5:FROM node:20.20.2-slim AS deps
+//   Dockerfile:11:FROM node:20.20.2-slim AS builder
+//   Dockerfile:18:FROM node:20.20.2-slim AS runner
+//   package.json:5:    "node": "20.20.2"
+//
+// The live count is the guard's own, printed on the OK line of every run — that one is
+// measured and cannot go stale. This one is here to be read, and it has been checked
+// against its list, which is the step the version of it that shipped in c4d455f
+// skipped, and the same step the ci.yml paragraph it was copied from skipped twice.
 //
 // WHAT WAS MISSING. scripts/check-node-version.mjs compares the RUNNING Node to
 // .nvmrc. That is one half of the pin. The other half — that every place naming the
@@ -17,8 +34,9 @@
 // THIS IS #659 WEARING A NEW HAT. `node:20-slim` and `node-version: 20` drifted apart
 // because two places named the version and only luck kept them equal. Pinning both to
 // 20.20.2 removed the FLOAT and left the DUPLICATION, which is a pin that is true on
-// the day it is written. Three copies of a literal with no comparison between them
-// drift the same way, just more slowly and with nothing floating to blame.
+// the day it is written. Four copies of a literal — the three FROMs and `engines`,
+// .nvmrc being the original rather than a copy — with no comparison between them drift
+// the same way, just more slowly and with nothing floating to blame.
 //
 // It matters at patch level, which is the part that reads like pedantry and is not:
 // node:20.19.4-slim LISTS this repo's tests and node:20.19.5-slim THROWS. A one-patch
@@ -84,10 +102,54 @@ function versionFromTag(tag) {
   return exactVersion(tag.split("-", 1)[0]);
 }
 
-/** How one declaration's version reads in the failure list. The three sites word it
- *  the same way, so a range in `engines` and a codename tag in the Dockerfile do not
- *  look like different kinds of problem. */
+/** Take a docker reference apart: `[registry[:port]/]name[:tag][@digest]`.
+ *
+ *  THE DIGEST COMES OFF FIRST, AND THAT IS THE WHOLE OF THIS FUNCTION (iter-46 item
+ *  1084, third sweep). This used to split on the first colon after the last slash —
+ *  which in `node@sha256:aaaa` is the one inside the digest — so the image name came
+ *  out as `node@sha256`, failed the `node` test, and the FROM was SKIPPED IN SILENCE.
+ *  Measured: a Dockerfile with two digest-pinned FROMs and one tagged one printed
+ *
+ *      OK — .nvmrc says 20.20.2, and so does everywhere else (1 Dockerfile FROM(s), …)
+ *
+ *  Two thirds of the Dockerfile had stopped being compared and the guard still said
+ *  "everywhere else". It was internally inconsistent as well: `node:lts-slim` names no
+ *  version either and IS reported. Digest pinning is a routine hardening change — a
+ *  bot proposes it — so this is the shape most likely to arrive unannounced. */
+function parseImageRef(ref) {
+  const at = ref.indexOf("@");
+  const named = at === -1 ? ref : ref.slice(0, at);
+  const slash = named.lastIndexOf("/");
+  const colon = named.indexOf(":", slash + 1);
+  return {
+    image: colon === -1 ? named : named.slice(0, colon),
+    tag: colon === -1 ? null : named.slice(colon + 1),
+    digest: at === -1 ? null : ref.slice(at + 1),
+  };
+}
+
+/** The image this guard compares. `FROM deps AS builder` names a previous stage. */
+const IS_NODE_IMAGE = /^(?:.*\/)?node$/i;
+
+/** A reference that mentions `node` where an image NAME goes — whether or not
+ *  parseImageRef managed to read it.
+ *
+ *  Deliberately cruder, and deliberately NOT written in terms of the parser: it is a
+ *  second, independent measurement whose only job is to catch the first one dropping
+ *  something. That is exactly what went wrong — the parser quietly stopped recognising
+ *  a node image and nothing anywhere disagreed with it. No Dockerfile can make these
+ *  two differ today; the mutation that breaks parseImageRef can, which is the case
+ *  this exists for and the only way to kill it. */
+const MENTIONS_NODE = /(?:^|\/)node(?=$|[:@])/i;
+
+/** How one declaration's version reads in the failure list. The sites word it the same
+ *  way, so a range in `engines` and a codename tag in the Dockerfile do not look like
+ *  different kinds of problem. */
 function says(d) {
+  // A digest pins the BYTES, which is a good thing to do and not a version. The remedy
+  // is a tag ALONGSIDE it (`node:20.20.2-slim@sha256:…`), not removing it, so this one
+  // gets its own sentence rather than the generic "names no exact version".
+  if (d.digestOnly) return "pins a digest and names no version — keep it, and add the tag";
   if (d.version === null) return "names no exact version";
   if (!FULL_VERSION.test(d.version)) return `names ${d.version}, which is not a full version`;
   return `names ${d.version}`;
@@ -147,7 +209,11 @@ const declarations = [];
 /** Things wrong with HOW a version is declared, rather than with the version. */
 const problems = [];
 
-// The Dockerfile — three FROMs today, and that count is hardcoded nowhere.
+// The Dockerfile — three node FROMs today. That number is hardcoded nowhere and is not
+// meant to be: a fourth stage is a normal change. What IS enforced is that the two
+// measurements of it agree (see nodeishFroms below), because the way this went wrong
+// was not the count changing — it was the count DROPPING, silently, while the OK line
+// said everything had been compared.
 if (!existsSync(DOCKERFILE)) {
   cannotMeasure(
     "Dockerfile is missing.",
@@ -157,6 +223,7 @@ if (!existsSync(DOCKERFILE)) {
 }
 
 let dockerFroms = 0;
+let nodeishFroms = 0;
 readFileSync(DOCKERFILE, "utf8")
   .split("\n")
   .forEach((text, i) => {
@@ -164,29 +231,55 @@ readFileSync(DOCKERFILE, "utf8")
     const m = /^\s*FROM\s+(?:--\S+\s+)*(\S+)/i.exec(text);
     if (!m) return;
     const ref = m[1];
-    // Split the tag off after the last slash, so a registry port (`reg:5000/node`)
-    // cannot be mistaken for one.
-    const slash = ref.lastIndexOf("/");
-    const colon = ref.indexOf(":", slash + 1);
-    const image = colon === -1 ? ref : ref.slice(0, colon);
-    const tag = colon === -1 ? null : ref.slice(colon + 1);
+    const where = `Dockerfile:${i + 1}`;
+    if (MENTIONS_NODE.test(ref)) nodeishFroms += 1;
+
+    // A reference this guard cannot resolve to a literal image name. `FROM ${BASE}`
+    // may well BE the node base image — measured, it was, and the guard walked past it
+    // and reported "2 Dockerfile FROM(s)" for a three-stage build. It cannot expand the
+    // ARG, so it says which line it could not read instead of quietly reading fewer.
+    if (ref.includes("$")) {
+      problems.push(`${where} FROM ${ref} — this guard cannot resolve an expanded base image`);
+      return;
+    }
+
+    const { image, tag, digest } = parseImageRef(ref);
     // `FROM deps AS builder` names a previous stage, not an image. Only the node base
     // images declare a version.
-    if (!/(^|\/)node$/.test(image)) return;
+    if (!IS_NODE_IMAGE.test(image)) return;
     dockerFroms += 1;
     declarations.push({
-      where: `Dockerfile:${i + 1}`,
+      where,
       text: `FROM ${ref}`,
+      // `node:20.20.2-slim@sha256:…` pins the bytes AND names the version, and the tag
+      // is what gets compared. Digest alone names nothing, exactly as `lts-slim` does.
       version: versionFromTag(tag),
+      digestOnly: tag === null && digest !== null,
     });
   });
+
+// THE PARSER AND THE CRUDE TEST MUST AGREE ON HOW MANY. A node FROM that
+// parseImageRef stops recognising does not become an error; it becomes one fewer
+// comparison, and the OK line goes on saying "everywhere else" about a Dockerfile it
+// has stopped reading. Two measurements of the same count is the cheapest way to make
+// that loud, and it is the failure that actually happened.
+if (nodeishFroms !== dockerFroms) {
+  problems.push(
+    `${nodeishFroms} Dockerfile FROM(s) name a node image and this guard parsed ${dockerFroms} — ` +
+      "the rest were skipped without being compared to anything"
+  );
+}
 
 if (dockerFroms === 0) {
   cannotMeasure(
     "the Dockerfile declares no node base image.",
     "Every FROM was a stage name or some other image, so this guard compared nothing",
     "against .nvmrc and would otherwise have printed OK. If the base image genuinely",
-    "moved, this check moves with it — it does not get satisfied by an absence."
+    "moved, this check moves with it — it does not get satisfied by an absence.",
+    // Anything already noticed about the Dockerfile belongs here rather than being
+    // thrown away with the run: "no node base image" and "there was one and I could
+    // not read it" are different findings and must not print the same thing.
+    ...problems
   );
 }
 
@@ -292,8 +385,9 @@ if (disagreements.length || problems.length) {
     console.error(
       `\ncheck-node-pins: ${disagreements.length} of ${declarations.length} declaration(s) disagree with .nvmrc (${want}):\n`
     );
-    // EVERY disagreeing location, not the first one. Moving Node touches four files;
-    // a guard that stops at the first turns one edit into four red runs.
+    // EVERY disagreeing location, not the first one. Moving Node edits five lines
+    // across three files, four of which this guard compares; one that stopped at the
+    // first would turn a single edit into four red runs.
     const where = Math.max(...disagreements.map((d) => d.where.length));
     const text = Math.max(...disagreements.map((d) => d.text.length));
     for (const d of disagreements) {
