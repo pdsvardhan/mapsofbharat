@@ -26,6 +26,14 @@ features:
           official PCA (median diff < 2%)
         test_status: passing
         linked_test: pipeline/test_pipeline.py
+      - content: "Geometry is served pre-compressed with encoding negotiation: a client
+          offering brotli gets the .br variant, one offering only gzip gets the
+          .gz (never the raw file), and one offering neither gets the original
+          intact. A stated qvalue preference is honoured and q=0 is treated as a
+          refusal. The atlas payload drops 104,519 bytes against the recorded
+          TEC-20 baseline, geometry 286.6 -> 184.5 KB (adr-038)."
+        test_status: passing
+        linked_test: tests/geodata-encoding.spec.ts
       - content: Every state and district polygon resolves to one canonical region_id
         test_status: passing
         linked_test: pipeline/test_pipeline.py
@@ -119,6 +127,12 @@ features:
           second one
         test_status: passing
         linked_test: tests/iter35-controls.spec.ts
+      - content: In value mode, where the metric warrants it, district fill opacity is
+          weighted by population on a logarithmic scale between the p5 and p95
+          bounds, so a large sparsely-populated district cannot dominate the
+          reading by area alone.
+        test_status: not-tested
+        linked_test: null
       - content: Choropleth colouring uses a continuous scale with a min/max legend
         test_status: not-tested
         linked_test: null
@@ -214,6 +228,12 @@ features:
           its own and reports the inheritance instead (adr-019).
         test_status: passing
         linked_test: tests/estimates.spec.ts
+      - content: The ranked table can be scrolled by keyboard alone. Its scroll
+          container is a named focus target (role + accessible name), because
+          23,339px of rankings sat behind three header buttons in the first 44px
+          - axe passed it, and a keyboard reader could reach 0.2% of it (#631).
+        test_status: passing
+        linked_test: tests/a11y.spec.ts
       - content: A vs national/state average diverging view can be toggled
         test_status: not-tested
         linked_test: tests/rankings.spec.ts
@@ -373,7 +393,14 @@ features:
     priority: P2
     size: M
     test_status: not-tested
-    notes: "Roadmap #408 (product growth). See ROADMAP.md."
+    notes: "Roadmap #408 (product growth). BLOCKED ON DATA, not on effort — measured
+      at iter-46 (item 1087): all 125 production metrics carry numeric units (75
+      are %, the rest rates, counts and currency), so there is no metric whose
+      VALUES are categories to draw. Building this needs either a new
+      categorical series in the store, or a dominant-category metric derived
+      from an existing share family (largest religion, largest language).
+      Recorded so the form is not re-proposed without that prerequisite. See
+      ROADMAP.md and to-do #408."
     acceptance_criteria: []
     dependencies: []
   - id: feat-vsup-uncertainty
@@ -382,11 +409,13 @@ features:
       / coverage into the colour, so estimated or thin-coverage values read as
       less certain.
     type: ui
-    status: planned
+    status: dropped
     priority: P2
     size: M
     test_status: not-tested
-    notes: "Roadmap #408 (product growth). Complements the estimate-disclosure work
+    notes: "Roadmap #408 (product growth). CLOSED by adr-039 at iter-46, not
+      deferred: the decision is that this encoding is not honest for this data,
+      so it should not be re-proposed. Complements the estimate-disclosure work
       (adr-019)."
     acceptance_criteria: []
     dependencies: []
@@ -412,7 +441,32 @@ features:
     size: M
     test_status: not-tested
     notes: "Roadmap #408 (product growth); adr-plan parks bivariate to post-launch."
-    acceptance_criteria: []
+    acceptance_criteria:
+      - content: A reader can pair two district metrics and read them on one map through
+          a 3x3 colour matrix, with the pairing carried in the URL so the view
+          is shareable.
+        test_status: not-tested
+        linked_test: null
+      - content: A pair with too little shared geography is refused in plain language
+          rather than drawn. The floor is 690 shared districts, or 30 shared
+          states.
+        test_status: not-tested
+        linked_test: null
+      - content: Class breaks are computed per axis independently through the shared
+          data-driven method selection, so a tie-heavy distribution ladders to
+          zeroFloor instead of leaving an empty band and painting zero-reporting
+          regions into the middle class.
+        test_status: not-tested
+        linked_test: null
+      - content: When the focused scope holds fewer regions than the matrix has classes,
+          the matrix key stands down and the refusal is shown. The key never
+          describes colours the map is not painting.
+        test_status: not-tested
+        linked_test: null
+      - content: The matrix key states its numeric class boundaries in each axis own
+          unit, and the univariate ramp stands down while a pair is drawn.
+        test_status: not-tested
+        linked_test: null
     dependencies: []
   - id: feat-metric-families
     title: Metric families as small multiples
@@ -510,6 +564,84 @@ features:
           two-axis scatter (both metrics at once, no motion controls); re-sorts
           announce via a scoped aria-live region and the picker is
           keyboard-operable.
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-value-by-alpha
+    parent_id: feat-choropleth-map
+    title: Value-by-alpha population weighting
+    short_description: Fill opacity weighted by population alongside fill colour by
+      value, so the map stops weighting India by acreage. Carries its own legend
+      key, and forces no-data to a hatch so absence can never be mistaken for
+      faintness.
+    type: ui
+    status: planned
+    priority: P2
+    size: M
+    test_status: not-tested
+    notes: Built iter-46 item 1077. Child of feat-choropleth-map, mirroring
+      feat-social-export under feat-export-share. Split out because the parent
+      had reached the 5-AC cap and this behaviour needs more than one criterion
+      to state honestly.
+    acceptance_criteria:
+      - content: The legend carries a colour-by-alpha key, its rows labelled with real
+          population figures, so a faded fill can be read off the key rather
+          than guessed at.
+        test_status: not-tested
+        linked_test: null
+      - content: Regions with no data are drawn as a hatch rather than a tone, in every
+          mode and on both vintages, so absence of data is never mistaken for
+          faintness. Measured worst fill-versus-hatch contrast 3.47:1, above the
+          3:1 floor; tone alone measures as little as 1.01:1 and cannot carry
+          the distinction.
+        test_status: not-tested
+        linked_test: null
+      - content: The fade applies only where it is warranted, measured as a class-share
+          total variation distance at or above 0.15, and the disclosure names
+          the measured share.
+        test_status: not-tested
+        linked_test: null
+      - content: A warrant that cannot be computed refuses and says so. A non-finite
+          population or area can never fall through to a warranted verdict, and
+          the reader is never shown a non-finite share.
+        test_status: not-tested
+        linked_test: null
+    dependencies: []
+  - id: feat-browse-by-form
+    title: Browse the catalogue by visual form
+    short_description: A second entrance to the metric catalogue that groups metrics
+      by the visual form their data supports, derived from the data rather than
+      chosen by the reader.
+    type: ui
+    status: done
+    priority: P2
+    size: S
+    test_status: partial
+    notes: "Built iter-46 item 1081, under owner direction to-do #575
+      (visualisation-first: form is a property of the DATA, not a reader
+      choice). Lives on page-metric-index at /metric?by=form. test_status is
+      partial deliberately, not passing: 14 tests pass (browse-by-form 8 +
+      browse-by-form-app 6) but the project reserves passing for flow-linked
+      coverage and the catalogue has no flow. Claiming passing here would fire
+      unbacked-pass under doc_gate=block."
+    acceptance_criteria:
+      - content: The catalogue at /metric offers a second entrance grouping metrics by
+          the visual form their data supports, addressable as a URL rather than
+          a client-side control.
+        test_status: not-tested
+        linked_test: null
+      - content: A metric form is derived from its own data, its unit and value range,
+          never from a hand-maintained metric-to-form list. All 125 metrics are
+          reachable through at least one form and none is left formless.
+        test_status: not-tested
+        linked_test: null
+      - content: Each group states why its members sit under that form, and every
+          distinct reason a group carries is shown. A metric is never displayed
+          under a sentence computed for a different metric.
+        test_status: not-tested
+        linked_test: null
+      - content: Both entrances render without JavaScript, share one canonical URL, and
+          the original subject entrance is unchanged.
         test_status: not-tested
         linked_test: null
     dependencies: []

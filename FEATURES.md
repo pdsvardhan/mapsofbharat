@@ -1,12 +1,25 @@
-<!-- generated from registry @ HEAD on 2026-08-25 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
+<!-- generated from registry @ f5ce467 on 2026-08-28 — DO NOT EDIT; edit the registry via the Ottomate API. R-DOC-1. -->
 # mapsofbharat — Features & Flows (generated reference)
 
 > Generated from the Ottomate registry (the single source of truth). To change anything here, edit the feature/flow/acceptance-criteria in the tracker, then re-run `scripts/generation/gen-reference-docs.mjs --project mapsofbharat`.
 
 ## Features
 
-### done (14)
+### done (17)
 
+- **Bivariate choropleth** `feat-bivariate-map` — _ui_, test: `partial`
+  - Two curated metrics on one map via a 2D colour matrix, with pairings chosen at build time. Parked to post-launch per the launch plan.
+  - AC: A reader can pair two district metrics and read them on one map through a 3x3 colour matrix, with the pairing carried in the URL so the view is shareable.
+  - AC: A pair with too little shared geography is refused in plain language rather than drawn. The floor is 690 shared districts, or 30 shared states.
+  - AC: Class breaks are computed per axis independently through the shared data-driven method selection, so a tie-heavy distribution ladders to zeroFloor instead of leaving an empty band and painting zero-reporting regions into the middle class.
+  - AC: When the focused scope holds fewer regions than the matrix has classes, the matrix key stands down and the refusal is shown. The key never describes colours the map is not painting.
+  - AC: The matrix key states its numeric class boundaries in each axis own unit, and the univariate ramp stands down while a pair is drawn.
+- **Browse the catalogue by visual form** `feat-browse-by-form` — _ui_, test: `partial`
+  - A second entrance to the metric catalogue that groups metrics by the visual form their data supports, derived from the data rather than chosen by the reader.
+  - AC: The catalogue at /metric offers a second entrance grouping metrics by the visual form their data supports, addressable as a URL rather than a client-side control.
+  - AC: A metric form is derived from its own data, its unit and value range, never from a hand-maintained metric-to-form list. All 125 metrics are reachable through at least one form and none is left formless.
+  - AC: Each group states why its members sit under that form, and every distinct reason a group carries is shown. A metric is never displayed under a sentence computed for a different metric.
+  - AC: Both entrances render without JavaScript, share one canonical URL, and the original subject entrance is unchanged.
 - **Canonical metric store and schema** `feat-canonical-store` — _backend_, test: `passing`
   - All data lives in one canonical store — region × metric × year × value — with full metadata on every metric.
   - AC: Schema region x metric x year x value plus metric metadata is migrated
@@ -16,6 +29,7 @@
   - The core experience: a colour-graded map of India you can drill from country to state to district, in colour-blind-safe palettes.
   - AC: User views a metric as a district-level choropleth and clicks a state to drill into its districts
   - AC: The colour scale can be reversed from the legend itself in value mode, without opening the scale popover; the choice persists to the URL as rev=1 and is the same setting the popover DIRECTION row drives, not a second one (test: `tests/iter35-controls.spec.ts`)
+  - AC: In value mode, where the metric warrants it, district fill opacity is weighted by population on a logarithmic scale between the p5 and p95 bounds, so a large sparsely-populated district cannot dominate the reading by area alone.
   - AC: Choropleth colouring uses a continuous scale with a min/max legend
   - AC: A colour-blind-safe palette (Viridis) is the default; a diverging palette (RdBu) is used for vs-average mode
 - **Compare mode (region, year, or metric)** `feat-compare-mode` — _ui_, test: `passing`
@@ -33,6 +47,7 @@
 - **Geography backbone and region crosswalk** `feat-geo-backbone` — _backend_, test: `partial`
   - The hard part: a crosswalk reconciling Census-2011 districts with today's boundaries, so old data renders correctly on the current, Survey-of-India-compliant map.
   - AC: A Census-2011 sub-district to current-district crosswalk (rid-keyed) reaggregates 2011 data onto current boundaries, validated against official PCA (median diff < 2%) (test: `pipeline/test_pipeline.py`)
+  - AC: Geometry is served pre-compressed with encoding negotiation: a client offering brotli gets the .br variant, one offering only gzip gets the .gz (never the raw file), and one offering neither gets the original intact. A stated qvalue preference is honoured and q=0 is treated as a refusal. The atlas payload drops 104,519 bytes against the recorded TEC-20 baseline, geometry 286.6 -> 184.5 KB (adr-038). (test: `tests/geodata-encoding.spec.ts`)
   - AC: Every state and district polygon resolves to one canonical region_id (test: `pipeline/test_pipeline.py`)
   - AC: Boundary set passes a Survey-of-India compliance check (J&K, Ladakh, Arunachal, Aksai Chin) (test: `scripts/check-boundaries.mjs`)
 - **Ingestion pipeline and dataset adapters** `feat-ingest-pipeline` — _automated_, test: `partial`
@@ -63,6 +78,7 @@
 - **Rankings, percentile, and vs-average** `feat-rankings-stats` — _ui_, test: `passing`
   - Auto rank/percentile + vs-average diverging view.
   - AC: Selecting a region shows its rank and percentile for the metric, computed over the districts the source actually surveyed. A district whose value was inherited from its parent (estimated=1) has no rank of its own and reports the inheritance instead (adr-019). (test: `tests/estimates.spec.ts`)
+  - AC: The ranked table can be scrolled by keyboard alone. Its scroll container is a named focus target (role + accessible name), because 23,339px of rankings sat behind three header buttons in the first 44px - axe passed it, and a keyboard reader could reach 0.2% of it (#631). (test: `tests/a11y.spec.ts`)
   - AC: A vs national/state average diverging view can be toggled (test: `tests/rankings.spec.ts`)
 - **Region detail panel** `feat-region-detail` — _ui_, test: `passing`
   - Click any state or district to open its full profile panel.
@@ -81,6 +97,12 @@
   - AC: Every metric shows source, year, and license, with a working citation link (test: `tests/methodology.spec.ts`)
   - AC: Each metric exposes methodology text (how the figure was measured/derived), served by the metrics API and shown in the trust surface (test: `tests/methodology.spec.ts`)
   - AC: Source metadata (source, year, license, methodology, coverage) is stored per-metric in the canonical DB rather than hardcoded in the UI, so it stays correct across re-ingests (test: `tests/methodology.spec.ts`)
+- **Value-by-alpha population weighting** `feat-value-by-alpha` — _ui_, test: `partial`
+  - Fill opacity weighted by population alongside fill colour by value, so the map stops weighting India by acreage. Carries its own legend key, and forces no-data to a hatch so absence can never be mistaken for faintness.
+  - AC: The legend carries a colour-by-alpha key, its rows labelled with real population figures, so a faded fill can be read off the key rather than guessed at.
+  - AC: Regions with no data are drawn as a hatch rather than a tone, in every mode and on both vintages, so absence of data is never mistaken for faintness. Measured worst fill-versus-hatch contrast 3.47:1, above the 3:1 floor; tone alone measures as little as 1.01:1 and cannot carry the distinction.
+  - AC: The fade applies only where it is warranted, measured as a class-share total variation distance at or above 0.15, and the disclosure names the measured share.
+  - AC: A warrant that cannot be computed refuses and says so. A non-finite population or area can never fall through to a warranted verdict, and the reader is never shown a non-finite share.
 
 ### building (1)
 
@@ -92,16 +114,12 @@
   - AC: Symbol mode keeps full interaction parity with the choropleth: every feature-state write reaches the symbol source, selection from the rail works and opens the region panel, and hover behaves the same. A mode that drops half the interactions is a demo, not a view. (test: `tests/symbol-maps.spec.ts`)
   - AC: SHADE / SIZE is a real, shareable choice: flipping the mode changes the map, only a deliberate flip travels in the URL, and a shared sym=0 link opens as a choropleth for the recipient. (test: `tests/symbol-maps.spec.ts`)
 
-### planned (4)
+### planned (2)
 
-- **Bivariate choropleth** `feat-bivariate-map` — _ui_, test: `not-tested`
-  - Two curated metrics on one map via a 2D colour matrix, with pairings chosen at build time. Parked to post-launch per the launch plan.
 - **Categorical / qualitative maps** `feat-categorical-maps` — _ui_, test: `not-tested`
   - Categorical map rendering for non-continuous indicators (e.g. the dominant category per region), with a legend of discrete classes.
 - **Hex-state and cartogram views** `feat-hex-cartogram` — _ui_, test: `not-tested`
   - Hex-state and population-cartogram layouts that give small or dense regions fair visual weight versus a geographic choropleth.
-- **VSUP uncertainty encoding toggle** `feat-vsup-uncertainty` — _ui_, test: `not-tested`
-  - A value-suppressing-uncertainty toggle that folds confidence / coverage into the colour, so estimated or thin-coverage values read as less certain.
 
 ## Flows
 
