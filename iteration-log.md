@@ -1360,3 +1360,26 @@ and "the verifier ran" are different claims, and the second one nearly did not h
 Every item that says `verified` here has an independent pass behind it with command
 output; the one hard failure the final pass reported was traced to a standalone tree one
 file older than HEAD and cleared by a rebuild.
+
+## Session 2026-08-27/28 — iter-46 verification, fix, and one production bug nobody was looking for
+
+**Stage:** Stage 4 — iterations 160 (15 items) and 162 (1 item), both integrated at `a97b665` and deployed.
+**Duration:** ~16h wall (heavily parallel; 9 verifiers + 8 coder agents)
+
+**What changed:**
+- Shipped: value-by-alpha with a colour-by-alpha key and no-data as a hatch (adr-040); bivariate paired maps with per-axis data-driven binning and a key that stands down when the scope cannot be drawn; browse-the-catalogue-by-form over all 125 metrics.
+- Rebuilt three guards: the pipefail/grep detector (shell-aware splitter, after 7 proven blind spots), zero-measurement passes in four checkers, and the Node pin now cross-checked across every place that names it (`scripts/check-node-pins.mjs`).
+- Fixed a LIVE production bug found while verifying something else: drilling into any state coded 01–09 rendered an empty map — nine states including Uttar Pradesh. Two further instances of the same root (Ctrl-K search, `?cmp=` pins) found by the verifier.
+- Suite 530 → 618, all green. Deployed `a97b665`, smoke-verified against the live container with polygon counts, not chrome.
+
+**Decisions:** adr-040 (absence gets a texture — why it does not reverse adr-019), adr-041 (nine states, and the tolerance that hid them).
+
+**Friction:**
+- `data-mismatch` — adr-039 had NEVER been in the canonical store; it lived only in a hand-edited `ottomate/decisions/index.yaml` and would have been dropped silently by any `mirror:write`. Only `check-adr-refs` going red after a regeneration surfaced it. Nothing validates file→index, only index→file. Filed.
+- `api-change` — feature PATCH silently accepts unknown fields: sent `skip_reason` (no such column), got 200 and the full body back, value discarded. A caller cannot distinguish a stored write from a dropped one. Filed against ottomate as to-do 688.
+- `api-change` — `acceptance_criteria` is capped at 5 per feature, which forced value-by-alpha into its own child feature. Reasonable outcome, but forced by a limit rather than chosen.
+- `tooling` — `.next-runs/**` was absent from the eslint ignores, so the lint gate was not merely racy but routinely wrong (8,962 problems vs 42 with a sibling run tree present). `.dockerignore` had the identical gap.
+
+**The pattern worth carrying forward:** every guard this iteration added worked; every sweep it claimed was narrower than claimed. And "a test that agrees with a bug" appeared FOUR times — a `-qm1` case passing because a different rule caught it, a case-alternation test whose pattern could never name a consumer, a 2011 test asserting rail text in the file whose whole thesis is that rail text hid the bug, and a spec that survived the mutation it existed to catch. Three of the four were found by verifiers, not coders.
+
+**Next session context:** 2011 vintage carries no drill filter at all (to-do 722, pre-existing, 248 polygons across 13 states under a rail naming one). MapLibre fill-pattern race is reduced to one reloading write, not zero (to-do 702) — the airtight fix needs separate hatch sources and an owner call on a second 825KB index.
