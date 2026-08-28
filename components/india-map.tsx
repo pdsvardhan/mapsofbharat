@@ -109,13 +109,50 @@ const NODATA_LAYERS: Record<string, string> = {
 // a filter that compares NUMBERS so it cannot care about the pad on either side —
 // including on the day the geometry is rebuilt by something that does not pad.
 // tests/drill-state-codes.spec.ts sweeps every state code the geometry carries.
+//
+// ROUND 2: "canonical" has to mean canonical for EVERY spelling, not just the short
+// one. The first fix normalised with padStart, which only adds characters — so "9"
+// canonicalised and "009" and " 9" did not, and a `?st=` carrying either painted the
+// right polygons under a rail reading "0 districts in Uttar Pradesh". stCode() below
+// now goes through the NUMBER, and applyFocus refuses a code that names no state at
+// all instead of drilling into nothing.
 
-/** The canonical form of a state code here: zero-padded to two digits. */
+/** The canonical form of a state code here: zero-padded to two digits.
+ *
+ *  NUMERIC, not padStart on its own (item 1091 round 2, found by the verifier).
+ *  padStart only ever ADDS characters: it canonicalises "9" and leaves "009" and " 9"
+ *  exactly as they arrived, and both of those are one hand-typed `?st=` away. That
+ *  half-normalisation split the map from the chrome the same way item 1091 itself did,
+ *  arriving from the other side. Measured on the FIXED build f5ce467:
+ *
+ *      ?st=009   75 Uttar Pradesh polygons painted   rail: "0 districts in Uttar Pradesh"
+ *      ?st=%209  75 Uttar Pradesh polygons painted   rail: "0 districts in Uttar Pradesh"
+ *
+ *  — the map was right because stateFilter compares NUMBERS and 009 == 9, and the rail
+ *  was empty because ridPrefix() built "009_" / " 9_", which no rid has ever started
+ *  with. Item 1091 was a correct rail over an empty plate; this is an empty rail over a
+ *  correct plate. Same divergence, same fix: one canonical spelling, made here.
+ *
+ *  A code that is not a whole non-negative number has NO canonical form, and comes back
+ *  as "" rather than as "NaN" (String(Number("abc")).padStart would have produced
+ *  exactly that) or as the junk itself. "" cannot be a `states` feature id, a rid prefix
+ *  or a metric key, so every lookup downstream MISSES instead of half-matching —
+ *  and applyFocus, the one boundary a code enters through, turns that miss into "no
+ *  drill" rather than a drill into nothing. */
 function stCode(code: string | number): string {
-  return String(code).padStart(2, "0");
+  // trim() first: " 9" reaches this straight off a URL, Number() would have accepted it
+  // and padStart would not have touched it — which is precisely the ?st=%209 row above.
+  const raw = String(code).trim();
+  const n = Number(raw);
+  // Number("") is 0, so the emptiness test cannot be folded into the numeric one.
+  return raw !== "" && Number.isInteger(n) && n >= 0 ? String(n).padStart(2, "0") : "";
 }
 
-/** The district-rid prefix for a state — "09_", the key space districts live in. */
+/** The district-rid prefix for a state — "09_", the key space districts live in.
+ *
+ *  Only ever handed focus.code, which applyFocus has already canonicalised and refuses
+ *  to set at all unless it names a real state — so this cannot be reached with the
+ *  "009_" of the table above. */
 function ridPrefix(code: string | number): string {
   return stCode(code) + "_";
 }
@@ -126,7 +163,15 @@ function ridPrefix(code: string | number): string {
  *  and neither spelling can miss the other. The `-1` fallback is to-number's second
  *  candidate — a feature with no st_code, or an unconvertible one, would otherwise
  *  make the whole expression an ERROR rather than a non-match, and an erroring filter
- *  takes the layer down instead of one feature. */
+ *  takes the layer down instead of one feature.
+ *
+ *  A code with no canonical form comes back "" from stCode() and Number("") is 0, so
+ *  the expression built from it admits nothing: the Census state codes are 1-based and
+ *  no feature carries 0. That is the floor, not the plan — applyFocus refuses such a
+ *  code before it reaches here. Before this pair of guards the same input produced
+ *  Number("abc") === NaN, which MapLibre serialised into the filter as a bare `null`
+ *  (measured: getFilter("district-fill") came back
+ *  ["==",["to-number",["get","st_code"],-1],null] on ?st=abc). */
 function stateFilter(code: string | number): maplibregl.FilterSpecification {
   return ["==", ["to-number", ["get", "st_code"], -1], Number(stCode(code))];
 }
@@ -1086,6 +1131,26 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     const map = mapRef.current; if (!map) return;
     const code = stCode(rawCode);
     const f = statesRef.current[code];
+    // A `?st=` THAT NAMES NO STATE DRILLS NOWHERE (item 1091 round 2).
+    //
+    // This used to fall through: `f` was only consulted for the fitBounds below, so
+    // ?st=abc and ?st=99 installed a filter that admits nothing and set a focus anyway.
+    // Measured on f5ce467 — /?m=literacy_rate&lvl=district&st=abc&stn=Nowhere gave 0
+    // polygons under "0 districts in Nowhere", a blank plate scoped to a state that
+    // does not exist, with no way back but the browser's Back button.
+    //
+    // Failing cleanly here means what it already means for the OTHER code a link can
+    // carry: `cmp` looks each pin up in the same statesRef and silently drops the ones
+    // that resolve to nothing, and the URL writer — which emits only what the view
+    // actually holds — then strips the dead param out of the address bar. Measured:
+    // ?cmp=abc,09 rewrites itself to ?cmp=09. Refusing the focus gives `st` exactly
+    // that: no drill, the national view the reader would have had without the param,
+    // and an address bar that stops claiming a scope the map never entered.
+    //
+    // Not a thrown error and not a toast: a malformed param is not the reader's doing
+    // in any case we can name (a truncated share link, a hand-edited URL), and this
+    // file has no error surface that would be honest about it.
+    if (!f) return;
     // Numeric, so the pad cannot break it in either direction. This line used to read
     // ["==", ["to-string", ["get","st_code"]], String(Number(code))] — "9" against a
     // geojson that stores "09" — and it is the whole of item 1091: nine states drilled
@@ -1096,7 +1161,9 @@ export default function IndiaMap({ minimal = false }: { minimal?: boolean }) {
     // would paint the rest of the country while its fills stayed hidden.
     map.setFilter("district-fill", flt); map.setFilter("district-nodata", flt);
     map.setFilter("district-line", flt); map.setFilter("state-outline", flt);
-    if (f) map.fitBounds(bbox(f.geometry) as any, { padding: 50, duration: 750, essential: true });
+    // Unconditional now: the guard above is what used to be this `if`, moved up to
+    // where it can decide whether to drill at all rather than only whether to fly.
+    map.fitBounds(bbox(f.geometry) as any, { padding: 50, duration: 750, essential: true });
     setFocus({ code, name });
     focusRef.current = { code, name };
   }

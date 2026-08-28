@@ -31,14 +31,33 @@ import { test, expect, Page } from "@playwright/test";
 //   2. Those specs assert on the RAIL and the BREADCRUMB, and both stayed correct
 //      while the map drew nothing: scopeCodes() and the entries builder each
 //      carried a padded/unpadded tolerance, so the drill trail said "Uttar Pradesh"
-//      and the rail said "75 districts in Uttar Pradesh" over an empty plate. So
-//      every assertion here is about POLYGONS — what the source admits and what the
-//      map renders — and never about chrome.
+//      and the rail said "75 districts in Uttar Pradesh" over an empty plate. So the
+//      assertions here are about POLYGONS — what the source admits and what the map
+//      renders — and a test that reaches for chrome has to say so IN ITS NAME and
+//      earn it, because a name promising a scope guarantee it does not check is the
+//      same failure one storey up. Exactly two tests reach for chrome:
+//
+//        · the malformed-`?st=` pair asserts map AND rail together, because the two
+//          disagreeing IS the defect it guards;
+//        · the as-reported 2011 case can assert nothing else. d2011-fill carries no
+//          drill filter at all, so no polygon on that plate is cut by the prefix
+//          under test. It asserts the ABSENCE of that filter as its premise, so the
+//          day the 2011 plate is scoped this test goes red and asks to be tightened
+//          instead of quietly passing over a guarantee it never made.
 //
 // The tolerances are gone (one canonical padded form, produced in applyFocus) and
 // the filter is numeric, so neither spelling can miss the other. The third test
 // below is what replaces the tolerance: an unpadded code in a shared link must
 // still drill.
+//
+// ── ROUND 2 (same item, found by the verifier on the fixed build) ─────────────
+// stCode() canonicalised with padStart, which only ADDS characters, so "9" was fixed
+// and "009" and " 9" were not. Both are one hand-typed link away, and both produced
+// the SAME class of divergence inverted: stateFilter compares numbers, so the map
+// painted all 75 Uttar Pradesh districts, while ridPrefix built "009_" / " 9_" and
+// the rail read "0 districts in Uttar Pradesh". A code naming no state at all
+// (?st=abc, ?st=99) drilled to a blank plate scoped to nowhere. The two tests after
+// the unpadded one cover both, and both assert the map and the rail together.
 
 const NATIONAL = "/?m=literacy_rate&lvl=district";
 
@@ -110,17 +129,35 @@ async function drillCounts(page: Page, code: string, layer = "district-fill") {
   }, { c: code, lyr: layer });
 }
 
-/** District polygons the map is actually PAINTING right now, and whose they are. */
-async function renderedDistricts(page: Page) {
-  return page.evaluate(() => {
+/** District polygons the map is actually PAINTING right now, and whose they are.
+ *  The layer is a parameter only so the as-reported case can ask the same question of
+ *  d2011-fill; every other caller wants the default and says nothing. */
+async function renderedDistricts(page: Page, layer = "district-fill") {
+  return page.evaluate((lyr) => {
     const m = (window as unknown as MapWindow).__mob_map;
     const rids = new Set<string>();
-    for (const f of m.queryRenderedFeatures(undefined, { layers: ["district-fill"] })) {
+    for (const f of m.queryRenderedFeatures(undefined, { layers: [lyr] })) {
       rids.add(String(f.properties?.rid));
     }
     return [...rids];
-  });
+  }, layer);
 }
+
+/** Whether a layer carries a filter at all, and what it is.
+ *
+ *  Two fields rather than one, because "no filter" comes back as `undefined` and
+ *  `undefined` does not survive JSON.stringify — a probe that returned only the
+ *  serialised filter would report an UNFILTERED layer and a layer filtered to
+ *  `undefined` identically, which is the shape of agreeing with anything. */
+async function layerFilter(page: Page, layer: string) {
+  return page.evaluate((lyr) => {
+    const f = (window as unknown as MapWindow).__mob_map.getFilter(lyr);
+    return { set: f !== undefined && f !== null, json: String(JSON.stringify(f)) };
+  }, layer);
+}
+
+/** The state codes a set of rids belongs to — "09_75" -> "09". */
+const statesOf = (rids: string[]) => [...new Set(rids.map((r) => r.split("_")[0]))].sort();
 
 test.describe("drill by state code (iter-46 item 1091)", () => {
   test("every state code the geometry carries admits exactly its own districts", async ({ page }) => {
@@ -251,6 +288,134 @@ test.describe("drill by state code (iter-46 item 1091)", () => {
     await expect(page.getByText(/districts in Uttar Pradesh/i).first()).toBeVisible({ timeout: 15_000 });
   });
 
+  // ── round 2: the spellings padStart could not reach ──────────────────────────
+  // "09" is not the only canonical-looking code a URL can carry. padStart only ADDS
+  // characters, so the first fix normalised "9" and left "009" and " 9" exactly as
+  // they arrived — and the two halves of the page then disagreed, inverted. Measured
+  // on f5ce467, with the fix for the original defect in place:
+  //
+  //     ?st=009    75 Uttar Pradesh polygons painted    rail: "0 districts in Uttar Pradesh"
+  //     ?st=%209   75 Uttar Pradesh polygons painted    rail: "0 districts in Uttar Pradesh"
+  //
+  // The map was right because stateFilter compares NUMBERS; the rail was empty
+  // because ridPrefix built "009_" and " 9_", which no rid starts with. So this pair
+  // asserts BOTH SIDES — which is the only assertion that could have caught either
+  // half of item 1091, in either direction.
+  const MALFORMED: { param: string; label: string }[] = [
+    { param: "009", label: "over-padded" },
+    { param: "%209", label: "space-prefixed" },
+  ];
+  for (const { param, label } of MALFORMED) {
+    test(`?st=${param} (${label}) drills the map and the rail to the SAME state`, async ({ page, request }) => {
+      // The count comes from the store, not a literal: the rail counts the rows the
+      // API returns for this state, so a data rebuild has to move both together or
+      // this goes red for the right reason.
+      const api = (await (await request.get("/api/metrics/literacy_rate?level=district")).json()) as {
+        values: Record<string, number>;
+      };
+      const all = Object.keys(api.values);
+      const up = all.filter((c) => c.startsWith("09_")).length;
+      expect(up, "no Uttar Pradesh districts in the store — this case proves nothing").toBeGreaterThan(0);
+      // ...and the prefix really CUTS: a rail reading the national total would satisfy
+      // an equality against `up` if `up` happened to be everything.
+      expect(up, "state 09 is the entire district store — the prefix cuts nothing here")
+        .toBeLessThan(all.length);
+
+      await page.goto(`/?m=literacy_rate&lvl=district&st=${param}&stn=Uttar%20Pradesh`);
+      await waitForMapReady(page);
+
+      // THE MAP. This half was already right before round 2 — asserted anyway, because
+      // a fix that canonicalised the rail by breaking the filter would be a trade, not
+      // a fix.
+      await expect
+        .poll(async () => (await renderedDistricts(page)).length, {
+          timeout: 15_000,
+          message: `?st=${param} painted no district-fill polygon at all`,
+        })
+        .toBeGreaterThan(0);
+      const rendered = await renderedDistricts(page);
+      expect(
+        statesOf(rendered),
+        `?st=${param} is painting districts outside Uttar Pradesh`,
+      ).toEqual(["09"]);
+
+      const counts = await drillCounts(page, "09");
+      expect(counts.filter, `?st=${param} produced a different filter from the canonical one`)
+        .toBe(counts.expected);
+      expect(counts.admitted).toBe(counts.inSource);
+
+      // THE RAIL, with the number. `/districts in Uttar Pradesh/` alone would have
+      // passed on the measured "0 districts in Uttar Pradesh" — the exact shape this
+      // file's own 2011 case was caught making.
+      await expect(page.getByText(new RegExp(`${up} districts in Uttar Pradesh`, "i")).first())
+        .toBeVisible({ timeout: 15_000 });
+
+      // ...and the address bar stops spelling it the broken way. The URL writer emits
+      // focus.code, so a canonical focus canonicalises the link the reader would copy
+      // next — the same self-correction ?cmp= has always had.
+      expect(new URL(page.url()).searchParams.get("st"), "the malformed ?st= survived into the shared link")
+        .toBe("09");
+    });
+  }
+
+  // ── round 2: a code that names no state at all ───────────────────────────────
+  // "abc" has no canonical form; "99" has one and there is no such state. Both used
+  // to fall through applyFocus into a real drill: measured on f5ce467, ?st=abc gave a
+  // filter of ["==",["to-number",["get","st_code"],-1],null] — Number("abc") is NaN
+  // and MapLibre serialises that as a bare null — 0 polygons painted, and a rail
+  // reading "0 districts in Nowhere". A blank plate scoped to a state that does not
+  // exist, with no way out but the browser's Back button.
+  //
+  // The fix makes `st` behave the way `cmp` already did: a code that resolves to no
+  // feature is silently dropped and the view is the one the reader would have had
+  // without the param. Measured: ?cmp=abc,09 rewrites itself to ?cmp=09.
+  const NO_SUCH_STATE: { param: string; why: string }[] = [
+    { param: "abc", why: "not a number at all" },
+    { param: "99", why: "a well-formed code no state carries" },
+  ];
+  for (const { param, why } of NO_SUCH_STATE) {
+    test(`?st=${param} (${why}) does not drill — the reader gets the national view`, async ({ page, request }) => {
+      const api = (await (await request.get("/api/metrics/literacy_rate?level=district")).json()) as {
+        values: Record<string, number>;
+      };
+      const nationwide = Object.keys(api.values).length;
+      expect(nationwide, "the district store is empty — this case proves nothing").toBeGreaterThan(0);
+
+      await page.goto(`/?m=literacy_rate&lvl=district&st=${param}&stn=Nowhere`);
+      await waitForMapReady(page);
+
+      // No drill filter was ever installed. This is the assertion the pre-fix build
+      // fails: it installed one, and the one it installed admitted nothing.
+      const flt = await layerFilter(page, "district-fill");
+      expect(flt.set, `?st=${param} installed a drill filter anyway: ${flt.json}`).toBe(false);
+
+      // ...so the plate is the national one, not an empty one. Asserted on POLYGONS,
+      // because "no filter" and "a filter that happens to admit everything" are the
+      // same to the reader only if the polygons say so.
+      await expect
+        .poll(async () => (await renderedDistricts(page)).length, {
+          timeout: 15_000,
+          message: `?st=${param} left an EMPTY map instead of falling back to India`,
+        })
+        .toBeGreaterThan(0);
+      expect(
+        statesOf(await renderedDistricts(page)).length,
+        `?st=${param} is painting one state's districts — something drilled`,
+      ).toBeGreaterThan(1);
+
+      // The rail says India, not "0 districts in Nowhere".
+      await expect(page.getByText(new RegExp(`${nationwide} districts nationwide`, "i")).first())
+        .toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/districts in Nowhere/i)).toHaveCount(0);
+
+      // And the dead params are gone from the address bar, so the link the reader
+      // copies next does not carry the same nonsense forward.
+      const qs = new URL(page.url()).searchParams;
+      expect(qs.get("st"), "a state code naming no state survived into the shared link").toBeNull();
+      expect(qs.get("stn"), "the orphaned state NAME survived into the shared link").toBeNull();
+    });
+  }
+
   test("clicking a low-numbered state and drilling in paints its districts", async ({ page }) => {
     // The reader's own journey, not a restored permalink: click the state, read the
     // profile, press the drill button. Same applyFocus underneath, reached the other
@@ -371,21 +536,80 @@ test.describe("drill at a low state code, per render mode (item 1091)", () => {
     expect(counts.inSource).toBeGreaterThan(0);
   });
 
-  test("the as-reported 2011 view scopes a low-code drill to that state's 2011 districts", async ({ page, request }) => {
-    // The vintage has no drill filter of its own — d2011-fill is never filtered, and
-    // toggling the vintage exits any focus — so the padding question reaches it only
-    // through the rid PREFIX the rail and the paint cut their scope with. 2011 rids
-    // are padded exactly like the current ones, so one canonical prefix has to be
-    // right here too; the count is read from the API rather than hardcoded, so a data
-    // rebuild moves the expectation with the data.
+  test("the as-reported 2011 RAIL cuts a low-code drill with the padded prefix — the 2011 plate is not cut at all", async ({ page, request }) => {
+    // THIS TEST IS ABOUT CHROME, AND ITS NAME SAYS SO. It was called "the as-reported
+    // 2011 view scopes a low-code drill to that state's 2011 districts" and asserted
+    // only the rail — a name promising a scope guarantee over the one assertion in
+    // this file that could not have caught the defect the file exists for. Worse, the
+    // scope it named does not exist. Measured on f5ce467,
+    // /?m=literacy_rate&lvl=district&vin=2011&st=09: d2011-fill paints 248 polygons
+    // across 13 states (02..10, 19, 20, 22, 23 — Uttar Pradesh's neighbours, drawn
+    // because fitBounds put them in frame) under a rail reading "71 districts in
+    // Uttar Pradesh". getFilter("d2011-fill") is undefined. Same on 57581ac, and the
+    // same for Madhya Pradesh (23): 169 polygons across 7 states under "50 districts
+    // in Madhya Pradesh".
+    //
+    // That gap is NOT item 1091 and is deliberately not fixed here — it predates the
+    // fix, it is unchanged by it, and as far as anyone has traced it is only reachable
+    // by a hand-typed URL: wire() covers district-fill/state-fill and their symbol
+    // layers, never the 2011 pair, and the vintage-change effect calls exitFocus. It
+    // needs its own item.
+    //
+    // What IS item 1091 here: the 2011 rids are padded exactly like the current ones,
+    // and the rail cuts them with ridPrefix(focus.code) — the very function round 2
+    // rewrote. So the rail is the only surface on this plate that reads the prefix
+    // under test, and asserting it is not a shortcut, it is the whole available
+    // subject. The premise is asserted rather than assumed: if the 2011 plate ever
+    // does get a drill filter, the first expect below goes red and this test asks to
+    // be rewritten around polygons instead of quietly passing on a rail.
     const api = (await (await request.get("/api/metrics/literacy_rate?level=district2011")).json()) as {
       values: Record<string, number>;
     };
-    const up2011 = Object.keys(api.values).filter((c) => c.startsWith("09_")).length;
+    const all2011 = Object.keys(api.values);
+    const up2011 = all2011.filter((c) => c.startsWith("09_")).length;
     expect(up2011, "no 2011 districts for state 09 in the store — this case proves nothing").toBeGreaterThan(0);
+    // Non-vacuity on the cut itself: an equality against a number that happens to be
+    // the national total would pass on a rail that never cut anything.
+    expect(up2011, "state 09 is the entire 2011 district store — the prefix cuts nothing here")
+      .toBeLessThan(all2011.length);
 
     await page.goto("/?m=literacy_rate&lvl=district&vin=2011&st=09&stn=Uttar%20Pradesh");
     await waitForMapReady(page);
+    // The 2011 sources are added lazily on first toggle, so wait for the plate before
+    // asking it anything — a layer that has not been added yet answers "nothing", and
+    // "nothing" would satisfy a badly written scope assertion.
+    await expect
+      .poll(async () => (await renderedDistricts(page, "d2011-fill")).length, {
+        timeout: 20_000,
+        message: "the as-reported plate never painted — the 2011 sources did not load",
+      })
+      .toBeGreaterThan(0);
+
+    // PREMISE, measured: the 2011 fill and its hatch carry NO drill filter, which is
+    // why the polygons below are unscoped and why the rail is the only thing left to
+    // assert. Red the day that changes.
+    for (const layer of ["d2011-fill", "d2011-nodata"]) {
+      const flt = await layerFilter(page, layer);
+      expect(
+        flt.set,
+        `${layer} now carries a filter (${flt.json}) — the as-reported plate is scoped after all, `
+        + "so this test must assert polygons the way every other test in this file does",
+      ).toBe(false);
+    }
+    // ...and the consequence, on polygons rather than on the filter alone: the plate
+    // really is painting other states' 2011 districts. Pinned, not endorsed — this is
+    // the gap named above, and it goes red the day someone closes it.
+    const plate = await renderedDistricts(page, "d2011-fill");
+    expect(
+      statesOf(plate).length,
+      "the as-reported plate is scoped to one state now — the gap this test pins is fixed; "
+      + "assert the scope properly and delete this expectation",
+    ).toBeGreaterThan(1);
+    expect(statesOf(plate), "the drilled state is not even on its own plate").toContain("09");
+
+    // THE ASSERTION THIS TEST IS FOR: the rail's 2011 count, cut with the one
+    // canonical padded prefix. Reverting ridPrefix to the unpadded spelling makes this
+    // read "0 districts in Uttar Pradesh".
     await expect(page.getByText(new RegExp(`${up2011} districts in Uttar Pradesh`, "i")).first())
       .toBeVisible({ timeout: 20_000 });
   });
