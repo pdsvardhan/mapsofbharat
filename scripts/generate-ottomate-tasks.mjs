@@ -68,49 +68,73 @@ function esc(s) {
 }
 
 function render(todos, meta) {
-  const open = todos.filter((t) => !t.done);
-  const done = todos.filter((t) => t.done);
+  // 2026-09-07 (ottomate #774/#530): the tracker now carries state / kind / priority / blocked_on / origin /
+  // blocked_by / body, so this file groups rows by what they ARE instead of faking narrative sections.
+  // Tolerant of rows written before the model (state falls back to done/open).
+  const st = (t) => t.state ?? (t.done ? "done" : "open");
   const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id;
-  open.sort(bySort);
+  const prio = { P0: 0, P1: 1, P2: 2 };
+  const byPrio = (a, b) => (prio[a.priority] ?? 3) - (prio[b.priority] ?? 3) || bySort(a, b);
+  const live = todos.filter((t) => !["done", "parked"].includes(st(t)));
+  const parked = todos.filter((t) => st(t) === "parked").sort(bySort);
+  const done = todos.filter((t) => st(t) === "done");
   done.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")) || b.id - a.id);
+  const groups = [
+    ["Waiting on the owner", live.filter((t) => st(t) === "blocked" && t.blocked_on === "owner")],
+    ["In progress", live.filter((t) => st(t) === "in-progress")],
+    ["Built — needs verification", live.filter((t) => st(t) === "built")],
+    ["Ready to build", live.filter((t) => st(t) === "ready")],
+    ["Blocked (dependency / external / other)", live.filter((t) => st(t) === "blocked" && t.blocked_on !== "owner")],
+    ["Open — not yet looked at", live.filter((t) => st(t) === "open")],
+  ];
+  const miscOpen = live.filter((t) => (t.kind ?? "misc") === "misc").length;
+  const chips = (t) => [t.priority, t.kind ?? "misc", st(t), t.blocked_on ? `on:${t.blocked_on}` : null]
+    .filter(Boolean).map((x) => "`" + x + "`").join(" ");
 
   const L = [];
-  L.push(
-    `<!-- generated from the Ottomate tracker (project "${SLUG}") @ ${meta.count} to-dos on ${meta.date} — DO NOT EDIT; edit via the tracker API -->`
-  );
+  L.push(`<!-- generated from the Ottomate tracker (project "${SLUG}") @ ${meta.count} to-dos on ${meta.date} — DO NOT EDIT; edit via the tracker API -->`);
   L.push("");
   L.push("# Ottomate — task list");
   L.push("");
-  L.push(
-    `_Generated ${meta.date} from the tracker at ${API.replace(/^https?:\/\/127\.0\.0\.1:\d+$/, "http://127.0.0.1:8110")}._ ` +
-      `**${open.length} open · ${done.length} done.**`
-  );
+  L.push(`_Generated ${meta.date} from the tracker at ${API.replace(/^https?:\/\/127\.0\.0\.1:\d+$/, "http://127.0.0.1:8110")}._ ` +
+    `**${live.length} open · ${parked.length} parked · ${done.length} done.**` +
+    (miscOpen ? ` ${miscOpen} open item(s) still have kind=misc — name them at pack-up.` : ""));
   L.push("");
-  L.push(
-    "This file is generated. Editing it changes nothing that lasts — the next run overwrites it, " +
-      "and `--check` fails CI in the meantime. To change a task, change it in the tracker " +
-      "(`PATCH /api/todos/<id>`); to add one, `POST /api/projects/ottomate/todos`."
-  );
+  L.push("This file is generated. Editing it changes nothing that lasts — the next run overwrites it, " +
+    "and `--check` fails CI in the meantime. To change a task, change it in the tracker " +
+    "(`PATCH /api/todos/<id>`); to add one, `POST /api/projects/ottomate/todos`.");
   L.push("");
-  L.push(
-    "Scope: the Ottomate **tool** — the skill, the app, the design pipeline, the plugin scripts. " +
-      "Work on a *website built with* Ottomate belongs on that website's own list."
-  );
+  L.push("Scope: the Ottomate **tool** — the skill, the app, the design pipeline, the plugin scripts. " +
+    "Work on a *website built with* Ottomate belongs on that website's own list.");
   L.push("");
   L.push("---");
   L.push("");
-  L.push(`## Open — ${open.length}`);
-  L.push("");
-  if (!open.length) {
-    L.push("_Nothing open._");
+  if (!live.length) { L.push("_Nothing open._"); L.push(""); }
+  for (const [name, items] of groups) {
+    if (!items.length) continue;
+    items.sort(byPrio);
+    L.push(`## ${name} — ${items.length}`);
     L.push("");
+    for (const t of items) {
+      const { tags, text } = splitTags(t.title);
+      L.push(`### #${t.id} ${chips(t)}${tags.length ? " " + tags.map((x) => "`" + x + "`").join(" ") : ""}`);
+      L.push("");
+      L.push(text);
+      if (t.body) { L.push(""); L.push(String(t.body).trim()); }
+      const meta2 = [t.origin ? `origin: ${t.origin}` : null, t.blocked_by?.length ? `blocked by: ${t.blocked_by.map((i) => "#" + i).join(", ")}` : null,
+        t.last_verified_at ? `last verified: ${String(t.last_verified_at).slice(0, 10)}` : null].filter(Boolean);
+      if (meta2.length) { L.push(""); L.push(`_${meta2.join(" · ")}_`); }
+      L.push("");
+    }
   }
-  for (const t of open) {
-    const { tags, text } = splitTags(t.title);
-    const suffix = tags.length ? ` ${tags.map((x) => "`" + x + "`").join(" ")}` : "";
-    L.push(`### #${t.id}${suffix}`);
-    L.push("");
-    L.push(text);
+  if (parked.length) {
+    L.push("---"); L.push("");
+    L.push(`## Parked — ${parked.length}`); L.push("");
+    L.push("Deliberately deferred; the reason lives in the body. Not forgotten, not open."); L.push("");
+    for (const t of parked) {
+      const { text } = splitTags(t.title);
+      L.push(`- **#${t.id}** ${chips(t)} ${text}${t.body ? " — " + String(t.body).trim().split("\n")[0] : ""}`);
+    }
     L.push("");
   }
   L.push("---");
